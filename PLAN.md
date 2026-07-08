@@ -2,7 +2,8 @@
 
 > Status: **v1 built (2026-07-08): home + PROOF board + MILL-rendered framework docs, `bunx pantry`;
 > verified installed against a scratch external project.** Next: reference + catalog + standards
-> surfaces. PANTRY — where the stack's ingredients and
+> surfaces, then the host contract (host docs + `pantry.config`) and the install kit
+> (`pantry init` + `INSTALL.md`). PANTRY — where the stack's ingredients and
 > docs are kept — is the BREAD stack's **installable developer-docs + AI cockpit**: one app that
 > **composes** the layers (BATCH · GRAIN · MILL · PROOF) into a single server you drop into any
 > project. It renders the framework docs, the project's PROOF plan board, the generated reference,
@@ -51,6 +52,54 @@ bunx pantry            (inside ANY project)
 
 AI-answerable by construction: MILL's piece-4b outputs (`llms.txt`, `knowledge.json`, per-page meta,
 `data-surface`) mean the AI in the host project can *retrieve* the docs + plans, not just view them.
+
+## Host contract — what a project provides (nothing moves)
+
+The rule that makes adoption safe: **PANTRY is a lens, not a destination.** It renders the host's
+content *in place* — it never copies, moves, or folds the host's docs into itself (see Non-goals:
+"not a fork of the docs"). A copy is a fork; a fork goes stale. The host repo stays the single
+source of truth for everything it owns.
+
+What a host **provides** (by convention, overridable in `pantry.config`):
+
+| Host provides | Convention | Required? | Contracted by |
+|---|---|---|---|
+| Plans (the board) | `./plans/*.md` | yes (it's the cockpit's point) | `proof init` scaffolds · `proof check` lints |
+| The project's own docs | `./docs/**/*.md` | optional — mounted as a MILL collection when present | `pantry.config` for non-standard locations |
+| Config | `pantry.config.(json\|ts)` | optional — surface toggles, extra doc dirs, project name | `pantry init` scaffolds |
+
+What PANTRY **bundles** (the host provides nothing for these): the framework docs
+(BATCH·GRAIN·MILL·PROOF, package-resolved), `/reference`, `/catalog`, `/standards`.
+
+Two consumption modes — the differentiator is "do you need your own server?":
+
+- **Run it** (default, zero code): `bunx pantry` — you provide the content above, PANTRY serves it.
+- **Compose the layers yourself** (you're building your own app, e.g. the portfolio): import
+  `createProofRoutes` + `createMillRoutes` into your own server; PANTRY is then just the reference
+  implementation. Importing PANTRY itself is not offered (Non-goals: it's an app, not a layer).
+
+## Install kit — AI-first, with a manual path
+
+The install story assumes the common case: **the adopter tells the AI in their project to
+"implement PANTRY here."** So the instructions are written *for an AI agent first*, with a human
+checklist as the manual fallback. Deliverable: **`pantry/INSTALL.md`**, shipped in the package
+(resolvable offline via `import.meta.resolve`) and linked from the README + `/llms.txt`.
+
+Contents (both paths perform the same steps):
+
+1. **AI path** — a self-contained prompt block the adopter pastes to (or points) their agent at.
+   Steps the agent performs: add the dependency → run `bunx pantry init` (scaffolds `plans/` +
+   `pantry.config`) → point the config at the *existing* doc dirs → `bunx proof check` (lint the
+   plans) → `bunx pantry serve` and verify the board + docs render. Plus the guardrails, stated as
+   hard rules: **never copy or move host docs — configure, don't relocate**; never edit the
+   bundled framework docs; plans stay the SSOT, the board is a projection the AI must not
+   hand-maintain.
+2. **Manual path** — the same steps as a numbered human checklist, one command per line, with
+   what-you-should-see after each.
+
+`pantry init` = the mechanical half: scaffolds `plans/` (delegating to `proof init`) +
+`pantry.config`, then prints the next steps from INSTALL.md — so the manual path is discoverable
+from the CLI alone.
 
 ## The PROOF split this requires (a planned refactor)
 
