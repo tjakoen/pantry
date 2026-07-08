@@ -10,9 +10,11 @@ import { fileURLToPath } from "node:url";
 import { bunRuntime } from "../batch/platform/bun-runtime.ts";
 import { makeStatic } from "../batch/http/static.ts";
 import { createStyleBundle } from "../batch/assets/style-bundle.ts";
+import { createStream } from "../batch/http/stream.ts";
 import { createMillRoutes, packageDocsSource, type ContentSource, type MillCollection } from "../mill/serve.ts";
 import { escapeHtml } from "../mill/core/engine.ts";
 import { createProofRoutes } from "../proof/routes.ts";
+import { watchPlans } from "../proof/live.ts";
 import { buildVocabReference } from "../grain/ai/vocab-reference.ts";
 import { createCatalog } from "../grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
@@ -26,6 +28,7 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const sibling = (...p: string[]) => join(MODULE_DIR, "..", ...p);
 const GRAIN_ROOT = sibling("grain");
 const PROOF_CSS = sibling("proof", "board.css");
+const BOARD_LIVE_JS = sibling("proof", "board-live.js");
 const STANDARDS_DIR = sibling("tjakoen.github.io", "standards");
 
 const STYLESHEETS = [
@@ -186,8 +189,13 @@ export function createPantryHandler(opts: PantryOptions) {
     source: filesSourceFromDir(STANDARDS_DIR), adapter: { defaultLayout: bodyOnlyLayout },
   };
 
+  // One SSE hub, shared between the /stream subscribe route below and the piece-3 file watcher
+  // started at the bottom of this function — a BATCH host reusing one host-wide stream, same
+  // pattern as the standalone proof/serve.ts (which owns its own private stream instead).
+  const stream = createStream();
   const proofRoutes = createProofRoutes({
     plansDir: config.plansDir, prefix: "/plans", chrome: (title, body) => page(title, body),
+    liveScriptSrc: "/board-live.js",
   });
   const millRoutes = createMillRoutes({
     collections: [...docCollections, ...(surfaces.standards ? [standardsCollection] : [])],
@@ -197,8 +205,15 @@ export function createPantryHandler(opts: PantryOptions) {
     ? createCatalog(join(grainRoot, "components"), undefined, { headEnd: styleLinks })
     : null;
 
+  // Piece 3: watch the host's plans/ and broadcast a live board replace on every change. PANTRY
+  // has no app-wide teardown/close path today (it's `Bun.serve(createPantryHandler(...))`, no
+  // handle returned) — so this watcher is left running for the process's lifetime, same as the
+  // server itself. When a close path is added, wire `watcher.stop()` into it.
+  if (surfaces.plans) watchPlans({ plansDir: config.plansDir, channel: stream });
+
   return async (req: Request): Promise<Response> => {
-    const path = new URL(req.url).pathname;
+    const url = new URL(req.url);
+    const path = url.pathname;
 
     // --- assets ---
     if (path.startsWith("/styles/")) return serveStyles(path.slice("/styles".length));
@@ -208,6 +223,11 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(PROOF_CSS), { headers: { "Content-Type": "text/css" } });
     if (path === "/pantry.css")
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry.css")), { headers: { "Content-Type": "text/css" } });
+    if (path === "/board-live.js")
+      return new Response(await bunRuntime.readFile(BOARD_LIVE_JS), { headers: { "Content-Type": "text/javascript" } });
+
+    // --- the live channel (piece 3): the board's SSE subscribe endpoint ---
+    if (path === "/stream") return stream.subscribe(url.searchParams.get("session") ?? "default");
 
     const html = (body: string) => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 
