@@ -1,6 +1,8 @@
 # PANTRY — plan
 
-> Status: **approved 2026-07-08, unbuilt (docs-only).** PANTRY — where the stack's ingredients and
+> Status: **v1 built (2026-07-08): home + PROOF board + MILL-rendered framework docs, `bunx pantry`;
+> verified installed against a scratch external project.** Next: reference + catalog + standards
+> surfaces. PANTRY — where the stack's ingredients and
 > docs are kept — is the BREAD stack's **installable developer-docs + AI cockpit**: one app that
 > **composes** the layers (BATCH · GRAIN · MILL · PROOF) into a single server you drop into any
 > project. It renders the framework docs, the project's PROOF plan board, the generated reference,
@@ -71,13 +73,19 @@ serve` retires in favor of `bunx pantry` (the board is one route among several).
 1. **PROOF finishes as a layer first** (pieces 3–4 in `../proof/PLAN.md`): the live board (SSE via
    the injected `OpChannel` — mounted, this reuses PANTRY's stream), then `init`/`check`. Do NOT
    extract to PANTRY until PROOF's layer surface (`createProofRoutes`) is settled.
-2. **Extract the app.** Create `pantry/`; move the server/asset/CLI wiring out of `proof/`; add
-   `createProofRoutes`. `bunx pantry` boots the board pointed at `./plans`.
-3. **Mount the docs.** MILL collections for the stack docs (package-resolved) + `/reference` +
-   `/catalog`, de-personalized from the portfolio's versions.
-4. **Mount standards** (`/standards`) — closes the owed web-render route.
-5. **Install story.** `bunx pantry` in a foreign repo: bundles the stack docs from the installed
-   packages, reads the host's `./plans`, serves the cockpit. Verify against a scratch non-BATCH repo.
+2. **Extract the app.** ✅ (2026-07-08) — `pantry/app.ts` (`createPantryHandler`: home + `/plans*`
+   via `createProofRoutes` + `/docs*` via MILL + shared grain assets), `pantry/cli.ts`
+   (`bunx pantry serve [plansDir]`, reads the host cwd's `./plans`, assets resolve relative to the
+   module), `pantry/pantry.css` (nav + member grid, tokens-only). `createProofRoutes` added in
+   `proof/routes.ts`. Screenshots verified (home light/dark, docs, a MILL doc page).
+3. **Mount the docs.** ✅ v1 — MILL collections for `batch/docs` + `grain/docs` (body-only layout).
+   *Still to add: `/reference` (generated vocabulary) + `/catalog` + the individual layer PLANs, and
+   package-resolve the doc dirs (currently module-relative — fine in the monorepo, needed on split).*
+4. **Mount standards** (`/standards`) — closes the owed web-render route. *(pending.)*
+5. **Install story.** ✅ (2026-07-08) — verified against a scratch external project: `proof init`
+   scaffolds its `plans/`, `proof check` lints them, `bunx pantry serve` renders THAT project's
+   plans + PANTRY's own framework docs. Reads host plans, resolves own assets — runs from any cwd.
+   *(Still to prove: a true `bunx` from a published package + a non-BATCH host repo.)*
 6. **Later:** the mindmap (PROOF phase 2) surfaces here; AI-retrieval endpoints; a `pantry.config`
    for which surfaces a project turns on.
 
