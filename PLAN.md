@@ -135,8 +135,13 @@ serve` retires in favor of `bunx pantry` (the board is one route among several).
    scaffolds its `plans/`, `proof check` lints them, `bunx pantry serve` renders THAT project's
    plans + PANTRY's own framework docs. Reads host plans, resolves own assets — runs from any cwd.
    *(Still to prove: a true `bunx` from a published package + a non-BATCH host repo.)*
-6. **Later:** the mindmap (PROOF phase 2) surfaces here; AI-retrieval endpoints; a `pantry.config`
-   for which surfaces a project turns on.
+6. **Host contract** — mount the host's own docs (`./docs/` convention → a MILL collection) +
+   `pantry.config` (surface toggles, extra doc dirs, project name). Promoted from "Later": the
+   pitch is "the AI reads the framework docs *and the project's own* docs+plans" — without this
+   piece the host's docs have no home and the cockpit is half-empty. → §Host contract above.
+7. **Install kit** — `pantry init` + `pantry/INSTALL.md` (AI path + manual path). → §Install kit
+   above.
+8. **Later:** the mindmap (PROOF phase 2) surfaces here; AI-retrieval endpoints.
 
 ## Non-goals
 
