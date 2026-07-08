@@ -25,13 +25,19 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // resolved as PACKAGES (import.meta.resolve), so the same code works in the monorepo and after the
 // split — the file travels inside the package. GRAIN_ROOT stays module-relative: it's used as a
 // directory root (styles/, components/), not a fixed export path — fine in the monorepo (siblings);
-// revisit at the split. STANDARDS_DIR reaches into tjakoen.github.io, which has no package/exports
-// story yet, so it stays module-relative too.
+// revisit at the split.
 const sibling = (...p: string[]) => join(MODULE_DIR, "..", ...p);
 const GRAIN_ROOT = sibling("grain");
 const PROOF_CSS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board.css"));
 const BOARD_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board-live.js"));
-const STANDARDS_DIR = sibling("tjakoen.github.io", "standards");
+// The standards docs are their own package (@tjakoen/standards) — resolved like the framework docs,
+// so pantry renders them from the installed package in any host, not a sibling of the monorepo. A host
+// that doesn't install the package resolves to null and the /standards surface auto-disables (below).
+const STANDARDS_DIR = resolveDirOrNull("@tjakoen/standards/README.md");
+function resolveDirOrNull(specifier: string): string | null {
+  try { return dirname(fileURLToPath(import.meta.resolve(specifier))); }
+  catch { return null; }
+}
 
 const STYLESHEETS = [
   "/styles/variables.css", "/styles/global.css", "/styles/grain.css",
@@ -172,12 +178,11 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
 
 export function createPantryHandler(opts: PantryOptions) {
   const config = opts.config ?? defaultConfig(opts.plansDir);
-  // The bundled /standards collection reads STANDARDS_DIR, which reaches into tjakoen.github.io and
-  // only exists in the monorepo (no package/exports story yet — see the STANDARDS_DIR comment above).
-  // In an external host that dir is absent, so auto-disable the surface instead of crashing on readdir
-  // the first time /standards is hit. A missing source degrades the surface, never 500s the server.
-  if (config.surfaces.standards && !existsSync(STANDARDS_DIR)) {
-    console.warn("[pantry] /standards off: bundled standards dir not found (external host — not yet package-resolved)");
+  // /standards renders from the @tjakoen/standards package (STANDARDS_DIR above). A host that doesn't
+  // install that package resolves to null — auto-disable the surface (drops the nav link + route)
+  // rather than serve an empty page. filesSourceFromDir is also null-safe, so this is belt + braces.
+  if (config.surfaces.standards && (!STANDARDS_DIR || !existsSync(STANDARDS_DIR))) {
+    console.warn("[pantry] /standards off: @tjakoen/standards not installed in this host");
     config.surfaces.standards = false;
   }
   const { surfaces } = config;
@@ -267,17 +272,22 @@ ${body}`));
 }
 
 // A dirSource-equivalent over a plain folder the host owns. (MILL's dirSource is for package docs;
-// this reads any absolute dir — used for the host's docs and the bundled standards.)
-function filesSourceFromDir(dir: string): ContentSource {
+// this reads any absolute dir — used for the host's docs and the bundled standards.) A missing/absent
+// dir yields an EMPTY collection, never a readdir throw — so a vanished docsDir or an unresolved
+// standards package degrades the surface instead of 500-ing the server.
+function filesSourceFromDir(dir: string | null): ContentSource {
+  const ok = !!dir && existsSync(dir);
   return {
     list: async () => {
+      if (!ok) return [];
       const { readdir } = await import("node:fs/promises");
-      return (await readdir(dir)).filter((f) => f.endsWith(".md")).map((f) => basename(f, ".md").toLowerCase());
+      return (await readdir(dir!)).filter((f) => f.endsWith(".md")).map((f) => basename(f, ".md").toLowerCase());
     },
     read: async (slug) => {
+      if (!ok) return null;
       const { readdir } = await import("node:fs/promises");
-      const file = (await readdir(dir)).find((f) => basename(f, ".md").toLowerCase() === slug.toLowerCase());
-      return file ? Bun.file(join(dir, file)).text() : null;
+      const file = (await readdir(dir!)).find((f) => basename(f, ".md").toLowerCase() === slug.toLowerCase());
+      return file ? Bun.file(join(dir!, file)).text() : null;
     },
   };
 }

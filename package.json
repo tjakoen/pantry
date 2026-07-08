@@ -12,7 +12,8 @@
     "@tjakoen/batch": "workspace:*",
     "@tjakoen/grain": "workspace:*",
     "@tjakoen/mill": "workspace:*",
-    "@tjakoen/proof": "workspace:*"
+    "@tjakoen/proof": "workspace:*",
+    "@tjakoen/standards": "workspace:*"
   },
   "files": ["app.ts", "cli.ts", "config.ts", "init.ts", "pantry.css", "PLAN.md", "INSTALL.md", "tools"]
 }
