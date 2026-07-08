@@ -7,28 +7,29 @@
 // so it runs from anywhere and survives the repo split.
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bunRuntime } from "../batch/platform/bun-runtime.ts";
-import { makeStatic } from "../batch/http/static.ts";
-import { createStyleBundle } from "../batch/assets/style-bundle.ts";
-import { createStream } from "../batch/http/stream.ts";
-import { createMillRoutes, packageDocsSource, type ContentSource, type MillCollection } from "../mill/serve.ts";
-import { escapeHtml } from "../mill/core/engine.ts";
-import { createProofRoutes } from "../proof/routes.ts";
-import { watchPlans } from "../proof/live.ts";
-import { buildVocabReference } from "../grain/ai/vocab-reference.ts";
-import { createCatalog } from "../grain/catalog/catalog.ts";
+import { bunRuntime } from "@tjakoen/batch/platform/bun-runtime.ts";
+import { makeStatic } from "@tjakoen/batch/http/static.ts";
+import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
+import { createStream } from "@tjakoen/batch/http/stream.ts";
+import { createMillRoutes, packageDocsSource, type ContentSource, type MillCollection } from "@tjakoen/mill/serve.ts";
+import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
+import { createProofRoutes } from "@tjakoen/proof/routes.ts";
+import { watchPlans } from "@tjakoen/proof/live.ts";
+import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
+import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-// The framework DOC dirs (batch/docs, grain/docs) are resolved as PACKAGES (packageDocsSource →
-// import.meta.resolve), so the same code works in the monorepo and after the split — the doc .md
-// travels inside the package (mill/CLAUDE.md). Assets + the layer PLANs stay module-relative: they
-// aren't in the packages' `exports` maps yet (proof/pantry aren't even linked), so package-resolving
-// them fails today. Fine in the monorepo (siblings); they get package-resolved at the split.
+// The framework DOC dirs (batch/docs, grain/docs), the proof stylesheet, and the layer PLANs are
+// resolved as PACKAGES (import.meta.resolve), so the same code works in the monorepo and after the
+// split — the file travels inside the package. GRAIN_ROOT stays module-relative: it's used as a
+// directory root (styles/, components/), not a fixed export path — fine in the monorepo (siblings);
+// revisit at the split. STANDARDS_DIR reaches into tjakoen.github.io, which has no package/exports
+// story yet, so it stays module-relative too.
 const sibling = (...p: string[]) => join(MODULE_DIR, "..", ...p);
 const GRAIN_ROOT = sibling("grain");
-const PROOF_CSS = sibling("proof", "board.css");
-const BOARD_LIVE_JS = sibling("proof", "board-live.js");
+const PROOF_CSS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board.css"));
+const BOARD_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board-live.js"));
 const STANDARDS_DIR = sibling("tjakoen.github.io", "standards");
 
 const STYLESHEETS = [
@@ -65,9 +66,9 @@ const FRAMEWORK_DOCS: MillCollection[] = [
   { prefix: "/docs/plans", title: "Layer plans",
     description: "Each layer's own design plan (its canonical PLAN.md), rendered. Distinct from /plans — that's this project's task board.",
     source: filesSource({
-      grain: sibling("grain", "PLAN.md"),
-      mill: sibling("mill", "PLAN.md"),
-      proof: sibling("proof", "PLAN.md"),
+      grain: fileURLToPath(import.meta.resolve("@tjakoen/grain/PLAN.md")),
+      mill: fileURLToPath(import.meta.resolve("@tjakoen/mill/PLAN.md")),
+      proof: fileURLToPath(import.meta.resolve("@tjakoen/proof/PLAN.md")),
       pantry: join(MODULE_DIR, "PLAN.md"),
     }),
     adapter: { defaultLayout: bodyOnlyLayout } },

@@ -5,7 +5,7 @@
 // proof/init.ts: this writes NEW files only, never a host's existing CLAUDE.md or settings.json.
 import { writeFile, access } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
-import { runInit } from "../proof/init.ts";
+import { runInit } from "@tjakoen/proof/init.ts";
 import type { PantryConfig } from "./config.ts";
 
 export interface PantryInitResult {

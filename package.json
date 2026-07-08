@@ -1,11 +1,18 @@
 {
-  "//": "Placeholder for the future standalone repo (see ../SPLIT-PLAN.md). The cockpit app that composes the layers. Version 0.0.0 until it stabilizes.",
+  "//": "Staged for the future standalone repo (see ../SPLIT-PLAN.md). Not consumed yet — today the monorepo root package.json + relative imports are authoritative. PANTRY is the app: nothing imports it, so it has no `exports`, only `files` so `bunx pantry` from a git-dep ships its bundled assets.",
   "name": "@tjakoen/pantry",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "PANTRY — the installable developer-docs + AI cockpit: composes BATCH+GRAIN+MILL+PROOF into one server you bunx into any project.",
   "type": "module",
   "bin": { "pantry": "./cli.ts" },
   "license": "Apache-2.0",
   "author": "Tjakoen Stolk <tjakoen.s@gmail.com> (https://tjakoen.github.io)",
-  "homepage": "https://tjakoen.github.io/pantry"
+  "homepage": "https://tjakoen.github.io/pantry",
+  "dependencies": {
+    "@tjakoen/batch": "workspace:*",
+    "@tjakoen/grain": "workspace:*",
+    "@tjakoen/mill": "workspace:*",
+    "@tjakoen/proof": "workspace:*"
+  },
+  "files": ["app.ts", "cli.ts", "config.ts", "init.ts", "pantry.css", "PLAN.md", "INSTALL.md", "tools"]
 }
