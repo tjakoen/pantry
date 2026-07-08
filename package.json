@@ -1,0 +1,11 @@
+{
+  "//": "Placeholder for the future standalone repo (see ../SPLIT-PLAN.md). The cockpit app that composes the layers. Version 0.0.0 until it stabilizes.",
+  "name": "@tjakoen/pantry",
+  "version": "0.0.0",
+  "description": "PANTRY — the installable developer-docs + AI cockpit: composes BATCH+GRAIN+MILL+PROOF into one server you bunx into any project.",
+  "type": "module",
+  "bin": { "pantry": "./cli.ts" },
+  "license": "Apache-2.0",
+  "author": "Tjakoen Stolk <tjakoen.s@gmail.com> (https://tjakoen.github.io)",
+  "homepage": "https://tjakoen.github.io/pantry"
+}

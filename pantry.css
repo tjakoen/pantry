@@ -1,0 +1,34 @@
+/* pantry/pantry.css — the cockpit's own chrome (nav + member grid). Tokens only (grain owns the
+   palette); this adds only PANTRY-specific layout. No hardcoded hues. */
+
+.pantry-body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-base); }
+
+.pantry-nav {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4, 1rem);
+  padding: var(--space-4, 1rem) var(--space-8, 2rem);
+  border-bottom: var(--hairline, 1px) solid var(--rule);
+}
+.pantry-nav a { color: var(--ink-muted); text-decoration: none; font-size: var(--text-sm); }
+.pantry-nav a:hover { color: var(--ink); }
+.pantry-nav__brand {
+  font-family: var(--display);
+  font-size: var(--text-lg);
+  color: var(--ink) !important;
+  letter-spacing: 0.04em;
+  margin-right: auto;
+}
+
+.pantry-main { max-width: min(100%, 72rem); margin: 0 auto; padding: var(--space-8, 2rem); }
+
+.pantry-members { margin-top: var(--space-8, 2rem); }
+.pantry-member { display: block; text-decoration: none; color: inherit; }
+.pantry-member__role { color: var(--ink-muted); font-size: var(--text-sm); margin: var(--space-1, 0.5rem) 0; }
+.pantry-member__status {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
