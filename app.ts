@@ -7,6 +7,7 @@
 // so it runs from anywhere and survives the repo split.
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
+import { existsSync } from "node:fs";
 import { bunRuntime } from "@tjakoen/batch/platform/bun-runtime.ts";
 import { makeStatic } from "@tjakoen/batch/http/static.ts";
 import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
@@ -171,6 +172,14 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
 
 export function createPantryHandler(opts: PantryOptions) {
   const config = opts.config ?? defaultConfig(opts.plansDir);
+  // The bundled /standards collection reads STANDARDS_DIR, which reaches into tjakoen.github.io and
+  // only exists in the monorepo (no package/exports story yet — see the STANDARDS_DIR comment above).
+  // In an external host that dir is absent, so auto-disable the surface instead of crashing on readdir
+  // the first time /standards is hit. A missing source degrades the surface, never 500s the server.
+  if (config.surfaces.standards && !existsSync(STANDARDS_DIR)) {
+    console.warn("[pantry] /standards off: bundled standards dir not found (external host — not yet package-resolved)");
+    config.surfaces.standards = false;
+  }
   const { surfaces } = config;
   const grainRoot = opts.grainRoot ?? GRAIN_ROOT;
   const page = (title: string, body: string) => pantryPage(title, body, surfaces);
