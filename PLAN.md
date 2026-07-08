@@ -1,9 +1,11 @@
 # PANTRY — plan
 
-> Status: **v1 built (2026-07-08): home + PROOF board + MILL-rendered framework docs, `bunx pantry`;
-> verified installed against a scratch external project.** Next: reference + catalog + standards
-> surfaces, then the host contract (host docs + `pantry.config`) and the install kit
-> (`pantry init` + `INSTALL.md`). PANTRY — where the stack's ingredients and
+> Status: **v2 built (2026-07-08): home + PROOF board + MILL-rendered framework docs + layer PLANs
+> + `/reference` + `/catalog` + `/standards`, the host contract (`./docs` mounting + `pantry.config`),
+> and the install kit (`pantry init` + `INSTALL.md`); `bunx pantry`. Surfaces gate on config toggles.
+> Verified: all surfaces render, init scaffolds idempotently, a host `./docs` mounts in place.**
+> Next: package-resolve the assets + layer PLANs at the split (docs already package-resolved);
+> the mindmap + AI-retrieval endpoints (piece 8). PANTRY — where the stack's ingredients and
 > docs are kept — is the BREAD stack's **installable developer-docs + AI cockpit**: one app that
 > **composes** the layers (BATCH · GRAIN · MILL · PROOF) into a single server you drop into any
 > project. It renders the framework docs, the project's PROOF plan board, the generated reference,
@@ -127,20 +129,26 @@ serve` retires in favor of `bunx pantry` (the board is one route among several).
    (`bunx pantry serve [plansDir]`, reads the host cwd's `./plans`, assets resolve relative to the
    module), `pantry/pantry.css` (nav + member grid, tokens-only). `createProofRoutes` added in
    `proof/routes.ts`. Screenshots verified (home light/dark, docs, a MILL doc page).
-3. **Mount the docs.** ✅ v1 — MILL collections for `batch/docs` + `grain/docs` (body-only layout).
-   *Still to add: `/reference` (generated vocabulary) + `/catalog` + the individual layer PLANs, and
-   package-resolve the doc dirs (currently module-relative — fine in the monorepo, needed on split).*
-4. **Mount standards** (`/standards`) — closes the owed web-render route. *(pending.)*
+3. **Mount the docs.** ✅ v2 — MILL collections for `batch/docs` + `grain/docs` (package-resolved via
+   `packageDocsSource`, body-only layout), the individual layer PLANs at `/docs/plans` (grain·mill·
+   proof·pantry, distinct from the `/plans` board), `/reference` (`buildVocabReference`, read from the
+   real registries) and `/catalog` (GRAIN's `createCatalog`). *Assets + the layer PLANs stay
+   module-relative — not in the packages' `exports` maps yet (proof/pantry aren't linked); they
+   package-resolve at the split. The doc dirs the plan named ARE package-resolved.*
+4. **Mount standards** (`/standards`) — ✅ closes the owed web-render route
+   ([[standards-ssot-consolidation]]): a MILL collection over the standards dir (module-relative until
+   they become a neutral package at the split).
 5. **Install story.** ✅ (2026-07-08) — verified against a scratch external project: `proof init`
    scaffolds its `plans/`, `proof check` lints them, `bunx pantry serve` renders THAT project's
    plans + PANTRY's own framework docs. Reads host plans, resolves own assets — runs from any cwd.
    *(Still to prove: a true `bunx` from a published package + a non-BATCH host repo.)*
-6. **Host contract** — mount the host's own docs (`./docs/` convention → a MILL collection) +
-   `pantry.config` (surface toggles, extra doc dirs, project name). Promoted from "Later": the
-   pitch is "the AI reads the framework docs *and the project's own* docs+plans" — without this
-   piece the host's docs have no home and the cockpit is half-empty. → §Host contract above.
-7. **Install kit** — `pantry init` + `pantry/INSTALL.md` (AI path + manual path). → §Install kit
-   above.
+6. **Host contract** — ✅ `pantry/config.ts` (`loadPantryConfig` → `ResolvedPantryConfig`: project
+   name, plansDir, docsDirs, surface toggles; reads `pantry.config.(ts|js|json)` from the host cwd,
+   `./docs` auto-mounts when present). The host's own docs render in place as a MILL collection
+   (`/docs/<name>`), never copied. Surfaces gate every route + the nav. → §Host contract above.
+7. **Install kit** — ✅ `pantry init` (`pantry/init.ts`: delegates `plans/` to `proof init`, adds
+   `pantry.config.json`, idempotent) + `pantry/INSTALL.md` (AI-path prompt block + manual checklist,
+   guardrails as hard rules). `pantry init` prints the next steps. → §Install kit above.
 8. **Later:** the mindmap (PROOF phase 2) surfaces here; AI-retrieval endpoints.
 
 ## Non-goals
