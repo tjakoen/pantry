@@ -12,7 +12,7 @@ import { bunRuntime } from "@tjakoen/batch/platform/bun-runtime.ts";
 import { makeStatic } from "@tjakoen/batch/http/static.ts";
 import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
 import { createStream } from "@tjakoen/batch/http/stream.ts";
-import { createMillRoutes, packageDocsSource, type ContentSource, type MillCollection } from "@tjakoen/mill/serve.ts";
+import { createMillRoutes, dirSource, type ContentSource, type MillCollection } from "@tjakoen/mill/serve.ts";
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
@@ -21,11 +21,13 @@ import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-// The framework DOC dirs (batch/docs, grain/docs), the proof stylesheet, and the layer PLANs are
-// resolved as PACKAGES (import.meta.resolve), so the same code works in the monorepo and after the
-// split — the file travels inside the package. GRAIN_ROOT stays module-relative: it's used as a
-// directory root (styles/, components/), not a fixed export path — fine in the monorepo (siblings);
-// revisit at the split.
+// The framework DOC dirs, the proof stylesheet, and the layer PLANs are resolved as PACKAGES
+// (import.meta.resolve), so the same code works in the monorepo and after the split — the file
+// travels inside the package. BATCH + GRAIN explanatory docs now live in the PORTFOLIO package
+// (option b, 2026-07-09: tjakoen.github.io/docs/<layer>/), resolved from THAT package rather than
+// each layer's; a host that doesn't install the portfolio auto-disables those surfaces (below).
+// GRAIN_ROOT stays module-relative: it's used as a directory root (styles/, components/), not a
+// fixed export path — fine in the monorepo (siblings); revisit at the split.
 const sibling = (...p: string[]) => join(MODULE_DIR, "..", ...p);
 const GRAIN_ROOT = sibling("grain");
 const PROOF_CSS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board.css"));
@@ -62,14 +64,27 @@ function filesSource(files: Record<string, string>): ContentSource {
   };
 }
 
+// A package-resolved docs dir, or null when the package (or path) isn't installed — so a surface
+// can auto-disable instead of crashing at module load (same posture as STANDARDS_DIR).
+function packageDocsSourceOrNull(anchor: string): ContentSource | null {
+  const dir = resolveDirOrNull(anchor);
+  return dir ? dirSource(dir) : null;
+}
+// BATCH + GRAIN docs are canonically homed in the portfolio (option b); resolve them from that package.
+const BATCH_DOCS = packageDocsSourceOrNull("tjakoen.github.io/docs/batch/ARCHITECTURE.md");
+const GRAIN_DOCS = packageDocsSourceOrNull("tjakoen.github.io/docs/grain/GRAIN.md");
+if (!BATCH_DOCS || !GRAIN_DOCS) {
+  console.warn("[pantry] framework docs off: tjakoen.github.io (the docs-home package) not installed in this host");
+}
+
 // The framework doc sets PANTRY BUNDLES + renders through MILL (the host provides nothing for these).
 // Each is a layer's own canonical docs/PLAN, rendered (not copied) — the single source stays in the
-// package; PANTRY is a projection.
-const FRAMEWORK_DOCS: MillCollection[] = [
-  { prefix: "/docs/batch", title: "BATCH", description: "The no-build, server-rendered hypermedia substrate.",
-    source: packageDocsSource("@tjakoen/batch/docs/ARCHITECTURE.md"), adapter: { defaultLayout: bodyOnlyLayout } },
-  { prefix: "/docs/grain", title: "GRAIN", description: "The AI-interaction design system and default theme.",
-    source: packageDocsSource("@tjakoen/grain/docs/GRAIN.md"), adapter: { defaultLayout: bodyOnlyLayout } },
+// origin package (batch/grain docs now home in the portfolio); PANTRY is a projection.
+const FRAMEWORK_DOCS: MillCollection[] = ([
+  BATCH_DOCS && { prefix: "/docs/batch", title: "BATCH", description: "The no-build, server-rendered hypermedia substrate.",
+    source: BATCH_DOCS, adapter: { defaultLayout: bodyOnlyLayout } },
+  GRAIN_DOCS && { prefix: "/docs/grain", title: "GRAIN", description: "The AI-interaction design system and default theme.",
+    source: GRAIN_DOCS, adapter: { defaultLayout: bodyOnlyLayout } },
   { prefix: "/docs/plans", title: "Layer plans",
     description: "Each layer's own design plan (its canonical PLAN.md), rendered. Distinct from /plans — that's this project's task board.",
     source: filesSource({
@@ -79,7 +94,7 @@ const FRAMEWORK_DOCS: MillCollection[] = [
       pantry: join(MODULE_DIR, "PLAN.md"),
     }),
     adapter: { defaultLayout: bodyOnlyLayout } },
-];
+] as (MillCollection | false | null)[]).filter(Boolean) as MillCollection[];
 
 // The five stack members, for the home page. Status is honest (the honesty clause).
 const MEMBERS = [

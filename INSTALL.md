@@ -39,8 +39,10 @@ Hard rules, non-negotiable:
 
 - Never copy or move this project's existing docs into plans/, into PANTRY, or anywhere else.
   Configure pantry.config.json to point at them instead.
-- Never edit the bundled framework docs (BATCH, GRAIN, MILL, PROOF). They ship with the
-  package and are rendered from the installed source, not owned by this project.
+- Never edit the bundled framework docs (BATCH, GRAIN, MILL, PROOF). They are rendered from the
+  installed source, not owned by this project. BATCH's and GRAIN's explanatory docs are canonically
+  homed in the portfolio package (`tjakoen.github.io/docs/<layer>/`) and resolve from there; a host
+  that doesn't install that package simply sees those two doc surfaces auto-disable.
 - Plans in plans/ are the source of truth. The board at /plans is a read-only projection of
   those files. Never hand-maintain the board, an index, or a second copy of plan state
   anywhere else. Update a plan's status field in its own file instead.
@@ -98,7 +100,8 @@ Run these from the root of the project you want PANTRY in, one command at a time
 ## Guardrails, restated
 
 - Never copy or move your project's existing docs. Configure `docsDirs`, do not relocate files.
-- Never edit the bundled framework docs. They are rendered from the installed package.
+- Never edit the bundled framework docs. They are rendered from the installed packages (BATCH's and
+  GRAIN's live in the portfolio package, `tjakoen.github.io/docs/`, per the option-b docs home).
 - Plans are the source of truth. The board is a read-only projection; never hand-maintain it.
 
 See `pantry/PLAN.md` for the full design, including the host contract and what PANTRY bundles
