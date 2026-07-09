@@ -32,10 +32,11 @@ const sibling = (...p: string[]) => join(MODULE_DIR, "..", ...p);
 const GRAIN_ROOT = sibling("grain");
 const PROOF_CSS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board.css"));
 const BOARD_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board-live.js"));
-// The standards docs are their own package (@tjakoen/standards) — resolved like the framework docs,
-// so pantry renders them from the installed package in any host, not a sibling of the monorepo. A host
-// that doesn't install the package resolves to null and the /standards surface auto-disables (below).
-const STANDARDS_DIR = resolveDirOrNull("@tjakoen/standards/README.md");
+// The standards docs are canonically homed in the PORTFOLIO package (tjakoen.github.io/standards/,
+// since the 2026-07-09 fold-in) — resolved like the framework docs, so pantry renders them from the
+// installed portfolio package in any host, not a sibling of the monorepo. A host that doesn't install
+// the portfolio resolves to null and the /standards surface auto-disables (below).
+const STANDARDS_DIR = resolveDirOrNull("tjakoen.github.io/standards/README.md");
 function resolveDirOrNull(specifier: string): string | null {
   try { return dirname(fileURLToPath(import.meta.resolve(specifier))); }
   catch { return null; }

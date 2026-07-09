@@ -14,8 +14,7 @@
     "@tjakoen/grain": "github:tjakoen/grain#4076759",
     "@tjakoen/mill": "github:tjakoen/mill#15fa3a5",
     "@tjakoen/proof": "github:tjakoen/proof#f06daab",
-    "@tjakoen/standards": "github:tjakoen/standards#4a3c180",
-    "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#a57ba2a"
+    "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#14146b9"
   },
   "files": [
     "app.ts",
@@ -30,7 +29,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "deps:refresh": "for p in batch grain mill proof standards; do bun add @tjakoen/$p@github:tjakoen/$p#$(git ls-remote https://github.com/tjakoen/$p.git main | cut -c1-7); done && bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7)"
+    "deps:refresh": "for p in batch grain mill proof; do bun add @tjakoen/$p@github:tjakoen/$p#$(git ls-remote https://github.com/tjakoen/$p.git main | cut -c1-7); done && bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7)"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
