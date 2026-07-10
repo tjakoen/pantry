@@ -257,6 +257,24 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
 10. **The whole-codebase mindmap** (§The mindmap) — consume `graphify-out/` + MILL + PROOF + grain
     registries into one graph; render `/map` as an interactive clustered node graph (dataviz skill);
     export the same graph as the machine `knowledge.json`. One brain, two projections.
+    **Done (2026-07-11): the mindmap is live.** PANTRY consumes the host's `graphify-out/` (the AST +
+    document graph the host generates with `graphify update .`, then `graphify merge-graphs` across
+    repos for a whole-stack map) — it runs no analyzer of its own. `map.ts` (`buildMap` +
+    `buildMapPayload` + `loadGraphifyGraph`) is the deterministic, model-free model: degree-ranked
+    **central nodes** (a vendored/minified `htmx.min.js` is a node but never surfaced as a hub),
+    per-repo + per-community counts, drift-free ordering. Two routes: **`/map`** (the human viz) and
+    **`/map.json`** (the machine twin — same model, so picture and payload can't drift). The viz is
+    `pantry-map.js` (vanilla canvas, no build): a deterministic cluster layout (repos on a ring →
+    communities → phyllotaxis-packed nodes), coloured by repo from the dataviz reference palette's
+    validated categorical slots (light + dark, both CVD-checked; the repo legend + labels + the
+    server-rendered central-nodes list are the relief channel), sized by degree, with pan / zoom /
+    hover-highlight. Absent `graphify-out` degrades `/map` to a "run graphify" panel and `/map.json`
+    to `available:false` (never a 500); the mindmap is listed in `/knowledge.json` only when a graph
+    exists. Home's mindmap teaser flipped to a **live** `/map` link. `graphify-out/` is gitignored
+    (regenerable, host-local). tsc + 45/45 green; smoke: `/map`, `/map.json` served over the real
+    whole-stack graph (1987 nodes / 2836 links / 6 repos / 206 communities) + a headless render
+    reviewed. Deferred to a v2: overlaying PROOF `depends`/`touches` + grain vocab as extra edge kinds
+    (graphify already folds in the code + document graph; the code graph alone is the headline brain).
 
 ## Non-goals
 

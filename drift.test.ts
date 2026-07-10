@@ -12,7 +12,7 @@ const EXAMPLE = join(import.meta.dir, "..", "proof", "example");   // real plans
 const AT = "2026-07-10T00:00:00.000Z";
 
 const config = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
-  projectName: "test-project", plansDir: EXAMPLE, docsDirs: [],
+  projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, ...surfaces },
 });
 

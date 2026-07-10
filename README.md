@@ -24,6 +24,8 @@ bunx pantry            (inside any project)
   ├─ /about       the BREAD stack showcase (what the layers are) — moved off the front door
   ├─ /llms.txt    the session context pack — what an agent should read first (llmstxt.org shape)
   ├─ /knowledge.json  the machine brain — plans + docs + grain's AI vocabulary, one payload
+  ├─ /map         the mindmap — the whole-codebase knowledge graph drawn for the human
+  ├─ /map.json    the mindmap's machine twin (same model, one brain two projections)
   └─ demoted, still mounted + AI-retrievable (out of the human front nav, one click from home):
        /docs      the BATCH + GRAIN + MILL + PROOF framework docs, rendered through MILL
        /reference the generated vocabulary, read straight from the real registries
@@ -34,8 +36,9 @@ Press **⌘K** (Ctrl-K) anywhere to jump to any surface, doc page, or plan — t
 index from the same `/knowledge.json` brain the AI does.
 
 The home page is the **project's** front door, not a pitch for the stack: the plan board leads, with
-AI-retrieval (live — `/llms.txt` + `/knowledge.json`, model-free pure reads) and the mindmap (next)
-as the "working with AI" headline. The "here's the
+AI-retrieval (live — `/llms.txt` + `/knowledge.json`, model-free pure reads) and the mindmap (live —
+`/map`, the whole-codebase graph your own `graphify` pass produces, drawn for the human and exported
+at `/map.json`) as the "working with AI" headline. The "here's the
 BREAD stack" showcase moved to `/about`; `/docs`·`/reference`·`/catalog` are demoted out of the front
 nav but stay mounted and retrievable — cutting them would undo the reason PANTRY is a server at all.
 

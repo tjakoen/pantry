@@ -66,6 +66,9 @@ function surfacesOf(config: ResolvedPantryConfig): KnowledgeSurface[] {
   const { surfaces } = config;
   return [
     surfaces.plans && { route: "/plans", title: "Plan board", description: "The host project's plans and their state (PROOF). Machine index at /plans/plans.json." },
+    // The mindmap is listed for the machine only when the host actually generated a graphify-out —
+    // otherwise /map.json is an available:false placeholder not worth pointing an agent at.
+    config.graphPath && { route: "/map", title: "Mindmap", description: "The whole-codebase knowledge graph (graphify's AST + document graph). Machine projection at /map.json." },
     surfaces.reference && { route: "/reference", title: "Reference", description: "The generated GRAIN/AI vocabulary + token slots, read from the real registries." },
     surfaces.catalog && { route: "/catalog", title: "Catalog", description: "The GRAIN component catalog." },
     surfaces.standards && { route: "/standards", title: "Standards", description: "The cross-repo writing + presentation standards, rendered through MILL." },

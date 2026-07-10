@@ -20,6 +20,7 @@ import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
+import { buildMapPayload, type MapPayload } from "./map.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // The framework DOC dirs, the proof stylesheet, and the layer PLANs are resolved as PACKAGES
@@ -172,7 +173,7 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 // /llms.txt; the mindmap (piece 10) is still a teaser until graphify-out lands.
 const AI_SURFACES: { title: string; role: string; href?: string; status: string }[] = [
   { title: "AI-retrieval", role: "Machine-readable surfaces (llms.txt · knowledge.json) your own agent reads to work this project — model-free, pure reads.", href: "/llms.txt", status: "live" },
-  { title: "Mindmap", role: "A picture of the AI's brain for this project: the whole-codebase knowledge graph, drawn for the human.", status: "coming" },
+  { title: "Mindmap", role: "A picture of the AI's brain for this project: the whole-codebase knowledge graph, drawn for the human. Machine twin at /map.json.", href: "/map", status: "live" },
 ];
 function homeBody(config: ResolvedPantryConfig, surfaces: PantrySurfaces): string {
   const teasers = AI_SURFACES.map((t) => {
@@ -236,6 +237,54 @@ function docsBody(collections: MillCollection[]): string {
 <div class="card-grid pantry-members">${items}</div>`;
 }
 
+// /map (piece 10) — the mindmap: a picture of the AI's brain for this project. The whole-codebase
+// knowledge graph (graphify's AST + document graph, consumed — never re-analysed) drawn for the
+// human; the same model is the machine projection at /map.json. When the host hasn't run graphify
+// the surface degrades to guidance (never a crash), matching every other absent-source surface.
+function mapBody(payload: MapPayload): string {
+  if (!payload.available) {
+    return `<header>
+  <h1 class="proof-masthead">Mindmap</h1>
+  <p class="proof-lede">A picture of the AI's brain for ${escapeHtml(payload.project)} — the whole-codebase knowledge graph, drawn for the human. It reads the graph your own tooling generates; PANTRY runs no model of its own.</p>
+</header>
+<div class="card pantry-map-empty" data-pad="md">
+  <h2 class="card__title">No map yet</h2>
+  <p class="pantry-member__role">${escapeHtml(payload.reason)}</p>
+  <pre class="pantry-map-cmd"><code>graphify update .            # this repo's code + doc graph
+graphify merge-graphs …      # optional: a whole-stack map</code></pre>
+</div>`;
+  }
+  const s = payload.stats;
+  const stat = (n: number | string, label: string) =>
+    `<div class="pantry-stat"><span class="pantry-stat__n">${escapeHtml(String(n))}</span><span class="pantry-stat__label">${escapeHtml(label)}</span></div>`;
+  const repoChips = s.repos.map((r) =>
+    `<span class="pantry-repo-chip" data-repo="${escapeHtml(r.repo || "·")}">${escapeHtml(r.repo || "·")} <b>${r.nodes}</b></span>`).join("");
+  const gods = payload.gods.map((g) =>
+    `<li><code>${escapeHtml(g.label)}</code> <span class="pantry-member__role">${escapeHtml(g.repo)} · ${g.degree} links</span></li>`).join("\n");
+  return `<header>
+  <h1 class="proof-masthead">Mindmap</h1>
+  <p class="proof-lede">A picture of the AI's brain for ${escapeHtml(payload.project)}: the whole-codebase knowledge graph, clustered by community and coloured by repo, with the central nodes surfaced. Model-free — the same graph the machine reads at <a href="/map.json">/map.json</a>.</p>
+</header>
+<section class="pantry-stats">
+  ${stat(s.nodeCount, "nodes")}
+  ${stat(s.linkCount, "links")}
+  ${stat(s.repos.length, "repos")}
+  ${stat(s.communityCount, "communities")}
+  ${stat(s.godNodeCount, "hubs")}
+</section>
+<div class="pantry-repo-legend">${repoChips}</div>
+<figure class="pantry-map" data-grade="smooth">
+  <canvas id="pantry-map-canvas" role="img" aria-label="Interactive knowledge graph of ${escapeHtml(payload.project)}"></canvas>
+  <noscript><p class="pantry-member__role">The interactive map needs JavaScript. The central nodes are listed below.</p></noscript>
+</figure>
+<section class="pantry-gods">
+  <h2 class="pantry-section-title">Central nodes</h2>
+  <p class="pantry-member__role">The graph's highest-degree hubs — the load-bearing files and symbols an agent hits first.</p>
+  <ol class="pantry-god-list">${gods}</ol>
+</section>
+<script src="/pantry-map.js" defer></script>`;
+}
+
 export interface PantryOptions {
   /** the HOST project's plans folder (absolute or cwd-relative) — back-compat shorthand */
   plansDir: string;
@@ -247,7 +296,7 @@ export interface PantryOptions {
 
 const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   projectName: basename(dirname(plansDir)) || "project",
-  plansDir, docsDirs: [],
+  plansDir, docsDirs: [], graphPath: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true },
 });
 
@@ -315,6 +364,8 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(BOARD_LIVE_JS), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-cmdk.js")   // ⌘K palette (piece 9b) — reads its index from /knowledge.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-cmdk.js")), { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/pantry-map.js")     // mindmap viz (piece 10) — reads its graph from /map.json
+      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-map.js")), { headers: { "Content-Type": "text/javascript" } });
 
     // --- the live channel (piece 3): the board's SSE subscribe endpoint ---
     if (path === "/stream") return stream.subscribe(url.searchParams.get("session") ?? "default");
@@ -329,6 +380,14 @@ export function createPantryHandler(opts: PantryOptions) {
     if (path === "/llms.txt")
       return new Response(renderLlmsTxt(await buildKnowledge(config, docCollections, new Date().toISOString())),
         { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+
+    // --- the mindmap (piece 10): human viz at /map, its machine twin at /map.json. Same model
+    // (buildMapPayload over the host's graphify-out), so the picture and the payload never drift.
+    // Absent graphify-out degrades to guidance, never a 500 — same posture as the other surfaces. ---
+    if (path === "/map.json")
+      return Response.json(await buildMapPayload(config, new Date().toISOString()));
+    if (path === "/map")
+      return html(page("Mindmap", mapBody(await buildMapPayload(config, new Date().toISOString()))));
 
     // --- landings PANTRY owns ---
     if (path === "/") return html(page("Home", homeBody(config, surfaces)));

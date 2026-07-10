@@ -93,3 +93,82 @@
   text-transform: uppercase; letter-spacing: 0.06em;
 }
 .pantry-cmdk__route { grid-column: 1 / -1; color: var(--ink-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+
+/* ── Mindmap (piece 10) ─────────────────────────────────────────────────────
+   The /map viz reads these colours off .pantry-body via getComputedStyle, so they are LITERAL
+   values (never `var(--ink)` aliases — a custom property aliasing another var resolves to the string
+   "var(--ink)", not a colour, and canvas can't paint that). Repo hues are the dataviz reference
+   palette's validated categorical slots (light: worst adjacent CVD ΔE 24.2; dark: 10.3, floor band —
+   the repo legend + cluster labels + the central-nodes list are the relief channel). Dark is its own
+   validated step, not an auto-flip. */
+.pantry-body {
+  --pantry-map-ink: #0b0b0b; --pantry-map-muted: #898781;
+  --pantry-map-edge: rgba(11,11,11,0.10); --pantry-map-surface: #fcfcfb;
+  --pantry-map-repo-1: #2a78d6; --pantry-map-repo-2: #1baf7a; --pantry-map-repo-3: #eda100;
+  --pantry-map-repo-4: #008300; --pantry-map-repo-5: #4a3aa7; --pantry-map-repo-6: #e34948;
+}
+@media (prefers-color-scheme: dark) {
+  .pantry-body {
+    --pantry-map-ink: #ffffff; --pantry-map-edge: rgba(255,255,255,0.10); --pantry-map-surface: #1a1a19;
+    --pantry-map-repo-1: #3987e5; --pantry-map-repo-2: #199e70; --pantry-map-repo-3: #c98500;
+    --pantry-map-repo-4: #008300; --pantry-map-repo-5: #9085e9; --pantry-map-repo-6: #e66767;
+  }
+}
+:root[data-theme="dark"] .pantry-body, .pantry-body[data-theme="dark"] {
+  --pantry-map-ink: #ffffff; --pantry-map-edge: rgba(255,255,255,0.10); --pantry-map-surface: #1a1a19;
+  --pantry-map-repo-1: #3987e5; --pantry-map-repo-2: #199e70; --pantry-map-repo-3: #c98500;
+  --pantry-map-repo-4: #008300; --pantry-map-repo-5: #9085e9; --pantry-map-repo-6: #e66767;
+}
+
+/* stat strip — one figure per metric, tabular numerals so they read as a row of counts */
+.pantry-stats { display: flex; flex-wrap: wrap; gap: var(--space-6, 1.5rem); margin: var(--space-6, 1.5rem) 0; }
+.pantry-stat { display: flex; flex-direction: column; }
+.pantry-stat__n { font-family: var(--display); font-size: var(--text-xl, 1.5rem); font-variant-numeric: tabular-nums; color: var(--ink); }
+.pantry-stat__label { font-size: var(--text-xs); color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* repo legend — identity by label+swatch, never colour alone (the palette's relief rule) */
+.pantry-repo-legend { display: flex; flex-wrap: wrap; gap: var(--space-2, 0.5rem); margin-bottom: var(--space-4, 1rem); }
+.pantry-repo-chip {
+  display: inline-flex; align-items: center; gap: 0.4em;
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted);
+  padding: 0.2em 0.6em; border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+}
+.pantry-repo-chip::before { content: ""; width: 0.7em; height: 0.7em; border-radius: 50%; background: var(--ink-muted); }
+.pantry-repo-chip:nth-of-type(1)::before { background: var(--pantry-map-repo-1); }
+.pantry-repo-chip:nth-of-type(2)::before { background: var(--pantry-map-repo-2); }
+.pantry-repo-chip:nth-of-type(3)::before { background: var(--pantry-map-repo-3); }
+.pantry-repo-chip:nth-of-type(4)::before { background: var(--pantry-map-repo-4); }
+.pantry-repo-chip:nth-of-type(5)::before { background: var(--pantry-map-repo-5); }
+.pantry-repo-chip:nth-of-type(6)::before { background: var(--pantry-map-repo-6); }
+.pantry-repo-chip b { color: var(--ink); font-weight: 600; }
+
+/* the canvas figure — the graph draws here; grab cursor signals pan */
+.pantry-map {
+  position: relative; margin: 0 0 var(--space-8, 2rem);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+  background: var(--pantry-map-surface); overflow: hidden;
+}
+.pantry-map canvas { display: block; width: 100%; height: min(62vh, 560px); cursor: grab; }
+.pantry-map canvas:active { cursor: grabbing; }
+.pantry-map-tip {
+  position: absolute; z-index: 5; pointer-events: none;
+  background: var(--paper); color: var(--ink);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+  box-shadow: 0 0.5rem 1.5rem color-mix(in srgb, var(--ink) 20%, transparent);
+  font-size: var(--text-xs); max-width: 22rem;
+}
+.pantry-map-tip[hidden] { display: none; }
+.pantry-map-tip b { display: block; font-family: var(--font-mono); color: var(--ink); }
+.pantry-map-tip span { color: var(--ink-muted); }
+
+/* central-nodes list — the table-view relief for the graph (identity without colour) */
+.pantry-god-list { list-style: decimal; padding-left: 1.4em; margin: var(--space-2, 0.5rem) 0; }
+.pantry-god-list li { margin: 0.2em 0; }
+.pantry-god-list code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink); }
+.pantry-god-list .pantry-member__role { display: inline; margin-left: 0.5em; }
+
+/* empty state — no graphify-out yet; teach the command, never crash */
+.pantry-map-empty { border: var(--hairline, 1px) dashed var(--rule); border-radius: var(--radius, 0.5rem); }
+.pantry-map-cmd { overflow-x: auto; background: color-mix(in srgb, var(--ink) 5%, transparent); border-radius: var(--radius, 0.5rem); padding: var(--space-3, 0.75rem); }
+.pantry-map-cmd code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink); white-space: pre; }

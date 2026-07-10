@@ -16,6 +16,12 @@ Before either path: PANTRY is a lens, not a destination. It reads your project's
 moves them, and never edits the framework docs it bundles. Your plan files stay the single
 source of truth for your project's plan board; PANTRY's board is only a projection of them.
 
+The **mindmap** (`/map`) works the same way: PANTRY reads a code+document graph *you* generate,
+it never runs a code analyzer of its own (and no model — it's AI-legible, not AI-powered). Run
+`graphify update .` in your project (optionally `graphify merge-graphs` across repos for a
+whole-stack map); PANTRY reads the resulting `graphify-out/` and draws it. No `graphify-out/`
+yet? `/map` shows you the command instead of an error — the surface auto-disables, like any other.
+
 ## AI path
 
 Paste the block below to your coding agent, in the root of the project you want PANTRY in.

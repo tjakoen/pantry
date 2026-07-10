@@ -3,6 +3,7 @@
 // exists — per CONVENTIONS §6. Surface toggles gate their routes; an off surface is a 404.
 import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createPantryHandler } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
@@ -12,6 +13,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   projectName: "test-project",
   plansDir: EXAMPLE,
   docsDirs: [],
+  graphPath: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, ...surfaces },
 });
 
@@ -116,10 +118,35 @@ describe("pantry cockpit surfaces", () => {
     expect(txt).toContain("## Plans");
   });
 
-  test("the home surfaces AI-retrieval as a LIVE link (piece 9), mindmap still a teaser", async () => {
+  test("the home surfaces AI-retrieval AND the mindmap as LIVE links (pieces 9 + 10)", async () => {
     const home = await (await get(handler, "/")).text();
-    expect(home).toContain(`href="/llms.txt"`);      // AI-retrieval is live, not "coming"
-    expect(home).toContain("pantry-teaser");         // the mindmap teaser remains
+    expect(home).toContain(`href="/llms.txt"`);      // AI-retrieval is live
+    expect(home).toContain(`href="/map"`);           // the mindmap is live now, not a teaser
+    expect(home).not.toContain("pantry-teaser");     // no unbuilt teasers remain on home
+  });
+
+  test("mindmap (piece 10): /map degrades to guidance when the host has no graphify-out", async () => {
+    const res = await get(handler, "/map");           // configWith() has graphPath null
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("Mindmap");
+    expect(html).toContain("graphify update .");       // teaches the command instead of crashing
+  });
+
+  test("mindmap (piece 10): /map.json is the machine twin — available:false without a graph", async () => {
+    const res = await get(handler, "/map.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("application/json");
+    const m = await res.json();
+    expect(m.available).toBe(false);
+    expect(m.runsModel).toBe(false);
+  });
+
+  test("mindmap (piece 10): the viz client ships + reads its graph from /map.json", async () => {
+    const res = await get(handler, "/pantry-map.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("javascript");
+    expect(await res.text()).toContain("/map.json");
   });
 
   test("⌘K (piece 9b): the palette client ships + reads its index from /knowledge.json", async () => {
@@ -146,5 +173,37 @@ describe("surface toggles gate their routes", () => {
     const home = await (await get(handler, "/")).text();
     expect(home).not.toContain(`href="/reference"`);
     expect(home).not.toContain(`href="/catalog"`);
+  });
+});
+
+describe("mindmap with a real graphify-out (piece 10)", () => {
+  // A tiny two-node graph written to a temp file, wired through config.graphPath — proves the whole
+  // path (config → map model → route) draws a real map, not just the empty state.
+  const graphFile = join(tmpdir(), `pantry-app-map-${Date.now()}.json`);
+  const withGraph = (): ResolvedPantryConfig => ({ ...configWith(), graphPath: graphFile });
+
+  test("/map renders the graph, /map.json is available, and it's listed in the machine brain", async () => {
+    await Bun.write(graphFile, JSON.stringify({
+      nodes: [
+        { id: "batch::a", label: "a.ts", repo: "batch", community: 0, file_type: "code" },
+        { id: "grain::b", label: "GRAIN.md", repo: "grain", community: 0, file_type: "document" },
+      ],
+      links: [{ source: "batch::a", target: "grain::b", relation: "references" }],
+    }));
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: withGraph() });
+
+    const page = await (await get(handler, "/map")).text();
+    expect(page).toContain("Central nodes");            // the god-node list rendered
+    expect(page).toContain("pantry-map-canvas");        // the canvas mount is present
+    expect(page).not.toContain("graphify update .");    // NOT the empty state
+
+    const m = await (await get(handler, "/map.json")).json();
+    expect(m.available).toBe(true);
+    expect(m.stats.nodeCount).toBe(2);
+    expect(m.stats.repos.map((r: { repo: string }) => r.repo).sort()).toEqual(["batch", "grain"]);
+
+    // when a graph exists the machine brain points agents at it; without one it stays silent
+    const k = await (await get(handler, "/knowledge.json")).json();
+    expect(k.surfaces.some((s: { route: string }) => s.route === "/map")).toBe(true);
   });
 });

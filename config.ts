@@ -26,6 +26,11 @@ export interface PantryConfig {
   /** the host's OWN docs dirs, mounted as MILL collections; default ["./docs"] when it exists.
    *  These are pointers to existing folders — PANTRY renders them in place, never copies them. */
   docsDirs?: string[];
+  /** where the host's graphify pass wrote its output (the mindmap's code-graph source); default
+   *  "./graphify-out". PANTRY reads `merged-graph.json` (whole-stack) or `graph.json` (single repo)
+   *  from here — it never runs graphify; the host generates it (`graphify update .`). Absent → /map
+   *  auto-disables, like any other missing surface. */
+  graphDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
 }
@@ -35,6 +40,8 @@ export interface ResolvedPantryConfig {
   projectName: string;
   plansDir: string;
   docsDirs: string[];
+  /** the graphify node-link JSON the mindmap consumes, or null when no graphify-out is present */
+  graphPath: string | null;
   surfaces: PantrySurfaces;
 }
 
@@ -71,6 +78,18 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     projectName: raw.projectName ?? basename(cwd) ?? "project",
     plansDir,
     docsDirs,
+    graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
     surfaces: { ...ALL_ON, ...raw.surfaces },
   };
+}
+
+// The mindmap reads the host's graphify pass. Prefer the whole-stack `merged-graph.json` (produced by
+// `graphify merge-graphs`) over a single repo's `graph.json`; null when neither exists so /map
+// auto-disables (same posture as an unresolved doc/standards package — a surface never crashes).
+function resolveGraphPath(graphDir: string): string | null {
+  for (const name of ["merged-graph.json", "graph.json"]) {
+    const file = join(graphDir, name);
+    if (existsSync(file)) return file;
+  }
+  return null;
 }
