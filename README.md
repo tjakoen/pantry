@@ -31,8 +31,10 @@ truth for everything it owns, PANTRY just makes it addressable, to you and to th
 
 ## Two ways to use it
 
-- **Run it, zero code.** `bunx pantry` reads your `./plans/` (and your `./docs/`, if you have one)
-  and serves the whole cockpit.
+- **Add it, then run it — no code.** `bun add -d @tjakoen/pantry`, then `bunx pantry` reads your
+  `./plans/` (and your `./docs/`, if you have one) and serves the whole cockpit. PANTRY installs as
+  a dev dependency (so the version is pinned with your project); it still renders your files in
+  place and never copies them.
 - **Compose the layers yourself.** Building your own app instead? Import `createProofRoutes` and
   `createMillRoutes` straight into your own server. PANTRY is the reference implementation of doing
   exactly that; importing PANTRY itself isn't offered, it's an app, not a layer.
@@ -43,9 +45,10 @@ The install story is written for an AI agent first, with a human checklist as th
 [`INSTALL.md`](INSTALL.md). The short version:
 
 ```sh
-bunx pantry init     # scaffolds plans/ + pantry.config, delegates to proof init
-bunx proof check     # lints the scaffolded plans
-bunx pantry serve    # renders your plans + docs + reference + catalog
+bun add -d @tjakoen/pantry   # install the cockpit as a dev dependency (pins the version)
+bunx pantry init             # scaffolds plans/ + pantry.config, delegates to proof init
+bunx proof check             # lints the scaffolded plans
+bunx pantry serve            # renders your plans + docs + reference + catalog
 ```
 
 Guardrails that hold regardless of path: never copy or move a host's docs, only configure where
