@@ -1,11 +1,13 @@
 #!/usr/bin/env bun
 // pantry/cli.ts — the command line for the cockpit:
 //   pantry [serve] [--port N]   boot against the HOST project's pantry.config (plans + docs + toggles)
+//   pantry check                lint the docs for dead references (CI-able; exits nonzero on a break)
 //   pantry init  [dir]          scaffold PANTRY into a project (plans/ via proof init + pantry.config.json)
 // Config + plans are read from the caller's cwd (the host); bundled assets + framework docs resolve
 // relative to the pantry module, so `bunx pantry` works from any project. See INSTALL.md.
 import { isAbsolute, join } from "node:path";
 import { servePantryFromCwd } from "./app.ts";
+import { checkPantryDrift, formatDriftReport } from "./drift.ts";
 import { runPantryInit } from "./init.ts";
 
 const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
@@ -40,6 +42,12 @@ async function main() {
     return;
   }
 
+  if (cmd === "check") {
+    const report = await checkPantryDrift({ cwd: process.cwd() });
+    console.log(formatDriftReport(report));
+    process.exit(report.ok ? 0 : 1);   // nonzero on a dead reference → fails CI
+  }
+
   if (cmd === "init") {
     const targetDir = abs(dir ?? ".");
     const result = await runPantryInit(targetDir, { force });
@@ -49,7 +57,7 @@ async function main() {
     return;
   }
 
-  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|init> [dir] [--port N] [--force]`);
+  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|init> [dir] [--port N] [--force]`);
   process.exit(1);
 }
 

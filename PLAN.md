@@ -228,7 +228,7 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
    front nav into a home "Reference surfaces" row — still mounted + retrievable, never cut. `app.ts`
    (`nav`/`homeBody`/`aboutBody` + `/about` route), `pantry.css`, tests, README synced; tsc + 11/11
    green. `/llms.txt` doc-sync deferred to piece 9 (that endpoint doesn't exist yet).
-9. **AI-retrieval endpoints** — 🟡 in progress. **Done (2026-07-10): the machine brain.** `retrieval.ts`
+9. **AI-retrieval endpoints** — 🟢 done. **Done (2026-07-10): the machine brain.** `retrieval.ts`
    (`buildKnowledge` + `renderLlmsTxt`) + two routes: **`/knowledge.json`** (the machine payload —
    PROOF's derived plan index + every MILL doc collection's pages, each with its human route *and* its
    raw `.md` source twin, + grain's `RENDER_OP_KINDS`/`ENDPOINTS` vocab; `runsModel: false` states the
@@ -241,9 +241,19 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
    ⌘K** — `pantry-cmdk.js` (vanilla, no build) served at `/pantry-cmdk.js`, injected into every page
    shell; opens on ⌘K/Ctrl-K and jumps to any surface / doc page / plan. It reads its index from the
    SAME `/knowledge.json` brain (one source for machine retrieval + the human jump list — can't list a
-   route the endpoints don't know). `.pantry-cmdk-*` styles in `pantry.css`, tokens-only. tsc + 23/23
-   green; smoke: `/llms.txt`·`/knowledge.json`·`/pantry-cmdk.js` = 200, shell wires the palette.
-   **Remaining (piece 9c):** doc-drift lint (extends `proof check` — cross-repo into proof).
+   route the endpoints don't know). `.pantry-cmdk-*` styles in `pantry.css`, tokens-only.
+   **Done (2026-07-10): 9c doc-drift lint** — `drift.ts` (`checkDrift` + `checkPantryDrift` +
+   `formatDriftReport`), wired as **`pantry check`** (CI-able, exits nonzero on a break). It reads the
+   SAME brain the server serves (`buildDocCollections`, now the single source both use) and flags every
+   in-namespace doc link that no longer resolves — a dead route (`/docs/…`, `/plans…`) or a dead raw
+   `.md` twin. Reuses PROOF's `CheckProblem`/`CheckReport` contract. **Home decision:** the lint lives
+   in PANTRY, *not* in `proof check` as first sketched — proof can't import PANTRY's brain without a
+   dependency cycle, so the lint lives where the brain does and borrows proof's report shape.
+   **Deliberately narrow** (high-signal over broad): root-relative inline `[..](/..)` links only; out-of-
+   namespace / external / anchor links are skipped (can't adjudicate → don't guess); bare render-op-kind
+   words in prose are NOT scanned (ordinary English → false positives; that vocab is guarded at its
+   source in `grain/ai/vocab-reference.test.ts`). tsc + 31/31 green; smoke: `pantry check` on the real
+   docs = `19 pages, 0 problems / OK`, and on a host with a planted dead link = `FAIL`, exit 1.
 10. **The whole-codebase mindmap** (§The mindmap) — consume `graphify-out/` + MILL + PROOF + grain
     registries into one graph; render `/map` as an interactive clustered node graph (dataviz skill);
     export the same graph as the machine `knowledge.json`. One brain, two projections.

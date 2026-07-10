@@ -28,6 +28,7 @@ package is absent, they never crash.
 bun run check      # tsc --noEmit (must stay green)
 bun test           # unit + integration
 bun cli.ts serve   # run the cockpit locally (what hosts run as `bunx pantry serve`)
+bun cli.ts check   # lint the docs for dead references (CI-able; exits nonzero on a break)
 bun cli.ts init    # scaffold plans/ + pantry.config.json (host-side)
 ```
 

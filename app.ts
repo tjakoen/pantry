@@ -119,6 +119,16 @@ function hostDocsCollection(dir: string, projectName: string): MillCollection {
   };
 }
 
+// The exact MILL doc collections an install serves — bundled framework docs (when /docs on) + the
+// host's own docs dirs (rendered in place). Exported so the doc-drift lint (drift.ts) reads the SAME
+// brain the handler serves; /standards is a surface, not a brain doc collection (mirrors buildKnowledge).
+export function buildDocCollections(config: ResolvedPantryConfig): MillCollection[] {
+  return [
+    ...(config.surfaces.docs ? FRAMEWORK_DOCS : []),
+    ...(config.surfaces.docs ? config.docsDirs.map((d) => hostDocsCollection(d, config.projectName)) : []),
+  ];
+}
+
 // The nav — surfaces gate the links (config.surfaces). Brand stays PANTRY (the app); the host
 // project's name shows in the home lede. The reshape (piece 8): the front nav carries the project's
 // own front door (Plans) + Standards + About; /docs·/reference·/catalog are DEMOTED out of the human
@@ -257,12 +267,10 @@ export function createPantryHandler(opts: PantryOptions) {
   const serveStyles = makeStatic(bunRuntime, join(grainRoot, "styles"));
   const componentCss = createStyleBundle(bunRuntime, join(grainRoot, "components"));
 
-  // Every MILL collection this install serves: bundled framework docs (when /docs on) + the host's
-  // own docs dirs (the host contract — rendered in place). /standards is its own collection.
-  const docCollections: MillCollection[] = [
-    ...(surfaces.docs ? FRAMEWORK_DOCS : []),
-    ...(surfaces.docs ? config.docsDirs.map((d) => hostDocsCollection(d, config.projectName)) : []),
-  ];
+  // Every MILL collection this install serves (framework docs + host docs); /standards is appended
+  // below for the router but stays a surface, not a brain doc collection. buildDocCollections is the
+  // single source so the doc-drift lint reads exactly what the server serves.
+  const docCollections = buildDocCollections(config);
   const standardsCollection: MillCollection = {
     prefix: "/standards", title: "Standards",
     description: "The cross-repo writing + presentation standards (VOICE, NOTE, README, FIGURES), rendered.",
