@@ -30,6 +30,9 @@ bunx pantry            (inside any project)
        /catalog   the GRAIN component catalog
 ```
 
+Press **⌘K** (Ctrl-K) anywhere to jump to any surface, doc page, or plan — the palette reads its
+index from the same `/knowledge.json` brain the AI does.
+
 The home page is the **project's** front door, not a pitch for the stack: the plan board leads, with
 AI-retrieval (live — `/llms.txt` + `/knowledge.json`, model-free pure reads) and the mindmap (next)
 as the "working with AI" headline. The "here's the

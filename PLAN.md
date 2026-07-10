@@ -236,10 +236,14 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
    read first"). Both derive from the *same* sources the human surfaces render → one brain, two
    projections, drift-free by construction. Surfaces gate the payload (board off = no plan index). The
    home AI-retrieval teaser is now a LIVE link to `/llms.txt`. Model-free, pure reads, deterministic
-   (`generatedAt` injected; git-age skipped). tsc + 22/22 green; smoke: `/llms.txt`·`/knowledge.json`
-   = 200 with real plans + docs. **Remaining (piece 9b):** doc-drift lint (extends `proof check`) + ⌘K
-   over docs + plans. The raw `.md` twins MILL already serves cover "data-surface"; the context pack
-   covers the session-context-pack item.
+   (`generatedAt` injected; git-age skipped). The raw `.md` twins MILL already serves cover
+   "data-surface"; the context pack covers the session-context-pack item. **Also done (2026-07-10):
+   ⌘K** — `pantry-cmdk.js` (vanilla, no build) served at `/pantry-cmdk.js`, injected into every page
+   shell; opens on ⌘K/Ctrl-K and jumps to any surface / doc page / plan. It reads its index from the
+   SAME `/knowledge.json` brain (one source for machine retrieval + the human jump list — can't list a
+   route the endpoints don't know). `.pantry-cmdk-*` styles in `pantry.css`, tokens-only. tsc + 23/23
+   green; smoke: `/llms.txt`·`/knowledge.json`·`/pantry-cmdk.js` = 200, shell wires the palette.
+   **Remaining (piece 9c):** doc-drift lint (extends `proof check` — cross-repo into proof).
 10. **The whole-codebase mindmap** (§The mindmap) — consume `graphify-out/` + MILL + PROOF + grain
     registries into one graph; render `/map` as an interactive clustered node graph (dataviz skill);
     export the same graph as the machine `knowledge.json`. One brain, two projections.

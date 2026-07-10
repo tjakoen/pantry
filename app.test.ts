@@ -121,6 +121,17 @@ describe("pantry cockpit surfaces", () => {
     expect(home).toContain(`href="/llms.txt"`);      // AI-retrieval is live, not "coming"
     expect(home).toContain("pantry-teaser");         // the mindmap teaser remains
   });
+
+  test("⌘K (piece 9b): the palette client ships + reads its index from /knowledge.json", async () => {
+    const res = await get(handler, "/pantry-cmdk.js");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("javascript");
+    const js = await res.text();
+    expect(js).toContain("/knowledge.json");         // same brain as the machine retrieval
+    // every page shell wires the palette
+    const home = await (await get(handler, "/")).text();
+    expect(home).toContain(`src="/pantry-cmdk.js"`);
+  });
 });
 
 describe("surface toggles gate their routes", () => {

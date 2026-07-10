@@ -150,6 +150,7 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 <body class="pantry-body" data-grade="smooth">
   ${nav(surfaces)}
   <main class="pantry-main">${body}</main>
+  <script src="/pantry-cmdk.js" defer></script>
 </body>
 </html>`;
 }
@@ -304,6 +305,8 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry.css")), { headers: { "Content-Type": "text/css" } });
     if (path === "/board-live.js")
       return new Response(await bunRuntime.readFile(BOARD_LIVE_JS), { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/pantry-cmdk.js")   // ⌘K palette (piece 9b) — reads its index from /knowledge.json
+      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-cmdk.js")), { headers: { "Content-Type": "text/javascript" } });
 
     // --- the live channel (piece 3): the board's SSE subscribe endpoint ---
     if (path === "/stream") return stream.subscribe(url.searchParams.get("session") ?? "default");
