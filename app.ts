@@ -19,6 +19,7 @@ import { watchPlans } from "@tjakoen/proof/live.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
+import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // The framework DOC dirs, the proof stylesheet, and the layer PLANs are resolved as PACKAGES
@@ -155,18 +156,22 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 
 // The home page (reshaped, piece 8). NOT the stack pitch — that moved to /about. Home is the HOST
 // PROJECT's own front door: its plan board, plus the "working with AI" surfaces (AI-retrieval +
-// mindmap, pieces 9/10, shown as teasers until built), then a demoted "Reference surfaces" row that
-// keeps /docs·/reference·/catalog reachable without putting them back in the front nav.
-const AI_TEASERS = [
-  { title: "AI-retrieval", role: "Machine-readable surfaces (llms.txt · knowledge.json) your own agent reads to work this project — model-free, pure reads.", status: "coming" },
+// mindmap), then a demoted "Reference surfaces" row that keeps /docs·/reference·/catalog reachable
+// without putting them back in the front nav. AI-retrieval (piece 9) is LIVE — a real link to
+// /llms.txt; the mindmap (piece 10) is still a teaser until graphify-out lands.
+const AI_SURFACES: { title: string; role: string; href?: string; status: string }[] = [
+  { title: "AI-retrieval", role: "Machine-readable surfaces (llms.txt · knowledge.json) your own agent reads to work this project — model-free, pure reads.", href: "/llms.txt", status: "live" },
   { title: "Mindmap", role: "A picture of the AI's brain for this project: the whole-codebase knowledge graph, drawn for the human.", status: "coming" },
 ];
 function homeBody(config: ResolvedPantryConfig, surfaces: PantrySurfaces): string {
-  const teasers = AI_TEASERS.map((t) => `<div class="card pantry-member pantry-teaser" data-pad="sm" aria-disabled="true">
-    <h3 class="card__title">${escapeHtml(t.title)}</h3>
+  const teasers = AI_SURFACES.map((t) => {
+    const inner = `<h3 class="card__title">${escapeHtml(t.title)}</h3>
     <p class="pantry-member__role">${escapeHtml(t.role)}</p>
-    <span class="pantry-member__status">${escapeHtml(t.status)}</span>
-  </div>`).join("\n");
+    <span class="pantry-member__status">${escapeHtml(t.status)}</span>`;
+    return t.href
+      ? `<a class="card pantry-member" data-pad="sm" href="${escapeHtml(t.href)}">${inner}</a>`
+      : `<div class="card pantry-member pantry-teaser" data-pad="sm" aria-disabled="true">${inner}</div>`;
+  }).join("\n");
   // Demoted surfaces — out of the front nav, still mounted + AI-retrievable, one click from home.
   const more = [
     surfaces.docs && `<a href="/docs">Docs</a>`,
@@ -304,6 +309,15 @@ export function createPantryHandler(opts: PantryOptions) {
     if (path === "/stream") return stream.subscribe(url.searchParams.get("session") ?? "default");
 
     const html = (body: string) => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+
+    // --- the AI-retrieval brain (piece 9): model-free, pure reads. knowledge.json = the machine
+    // payload; llms.txt = the session context pack ("what an agent should read first"). Both derive
+    // from the SAME sources the human surfaces render (one brain, two projections), so no drift. ---
+    if (path === "/knowledge.json")
+      return Response.json(await buildKnowledge(config, docCollections, new Date().toISOString()));
+    if (path === "/llms.txt")
+      return new Response(renderLlmsTxt(await buildKnowledge(config, docCollections, new Date().toISOString())),
+        { headers: { "Content-Type": "text/plain; charset=utf-8" } });
 
     // --- landings PANTRY owns ---
     if (path === "/") return html(page("Home", homeBody(config, surfaces)));

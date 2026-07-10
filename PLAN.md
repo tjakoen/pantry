@@ -228,8 +228,18 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
    front nav into a home "Reference surfaces" row — still mounted + retrievable, never cut. `app.ts`
    (`nav`/`homeBody`/`aboutBody` + `/about` route), `pantry.css`, tests, README synced; tsc + 11/11
    green. `/llms.txt` doc-sync deferred to piece 9 (that endpoint doesn't exist yet).
-9. **AI-retrieval endpoints** — `llms.txt` / `knowledge.json` / data-surface + the session context
-   pack + doc-drift lint (extends `proof check`) + ⌘K. Model-free, pure reads.
+9. **AI-retrieval endpoints** — 🟡 in progress. **Done (2026-07-10): the machine brain.** `retrieval.ts`
+   (`buildKnowledge` + `renderLlmsTxt`) + two routes: **`/knowledge.json`** (the machine payload —
+   PROOF's derived plan index + every MILL doc collection's pages, each with its human route *and* its
+   raw `.md` source twin, + grain's `RENDER_OP_KINDS`/`ENDPOINTS` vocab; `runsModel: false` states the
+   invariant) and **`/llms.txt`** (the session context pack, llmstxt.org shape — "what an agent should
+   read first"). Both derive from the *same* sources the human surfaces render → one brain, two
+   projections, drift-free by construction. Surfaces gate the payload (board off = no plan index). The
+   home AI-retrieval teaser is now a LIVE link to `/llms.txt`. Model-free, pure reads, deterministic
+   (`generatedAt` injected; git-age skipped). tsc + 22/22 green; smoke: `/llms.txt`·`/knowledge.json`
+   = 200 with real plans + docs. **Remaining (piece 9b):** doc-drift lint (extends `proof check`) + ⌘K
+   over docs + plans. The raw `.md` twins MILL already serves cover "data-surface"; the context pack
+   covers the session-context-pack item.
 10. **The whole-codebase mindmap** (§The mindmap) — consume `graphify-out/` + MILL + PROOF + grain
     registries into one graph; render `/map` as an interactive clustered node graph (dataviz skill);
     export the same graph as the machine `knowledge.json`. One brain, two projections.

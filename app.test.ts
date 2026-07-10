@@ -95,6 +95,32 @@ describe("pantry cockpit surfaces", () => {
   test("an unknown route is a 404", async () => {
     expect((await get(handler, "/nope")).status).toBe(404);
   });
+
+  test("AI-retrieval (piece 9): /knowledge.json is the machine brain over this project", async () => {
+    const res = await get(handler, "/knowledge.json");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("application/json");
+    const k = await res.json();
+    expect(k.project).toBe("test-project");
+    expect(k.runsModel).toBe(false);                 // AI-legible, not AI-powered
+    expect(k.plans.plans.length).toBeGreaterThan(0); // the host's real plans
+    expect(Array.isArray(k.docs)).toBe(true);
+  });
+
+  test("AI-retrieval (piece 9): /llms.txt is the plain-text session context pack", async () => {
+    const res = await get(handler, "/llms.txt");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
+    const txt = await res.text();
+    expect(txt).toContain("# test-project");
+    expect(txt).toContain("## Plans");
+  });
+
+  test("the home surfaces AI-retrieval as a LIVE link (piece 9), mindmap still a teaser", async () => {
+    const home = await (await get(handler, "/")).text();
+    expect(home).toContain(`href="/llms.txt"`);      // AI-retrieval is live, not "coming"
+    expect(home).toContain("pantry-teaser");         // the mindmap teaser remains
+  });
 });
 
 describe("surface toggles gate their routes", () => {
