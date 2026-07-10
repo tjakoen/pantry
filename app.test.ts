@@ -21,13 +21,37 @@ const get = async (handler: (r: Request) => Promise<Response>, path: string) =>
 describe("pantry cockpit surfaces", () => {
   const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith() });
 
-  test("home names the project and lists the members", async () => {
+  test("home is the project's own front door (reshape): names the project, board-forward, not the stack pitch", async () => {
     const res = await get(handler, "/");
     expect(res.status).toBe(200);
     const html = await res.text();
-    expect(html).toContain("test-project");
+    expect(html).toContain("test-project");        // the project, not the stack, is the headline
+    expect(html).toContain("PANTRY");               // the app brand stays (nav + lede)
+    expect(html).toContain(`href="/plans"`);        // the board is the home's primary call
+    expect(html).not.toContain("The BREAD stack, in one place."); // the pitch moved to /about
+  });
+
+  test("the stack showcase + member cards live at /about (reshape)", async () => {
+    const res = await get(handler, "/about");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("The BREAD stack, in one place.");
     expect(html).toContain("BATCH");
-    expect(html).toContain("PANTRY");
+    expect(html).toContain("PROOF");
+  });
+
+  test("docs/reference/catalog are DEMOTED from the front nav but still mounted + reachable", async () => {
+    const home = await (await get(handler, "/")).text();
+    // the front nav (its own <nav class="pantry-nav">…</nav> block) no longer carries the demoted surfaces
+    const frontNav = home.slice(home.indexOf(`<nav class="pantry-nav">`), home.indexOf("</nav>"));
+    for (const s of ["/docs", "/reference", "/catalog"]) expect(frontNav).not.toContain(s);
+    expect(frontNav).toContain("/plans");
+    expect(frontNav).toContain("/about");
+    // …yet the home body still links them (the "Reference surfaces" row) and they're still served — never cut
+    expect(home).toContain(`href="/docs"`);
+    expect((await get(handler, "/docs")).status).toBe(200);
+    expect((await get(handler, "/reference")).status).toBe(200);
+    expect((await get(handler, "/catalog")).status).toBe(200);
   });
 
   test("framework docs render through MILL", async () => {

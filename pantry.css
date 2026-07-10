@@ -32,3 +32,26 @@
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+/* The reshape (piece 8): board-forward home + demoted reference row + not-yet-built AI teasers. */
+.pantry-section-title {
+  font-family: var(--display);
+  font-size: var(--text-lg);
+  margin: var(--space-8, 2rem) 0 var(--space-2, 0.75rem);
+}
+/* The plan board is the home's primary call — a full-width prominent card, not a grid tile. */
+.pantry-board-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  margin-top: var(--space-6, 1.5rem);
+  border: var(--hairline, 1px) solid var(--rule);
+  border-radius: var(--radius, 0.5rem);
+}
+.pantry-board-card:hover { border-color: var(--ink-muted); }
+/* AI-retrieval + mindmap are pieces 9/10 — teasers read as present-but-unbuilt, not clickable. */
+.pantry-teaser { opacity: 0.6; cursor: default; }
+/* Demoted surfaces (docs/reference/catalog): reachable, but quieter than the front nav. */
+.pantry-more__links { display: flex; flex-wrap: wrap; gap: var(--space-4, 1rem); }
+.pantry-more__links a { color: var(--ink-muted); text-decoration: none; font-size: var(--text-sm); }
+.pantry-more__links a:hover { color: var(--ink); text-decoration: underline; }

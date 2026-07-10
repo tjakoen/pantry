@@ -222,9 +222,12 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
 6. **Host contract.** ✅ `pantry/config.ts` (`loadPantryConfig` → `ResolvedPantryConfig`); surfaces
    gate every route + the nav. → §Host contract.
 7. **Install kit.** ✅ `pantry init` + `pantry/INSTALL.md`.
-8. **The reshape** (NEXT — §The reshape): re-point `/` to the project board + working-with-AI, move
-   the stack showcase + member cards to `/about`, demote `/docs`·`/reference`·`/catalog` out of the
-   human front-nav (keep them mounted + retrievable). Doc-sync: README + `/llms.txt` + this file.
+8. **The reshape** — ✅ (2026-07-10) `/` is now the project's front door: board-forward (`Plan board`
+   card) + a "Working with AI" section (AI-retrieval + mindmap as teasers until pieces 9/10 land); the
+   stack showcase + member cards moved to `/about`; `/docs`·`/reference`·`/catalog` demoted out of the
+   front nav into a home "Reference surfaces" row — still mounted + retrievable, never cut. `app.ts`
+   (`nav`/`homeBody`/`aboutBody` + `/about` route), `pantry.css`, tests, README synced; tsc + 11/11
+   green. `/llms.txt` doc-sync deferred to piece 9 (that endpoint doesn't exist yet).
 9. **AI-retrieval endpoints** — `llms.txt` / `knowledge.json` / data-surface + the session context
    pack + doc-drift lint (extends `proof check`) + ⌘K. Model-free, pure reads.
 10. **The whole-codebase mindmap** (§The mindmap) — consume `graphify-out/` + MILL + PROOF + grain

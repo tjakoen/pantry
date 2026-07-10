@@ -119,14 +119,15 @@ function hostDocsCollection(dir: string, projectName: string): MillCollection {
 }
 
 // The nav — surfaces gate the links (config.surfaces). Brand stays PANTRY (the app); the host
-// project's name shows in the home lede.
+// project's name shows in the home lede. The reshape (piece 8): the front nav carries the project's
+// own front door (Plans) + Standards + About; /docs·/reference·/catalog are DEMOTED out of the human
+// nav (they stay mounted + AI-retrievable, reached from the home "Reference surfaces" row) — cutting
+// them would undo PANTRY's founding pivot (see PLAN §The reshape).
 function nav(surfaces: PantrySurfaces): string {
   const links = [
     surfaces.plans && `<a href="/plans">Plans</a>`,
-    surfaces.docs && `<a href="/docs">Docs</a>`,
-    surfaces.reference && `<a href="/reference">Reference</a>`,
-    surfaces.catalog && `<a href="/catalog">Catalog</a>`,
     surfaces.standards && `<a href="/standards">Standards</a>`,
+    `<a href="/about">About</a>`,
   ].filter(Boolean).join("\n  ");
   return `<nav class="pantry-nav">
   <a class="pantry-nav__brand" href="/">PANTRY</a>
@@ -152,7 +153,49 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 </html>`;
 }
 
-function homeBody(config: ResolvedPantryConfig): string {
+// The home page (reshaped, piece 8). NOT the stack pitch — that moved to /about. Home is the HOST
+// PROJECT's own front door: its plan board, plus the "working with AI" surfaces (AI-retrieval +
+// mindmap, pieces 9/10, shown as teasers until built), then a demoted "Reference surfaces" row that
+// keeps /docs·/reference·/catalog reachable without putting them back in the front nav.
+const AI_TEASERS = [
+  { title: "AI-retrieval", role: "Machine-readable surfaces (llms.txt · knowledge.json) your own agent reads to work this project — model-free, pure reads.", status: "coming" },
+  { title: "Mindmap", role: "A picture of the AI's brain for this project: the whole-codebase knowledge graph, drawn for the human.", status: "coming" },
+];
+function homeBody(config: ResolvedPantryConfig, surfaces: PantrySurfaces): string {
+  const teasers = AI_TEASERS.map((t) => `<div class="card pantry-member pantry-teaser" data-pad="sm" aria-disabled="true">
+    <h3 class="card__title">${escapeHtml(t.title)}</h3>
+    <p class="pantry-member__role">${escapeHtml(t.role)}</p>
+    <span class="pantry-member__status">${escapeHtml(t.status)}</span>
+  </div>`).join("\n");
+  // Demoted surfaces — out of the front nav, still mounted + AI-retrievable, one click from home.
+  const more = [
+    surfaces.docs && `<a href="/docs">Docs</a>`,
+    surfaces.reference && `<a href="/reference">Reference</a>`,
+    surfaces.catalog && `<a href="/catalog">Catalog</a>`,
+  ].filter(Boolean).join("\n    ");
+  return `<header>
+  <h1 class="proof-masthead">${escapeHtml(config.projectName)}</h1>
+  <p class="proof-lede">This project's cockpit — its <strong>plan board</strong>, and the surfaces the dev's own AI reads while it builds. PANTRY renders ${escapeHtml(config.projectName)} in place and runs no model of its own. Plans from ${escapeHtml(config.plansDir)}.</p>
+</header>
+${surfaces.plans ? `<a class="card pantry-board-card" data-pad="md" href="/plans">
+  <h2 class="card__title">Plan board</h2>
+  <p class="pantry-member__role">The project's plans and their state — PROOF's board, the front door.</p>
+</a>` : ""}
+<section class="pantry-ai">
+  <h2 class="pantry-section-title">Working with AI</h2>
+  <div class="card-grid pantry-members">${teasers}</div>
+</section>${more ? `
+<section class="pantry-more">
+  <h2 class="pantry-section-title">Reference surfaces</h2>
+  <p class="pantry-member__role">Framework docs, generated reference, and the component catalog — retrievable by your agent, and a click away here.</p>
+  <nav class="pantry-more__links">
+    ${more}
+  </nav>
+</section>` : ""}`;
+}
+
+// /about — the "here's the BREAD stack" showcase the reshape moved off the home page (piece 8).
+function aboutBody(): string {
   const cards = MEMBERS.map((m) => `<a class="card pantry-member" data-pad="sm" href="${escapeHtml(m.href)}">
     <h3 class="card__title">${escapeHtml(m.name)}</h3>
     <p class="pantry-member__role">${escapeHtml(m.role)}</p>
@@ -160,7 +203,7 @@ function homeBody(config: ResolvedPantryConfig): string {
   </a>`).join("\n");
   return `<header>
   <h1 class="proof-masthead">The BREAD stack, in one place.</h1>
-  <p class="proof-lede">PANTRY composes the stack into a developer cockpit for <strong>${escapeHtml(config.projectName)}</strong>: the framework docs, this project's plan board, the generated reference, and the component catalog, served together. Plans from ${escapeHtml(config.plansDir)}.</p>
+  <p class="proof-lede">PANTRY is the stack composed into one developer cockpit: BATCH serves, GRAIN styles, MILL renders the docs, PROOF boards the plans. Five members, one server you <code>bunx</code> into any project.</p>
 </header>
 <div class="card-grid pantry-members">${cards}</div>`;
 }
@@ -263,7 +306,8 @@ export function createPantryHandler(opts: PantryOptions) {
     const html = (body: string) => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8" } });
 
     // --- landings PANTRY owns ---
-    if (path === "/") return html(page("Home", homeBody(config)));
+    if (path === "/") return html(page("Home", homeBody(config, surfaces)));
+    if (path === "/about") return html(page("About", aboutBody()));
     if (surfaces.docs && path === "/docs") return html(page("Docs", docsBody(docCollections)));
 
     // --- generated reference (read from the real registries, never hand-copied) ---

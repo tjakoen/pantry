@@ -18,12 +18,20 @@ layers composing into a second, unbranded app.
 
 ```
 bunx pantry            (inside any project)
-  ├─ /docs        the BATCH + GRAIN + MILL + PROOF framework docs, rendered through MILL
+  ├─ /            your project's front door — the plan board + the "working with AI" surfaces
   ├─ /plans       your project's own PROOF board (./plans/*.md), via createProofRoutes
-  ├─ /reference   the generated vocabulary, read straight from the real registries
-  ├─ /catalog     the GRAIN component catalog
-  └─ /standards   the writing / README standards, rendered through MILL
+  ├─ /standards   the writing / README standards, rendered through MILL
+  ├─ /about       the BREAD stack showcase (what the layers are) — moved off the front door
+  └─ demoted, still mounted + AI-retrievable (out of the human front nav, one click from home):
+       /docs      the BATCH + GRAIN + MILL + PROOF framework docs, rendered through MILL
+       /reference the generated vocabulary, read straight from the real registries
+       /catalog   the GRAIN component catalog
 ```
+
+The home page is the **project's** front door, not a pitch for the stack: the plan board leads, with
+AI-retrieval and the mindmap as the "working with AI" headline (both landing next). The "here's the
+BREAD stack" showcase moved to `/about`; `/docs`·`/reference`·`/catalog` are demoted out of the front
+nav but stay mounted and retrievable — cutting them would undo the reason PANTRY is a server at all.
 
 **PANTRY is a lens, never a destination.** It renders your project's own docs and plans in place;
 it never copies them in. A copy is a fork, and a fork goes stale. Your repo stays the one source of
@@ -42,7 +50,7 @@ truth for everything it owns, PANTRY just makes it addressable, to you and to th
 ## Getting it running
 
 The install story is written for an AI agent first, with a human checklist as the fallback. See
-[`INSTALL.md`](INSTALL.md). The short version:
+`INSTALL.md`. The short version:
 
 ```sh
 bun add -d @tjakoen/pantry   # install the cockpit as a dev dependency (pins the version)
@@ -65,7 +73,7 @@ lints, serve renders that project's own plans alongside PANTRY's bundled docs.
 
 Not yet built: package-resolving the bundled assets and the layer plans at the eventual repo split
 (the doc collections themselves already are), the mindmap view, and the AI-retrieval endpoints. The
-full build order and honest status live in [`PLAN.md`](PLAN.md).
+full build order and honest status live in `PLAN.md`.
 
 ## Non-goals
 
