@@ -170,7 +170,7 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 // PROJECT's own front door: its plan board, plus the "working with AI" surfaces (AI-retrieval +
 // mindmap), then a demoted "Reference surfaces" row that keeps /docs·/reference·/catalog reachable
 // without putting them back in the front nav. AI-retrieval (piece 9) is LIVE — a real link to
-// /llms.txt; the mindmap (piece 10) is still a teaser until graphify-out lands.
+// /llms.txt; the mindmap (piece 10) is also LIVE at /map.
 const AI_SURFACES: { title: string; role: string; href?: string; status: string }[] = [
   { title: "AI-retrieval", role: "Machine-readable surfaces (llms.txt · knowledge.json) your own agent reads to work this project — model-free, pure reads.", href: "/llms.txt", status: "live" },
   { title: "Mindmap", role: "A picture of the AI's brain for this project: the whole-codebase knowledge graph, drawn for the human. Machine twin at /map.json.", href: "/map", status: "live" },
