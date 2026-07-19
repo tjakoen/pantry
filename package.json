@@ -11,9 +11,9 @@
   "homepage": "https://tjakoen.github.io/pantry",
   "dependencies": {
     "@tjakoen/batch": "github:tjakoen/batch#d13d361",
-    "@tjakoen/grain": "github:tjakoen/grain#8e85a47",
-    "@tjakoen/mill": "github:tjakoen/mill#c6bd1c9",
-    "@tjakoen/proof": "github:tjakoen/proof#1668038",
+    "@tjakoen/grain": "^0.1.0",
+    "@tjakoen/mill": "^0.1.0",
+    "@tjakoen/proof": "^0.1.0",
     "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#a43869b"
   },
   "files": [
@@ -29,7 +29,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "deps:refresh": "for p in batch grain mill proof; do bun add @tjakoen/$p@github:tjakoen/$p#$(git ls-remote https://github.com/tjakoen/$p.git main | cut -c1-7); done && bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7)"
+    "deps:refresh": "for p in batch; do bun add @tjakoen/$p@github:tjakoen/$p#$(git ls-remote https://github.com/tjakoen/$p.git main | cut -c1-7); done && bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7) && bun update @tjakoen/grain @tjakoen/mill @tjakoen/proof"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

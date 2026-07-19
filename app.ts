@@ -28,10 +28,11 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // travels inside the package. BATCH + GRAIN explanatory docs now live in the PORTFOLIO package
 // (option b, 2026-07-09: tjakoen.github.io/docs/<layer>/), resolved from THAT package rather than
 // each layer's; a host that doesn't install the portfolio auto-disables those surfaces (below).
-// GRAIN_ROOT stays module-relative: it's used as a directory root (styles/, components/), not a
-// fixed export path — fine in the monorepo (siblings); revisit at the split.
-const sibling = (...p: string[]) => join(MODULE_DIR, "..", ...p);
-const GRAIN_ROOT = sibling("grain");
+// GRAIN_ROOT is the installed grain package's own directory (used as a root for styles/ +
+// components/, which aren't fixed export paths). Resolve it as a PACKAGE (via PLAN.md, a root
+// export) so it travels inside the package — works in any host, whether grain is a git dep, a
+// published dep, or (since the 2026-07-19 grain-monorepo split) nested under packages/grain.
+const GRAIN_ROOT = dirname(fileURLToPath(import.meta.resolve("@tjakoen/grain/PLAN.md")));
 const PROOF_CSS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board.css"));
 const BOARD_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board-live.js"));
 // The standards docs are canonically homed in the PORTFOLIO package (tjakoen.github.io/standards/,
