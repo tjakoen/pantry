@@ -14,7 +14,7 @@
     "@tjakoen/grain": "^0.1.0",
     "@tjakoen/mill": "^0.1.0",
     "@tjakoen/proof": "^0.1.0",
-    "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#a43869b"
+    "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#afc640a"
   },
   "files": [
     "app.ts",
