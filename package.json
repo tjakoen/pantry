@@ -10,7 +10,7 @@
   "author": "Tjakoen Stolk <tjakoen.s@gmail.com> (https://tjakoen.github.io)",
   "homepage": "https://tjakoen.github.io/pantry",
   "dependencies": {
-    "@tjakoen/batch": "github:tjakoen/batch#d13d361",
+    "@tjakoen/batch": "^0.1.0",
     "@tjakoen/grain": "^0.1.0",
     "@tjakoen/mill": "^0.1.0",
     "@tjakoen/proof": "^0.1.0",
@@ -29,7 +29,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
-    "deps:refresh": "for p in batch; do bun add @tjakoen/$p@github:tjakoen/$p#$(git ls-remote https://github.com/tjakoen/$p.git main | cut -c1-7); done && bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7) && bun update @tjakoen/grain @tjakoen/mill @tjakoen/proof"
+    "deps:refresh": "bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7) && bun update @tjakoen/batch @tjakoen/grain @tjakoen/mill @tjakoen/proof"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
