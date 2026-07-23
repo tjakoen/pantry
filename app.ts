@@ -303,11 +303,12 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
 
 export function createPantryHandler(opts: PantryOptions) {
   const config = opts.config ?? defaultConfig(opts.plansDir);
-  // /standards renders from the @tjakoen/standards package (STANDARDS_DIR above). A host that doesn't
-  // install that package resolves to null — auto-disable the surface (drops the nav link + route)
-  // rather than serve an empty page. filesSourceFromDir is also null-safe, so this is belt + braces.
+  // /standards renders from the portfolio package's standards/ folder (STANDARDS_DIR above). A host
+  // that doesn't install tjakoen.github.io resolves to null — auto-disable the surface (drops the
+  // nav link + route) rather than serve an empty page. filesSourceFromDir is also null-safe, so this
+  // is belt + braces.
   if (config.surfaces.standards && (!STANDARDS_DIR || !existsSync(STANDARDS_DIR))) {
-    console.warn("[pantry] /standards off: @tjakoen/standards not installed in this host");
+    console.warn("[pantry] /standards off: tjakoen.github.io (standards/) not installed in this host");
     config.surfaces.standards = false;
   }
   const { surfaces } = config;
@@ -419,7 +420,8 @@ ${body}`));
 // A dirSource-equivalent over a plain folder the host owns. (MILL's dirSource is for package docs;
 // this reads any absolute dir — used for the host's docs and the bundled standards.) A missing/absent
 // dir yields an EMPTY collection, never a readdir throw — so a vanished docsDir or an unresolved
-// standards package degrades the surface instead of 500-ing the server.
+// standards folder (the portfolio package not being installed) degrades the surface instead of
+// 500-ing the server.
 function filesSourceFromDir(dir: string | null): ContentSource {
   const ok = !!dir && existsSync(dir);
   return {

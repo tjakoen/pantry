@@ -61,10 +61,12 @@ Run these from the root of the project you want PANTRY in, one command at a time
 1. Add the dependency.
 
    ```
-   bun add @tjakoen/pantry
+   bun add -d @tjakoen/pantry
    ```
 
-   You should see it added to package.json and node_modules (or the workspace equivalent).
+   PANTRY is tooling, not something your app imports at runtime, so it installs as a dev
+   dependency. You should see it added to package.json's `devDependencies` and to node_modules
+   (or the workspace equivalent).
 
 2. Scaffold plans and config.
 

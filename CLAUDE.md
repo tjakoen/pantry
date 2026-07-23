@@ -40,7 +40,9 @@ bun cli.ts init    # scaffold plans/ + pantry.config.json (host-side)
   repos own them.
 - **Plans are the source of truth; the board is a read-only projection** (PROOF's rule, inherited).
 - **Package-resolved, always.** Assets/docs/PLANs resolve via `import.meta.resolve('@tjakoen/…')`,
-  never relative sibling paths. Deps are sha-pinned git deps (`deps:refresh` re-pins).
+  never relative sibling paths. The four layers (`@tjakoen/batch`, `@tjakoen/grain`, `@tjakoen/mill`,
+  `@tjakoen/proof`) are caret-range npm deps from GitHub Packages (`bun update` picks up new
+  releases); only `tjakoen.github.io` is a sha-pinned git dep (`deps:refresh` re-pins it).
 - **A missing package disables its surface — visibly, never a crash.**
 - **Tests are part of the work.** `tsc` + `bun test` green before "done".
 
