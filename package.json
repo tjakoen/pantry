@@ -11,9 +11,9 @@
   "homepage": "https://tjakoen.github.io/pantry",
   "dependencies": {
     "@tjakoen/batch": "^0.1.0",
-    "@tjakoen/grain": "^0.1.0",
-    "@tjakoen/mill": "^0.1.0",
-    "@tjakoen/proof": "^0.1.0",
+    "@tjakoen/grain": "^0.1.8",
+    "@tjakoen/mill": "^0.1.2",
+    "@tjakoen/proof": "^0.1.2",
     "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#afc640a"
   },
   "files": [

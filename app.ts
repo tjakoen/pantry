@@ -14,6 +14,7 @@ import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
 import { createStream } from "@tjakoen/batch/http/stream.ts";
 import { createMillRoutes, dirSource, type ContentSource, type MillCollection } from "@tjakoen/mill/serve.ts";
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
+import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
@@ -162,6 +163,7 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 <body class="pantry-body" data-grade="smooth">
   ${nav(surfaces)}
   <main class="pantry-main">${body}</main>
+  ${madeWith()}
   <script src="/pantry-cmdk.js" defer></script>
 </body>
 </html>`;
