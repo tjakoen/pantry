@@ -305,10 +305,17 @@ still exit 0 — acting on it is the cognitive tier's job, per LOOP.md §2, not 
 Deterministic (inject `now` for the age math, same discipline as the brain's `generatedAt`). Absent
 optional pieces degrade to info, never a crash — the same "a surface never 500s" posture as `/map`.
 
-**11b — `pantry init --kit` (TODO).** Extends `pantry init` with the thin-`CLAUDE.md` kit (LOOP.md §3):
-write-if-absent `CLAUDE.md` from `CLAUDE.starter.md`, the `AGENTS.md → CLAUDE.md` symlink, `plans/`,
-`pantry.config.json`. Explicit opt-in flag; the non-invasive rule holds (new files only, never
-overwrites a host's existing `CLAUDE.md`). Green `doctor` right after is the acceptance test.
+**11b — `pantry init --kit` (DONE 2026-07-26, this branch).** Extends `pantry init` with the
+thin-`CLAUDE.md` kit (LOOP.md §3): write-if-absent `CLAUDE.md` from `CLAUDE.starter.md` (resolved from
+the portfolio package via `import.meta.resolve`, same trick as app.ts's framework docs; degrades to a
+skip if the package isn't installed), the `AGENTS.md → CLAUDE.md` symlink (relative target, what
+doctor's check resolves against), `plans/`, `pantry.config.json`. Explicit `--kit` flag; the
+non-invasive rule holds — `CLAUDE.md` + `AGENTS.md` are write-if-absent and NEVER overwritten, not even
+with `--force` (checked with `lstat`, so a host's dangling `CLAUDE.md` symlink is preserved too, not
+written through). Acceptance test MET: `pantry doctor` green right after (live smoke: exit 0, only the
+expected e2e warn). 74/74 suite green, tsc clean, init.test.ts added (6 cases). Independent reviewer
+(didn't write it) → one must-fix (the `exists`→`lstat` write-through gap), FIXED + re-verified with a
+new dangling-symlink test.
 
 **11c — doctor accountability checks (TODO, needs the ledger convention first).** LOOP.md §4's run
 ledger + rails made checkable: stale claims (plan item claimed, no checkpoint in N days), branches with
