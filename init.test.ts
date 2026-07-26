@@ -26,7 +26,8 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   plansDir: join(dir, "plans"),
   docsDirs: [],
   graphPath: null,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true },
+  decisionsDir: join(dir, "plans", "decisions"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true },
 });
 
 const runDoctorHere = () => runDoctor({ cwd: dir, config: doctorCfg(), runDrift: false });

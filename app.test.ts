@@ -14,7 +14,8 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   plansDir: EXAMPLE,
   docsDirs: [],
   graphPath: null,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, ...surfaces },
+  decisionsDir: join(EXAMPLE, "decisions"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, ...surfaces },
 });
 
 const get = async (handler: (r: Request) => Promise<Response>, path: string) =>
@@ -173,6 +174,69 @@ describe("surface toggles gate their routes", () => {
     const home = await (await get(handler, "/")).text();
     expect(home).not.toContain(`href="/reference"`);
     expect(home).not.toContain(`href="/catalog"`);
+  });
+
+  test("decisions off → /decisions 404, the nav drops the link", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ decisions: false }) });
+    expect((await get(handler, "/decisions")).status).toBe(404);
+    expect((await get(handler, "/decisions.json")).status).toBe(404);
+    const home = await (await get(handler, "/")).text();
+    expect(home).not.toContain(`href="/decisions"`);
+  });
+});
+
+describe("the decision inbox (piece 11d)", () => {
+  test("with no decisions dir, /decisions renders the empty-state guidance (still 200, nav link present)", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith() });
+    const res = await get(handler, "/decisions");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("No decision inbox yet");
+    expect(html).toContain(`href="/decisions"`);       // the nav link is present when the surface is on
+    const j = await (await get(handler, "/decisions.json")).json();
+    expect(j.available).toBe(false);
+  });
+
+  test("real decision files render as cards + a resolvable detail; the machine twin agrees", async () => {
+    const decisionsDir = join(tmpdir(), `pantry-app-decisions-${Date.now()}`);
+    await Bun.write(join(decisionsDir, "datastore.md"), `---
+title: Which datastore for the ledger?
+status: open
+options:
+  - Postgres — durable
+  - SQLite — zero-ops
+recommendation: SQLite — zero-ops
+evidence:
+  - piece 11c | /docs/plans/pantry
+---
+The context to decide.`);
+    await Bun.write(join(decisionsDir, "old.md"), `---\ntitle: A settled call\nstatus: resolved\n---\ndone`);
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), decisionsDir } });
+
+    // index: both cards, open-before-resolved, counts in the machine twin
+    const index = await (await get(handler, "/decisions")).text();
+    expect(index).toContain("Which datastore for the ledger?");
+    expect(index).toContain("A settled call");
+    const j = await (await get(handler, "/decisions.json")).json();
+    expect(j.available).toBe(true);
+    expect(j.openCount).toBe(1);
+    expect(j.resolvedCount).toBe(1);
+    expect(j.decisions[0].id).toBe("datastore");        // open sorts first
+
+    // detail: options as radios, the recommendation flagged, the generate-prompt wiring present
+    const detailRes = await get(handler, "/decisions/datastore");
+    expect(detailRes.status).toBe(200);
+    const detail = await detailRes.text();
+    expect(detail).toContain("Which datastore for the ledger?");
+    expect(detail).toContain(`name="decision-option"`);
+    expect(detail).toContain("recommended");            // the recommendation tag
+    expect(detail).toContain(`href="/docs/plans/pantry"`); // evidence link rendered
+    expect(detail).toContain("decision-generate");      // the button the client wires
+    expect(detail).toContain("/pantry-decisions.js");   // the client script is loaded
+    expect(detail).toContain(`data-decision-file`);     // the file path the prompt names
+
+    // a missing id is a 404, not a crash
+    expect((await get(handler, "/decisions/nope")).status).toBe(404);
   });
 });
 

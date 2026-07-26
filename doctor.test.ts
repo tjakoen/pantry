@@ -26,7 +26,8 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   plansDir: join(dir, "plans"),
   docsDirs: [],
   graphPath: null,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true },
+  decisionsDir: join(dir, "plans", "decisions"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true },
   ...over,
 });
 

@@ -14,6 +14,7 @@ import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
 import { createStream } from "@tjakoen/batch/http/stream.ts";
 import { createMillRoutes, dirSource, type ContentSource, type MillCollection } from "@tjakoen/mill/serve.ts";
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
+import { renderGrainDocument } from "@tjakoen/mill/adapters/grain/grain-adapter.ts";
 import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
@@ -22,6 +23,7 @@ import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
+import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // The framework DOC dirs, the proof stylesheet, and the layer PLANs are resolved as PACKAGES
@@ -140,6 +142,7 @@ export function buildDocCollections(config: ResolvedPantryConfig): MillCollectio
 function nav(surfaces: PantrySurfaces): string {
   const links = [
     surfaces.plans && `<a href="/plans">Plans</a>`,
+    surfaces.decisions && `<a href="/decisions">Decisions</a>`,
     surfaces.standards && `<a href="/standards">Standards</a>`,
     `<a href="/about">About</a>`,
   ].filter(Boolean).join("\n  ");
@@ -288,6 +291,128 @@ graphify merge-graphs …      # optional: a whole-stack map</code></pre>
 <script src="/pantry-map.js" defer></script>`;
 }
 
+// /decisions (piece 11d) — the decision inbox. The INDEX: open decisions first (what the human owes an
+// answer), then the resolved ledger tail. Model-free, read-only; the payload is the machine twin at
+// /decisions.json. An absent dir degrades to guidance (how to write a decision-request), never a crash.
+function decisionCard(d: DecisionRequest): string {
+  const badge = `<span class="pantry-decision-badge" data-status="${d.status}">${d.status}</span>`;
+  const rec = d.recommendation
+    ? `<p class="pantry-member__role">Recommends: ${escapeHtml(d.recommendation)}</p>`
+    : "";
+  return `<a class="card pantry-member pantry-decision-card" data-pad="sm" href="/decisions/${encodeURIComponent(d.id)}">
+    <h3 class="card__title">${escapeHtml(d.title)} ${badge}</h3>
+    <p class="pantry-member__role">${d.options.length} option${d.options.length === 1 ? "" : "s"}</p>
+    ${rec}
+  </a>`;
+}
+
+function decisionsIndexBody(payload: DecisionsPayload): string {
+  const header = `<header>
+  <h1 class="proof-masthead">Decisions</h1>
+  <p class="proof-lede">Open decisions the AI has routed to you for ${escapeHtml(payload.project)} — the question, its options, and the evidence, side by side. You resolve one by generating a prompt to paste back into chat; PANTRY runs no model and writes nothing. Machine twin at <a href="/decisions.json">/decisions.json</a>.</p>
+</header>`;
+  if (!payload.available) {
+    return `${header}
+<div class="card pantry-map-empty" data-pad="md">
+  <h2 class="card__title">No decision inbox yet</h2>
+  <p class="pantry-member__role">Write decision-requests as markdown here and they show up as cards:</p>
+  <pre class="pantry-map-cmd"><code>${escapeHtml(payload.dir)}/&lt;id&gt;.md</code></pre>
+  <p class="pantry-member__role">Each file carries a title, status (open/resolved), an options list, an optional recommendation, and evidence links in its frontmatter, with the context in the body.</p>
+</div>`;
+  }
+  const open = payload.decisions.filter((d) => d.status === "open");
+  const resolved = payload.decisions.filter((d) => d.status === "resolved");
+  const openSection = open.length
+    ? `<section class="pantry-decisions-open">
+  <h2 class="pantry-section-title">Open — ${open.length}</h2>
+  <div class="card-grid pantry-members">${open.map(decisionCard).join("\n")}</div>
+</section>`
+    : `<section class="pantry-decisions-open">
+  <div class="card pantry-map-empty" data-pad="md"><h2 class="card__title">Nothing open</h2>
+  <p class="pantry-member__role">No decision is waiting on you. New ones the AI files will appear here.</p></div>
+</section>`;
+  const resolvedSection = resolved.length
+    ? `<section class="pantry-decisions-resolved">
+  <h2 class="pantry-section-title">Resolved — ${resolved.length}</h2>
+  <p class="pantry-member__role">The ledger tail: decisions already made. Each file records the choice and the reasoning.</p>
+  <div class="card-grid pantry-members">${resolved.map(decisionCard).join("\n")}</div>
+</section>`
+    : "";
+  return `${header}\n${openSection}\n${resolvedSection}`;
+}
+
+// Render a decision file's markdown body to a clean HTML fragment (body only, no masthead) via the same
+// GRAIN adapter every other doc uses. Falls back to escaped plain text if the render ever throws, so a
+// single odd file can't 500 the surface.
+function renderDecisionBody(md: string): string {
+  if (!md.trim()) return "";
+  try {
+    return renderGrainDocument(md, { defaultLayout: ({ body }: { body: string }) => body }).html;
+  } catch {
+    return `<p class="pantry-member__role">${escapeHtml(md)}</p>`;
+  }
+}
+
+// The DETAIL view: the question + options (radios) + evidence, an always-present notes box, and the
+// "generate prompt" button. All resolution logic is client-side (pantry-decisions.js) assembling a
+// prompt string — PANTRY never POSTs, never writes. The data-* attributes feed that script the file
+// path + title it needs to build the paste-back instruction.
+function decisionDetailBody(d: DecisionRequest): string {
+  const opts = d.options.length
+    ? d.options.map((opt, i) => {
+        const id = `opt-${i}`;
+        const isRec = d.recommendation === opt;
+        return `<label class="pantry-decision-option${isRec ? " pantry-decision-option--rec" : ""}" for="${id}">
+      <input type="radio" name="decision-option" id="${id}" value="${escapeHtml(opt)}"${isRec ? " checked" : ""}>
+      <span>${escapeHtml(opt)}${isRec ? ' <em class="pantry-decision-rec-tag">recommended</em>' : ""}</span>
+    </label>`;
+      }).join("\n")
+    : `<p class="pantry-member__role">This request lists no discrete options — decide in the notes below.</p>`;
+
+  const evidence = d.evidence.length
+    ? `<aside class="pantry-decision-evidence">
+    <h2 class="pantry-section-title">Evidence</h2>
+    <ul>${d.evidence.map((e) =>
+      e.href
+        ? `<li><a href="${escapeHtml(e.href)}">${escapeHtml(e.label)}</a></li>`
+        : `<li>${escapeHtml(e.label)}</li>`,
+    ).join("")}</ul>
+  </aside>`
+    : "";
+
+  const resolvedBanner = d.status === "resolved"
+    ? `<p class="pantry-decision-resolved-banner">This decision is already marked resolved. Generating a prompt again will re-record it.</p>`
+    : "";
+
+  return `<header>
+  <h1 class="proof-masthead">${escapeHtml(d.title)} <span class="pantry-decision-badge" data-status="${d.status}">${d.status}</span></h1>
+  <p class="proof-lede"><a href="/decisions">← All decisions</a></p>
+</header>
+${resolvedBanner}
+<article class="note pantry-decision-body" data-grade="smooth">${renderDecisionBody(d.body)}</article>
+<div class="pantry-decision"
+     data-decision-id="${escapeHtml(d.id)}"
+     data-decision-title="${escapeHtml(d.title)}"
+     data-decision-file="${escapeHtml(d.file)}">
+  <div class="pantry-decision-grid">
+    <section class="pantry-decision-options">
+      <h2 class="pantry-section-title">Options</h2>
+      ${opts}
+    </section>
+    ${evidence}
+  </div>
+  <label class="pantry-decision-notes-label" for="decision-notes">Additional notes (always sent)</label>
+  <textarea id="decision-notes" class="pantry-decision-notes" rows="4" placeholder="Anything the AI should know beyond the chosen option — constraints, a different option entirely, follow-ups."></textarea>
+  <button type="button" class="pantry-decision-generate" id="decision-generate">Generate prompt</button>
+  <div class="pantry-decision-output" hidden>
+    <label class="pantry-decision-notes-label" for="decision-prompt">Prompt — copy this into chat</label>
+    <textarea id="decision-prompt" class="pantry-decision-prompt" rows="10" readonly></textarea>
+    <button type="button" class="pantry-decision-copy" id="decision-copy">Copy</button>
+  </div>
+</div>
+<script src="/pantry-decisions.js" defer></script>`;
+}
+
 export interface PantryOptions {
   /** the HOST project's plans folder (absolute or cwd-relative) — back-compat shorthand */
   plansDir: string;
@@ -299,8 +424,8 @@ export interface PantryOptions {
 
 const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   projectName: basename(dirname(plansDir)) || "project",
-  plansDir, docsDirs: [], graphPath: null,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true },
+  plansDir, docsDirs: [], graphPath: null, decisionsDir: join(plansDir, "decisions"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true },
 });
 
 export function createPantryHandler(opts: PantryOptions) {
@@ -370,6 +495,8 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-cmdk.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-map.js")     // mindmap viz (piece 10) — reads its graph from /map.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-map.js")), { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/pantry-decisions.js")   // decision inbox (piece 11d) — the client generate-prompt flow
+      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-decisions.js")), { headers: { "Content-Type": "text/javascript" } });
 
     // --- the live channel (piece 3): the board's SSE subscribe endpoint ---
     if (path === "/stream") return stream.subscribe(url.searchParams.get("session") ?? "default");
@@ -392,6 +519,21 @@ export function createPantryHandler(opts: PantryOptions) {
       return Response.json(await buildMapPayload(config, new Date().toISOString()));
     if (path === "/map")
       return html(page("Mindmap", mapBody(await buildMapPayload(config, new Date().toISOString()))));
+
+    // --- the decision inbox (piece 11d): human /decisions + /decisions/<id>, machine twin /decisions.json.
+    // Same model (buildDecisionsPayload over the host's plans/decisions), so the cards and the payload
+    // never drift. Read-only + model-free; the generated prompt (client-side) is the only write path. ---
+    if (surfaces.decisions && path === "/decisions.json")
+      return Response.json(await buildDecisionsPayload(config, new Date().toISOString()));
+    if (surfaces.decisions && path === "/decisions")
+      return html(page("Decisions", decisionsIndexBody(await buildDecisionsPayload(config, new Date().toISOString()))));
+    if (surfaces.decisions && path.startsWith("/decisions/")) {
+      const id = decodeURIComponent(path.slice("/decisions/".length));
+      const payload = await buildDecisionsPayload(config, new Date().toISOString());
+      const d = payload.decisions.find((x) => x.id === id);
+      if (d) return html(page(d.title, decisionDetailBody(d)));
+      return new Response("Not found", { status: 404 });
+    }
 
     // --- landings PANTRY owns ---
     if (path === "/") return html(page("Home", homeBody(config, surfaces)));

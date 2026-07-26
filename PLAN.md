@@ -323,12 +323,27 @@ no ledger entry, run reports missing gate evidence, unresolved decisions blockin
 the ledger format is pinned down on the PROOF board (it isn't a doc-link or a file stat yet — it needs a
 schema). Tracked here so 11a doesn't pretend to cover it.
 
-**11d — the decision inbox (TODO).** Agents write decision-requests as markdown (status open/resolved,
-options, a recommendation, evidence links); PANTRY renders `/decisions` (question + flagged code +
-artifacts side by side); the agent shares the localhost link. Resolution = the generate-prompt pattern
-(click options + an always-present notes box → "generate prompt" assembles resolutions + notes + the
-instruction to mark the files resolved → human pastes it → the AGENT records). PANTRY stays 100%
-read-only — the prompt is the only write path. The decision file doubles as a ledger entry.
+**11d — the decision inbox (DONE 2026-07-26, this branch).** Agents write decision-requests as markdown
+(status open/resolved, options, a recommendation, evidence links); PANTRY renders `/decisions` (question
++ options + evidence side by side); the agent shares the localhost link. Resolution = the generate-prompt
+pattern (click options + an always-present notes box → "generate prompt" assembles resolution + notes +
+the instruction to mark the file resolved → human pastes it → the AGENT records). PANTRY stays 100%
+read-only — the prompt is the only write path (a client-side assembler, no POST). The decision file
+doubles as a ledger entry.
+
+Decision files live UNDER `plans/` (owner call 2026-07-26: `plans/decisions/`, so the existing PROOF
+tooling + `pantry doctor`'s plans-present check already cover them — no new tracked dir; config key
+`decisionsDir` defaults to `<plansDir>/decisions`). Frontmatter is the MILL-parseable subset (scalars +
+dash-lists — options are plain strings, evidence is `label | href`); the body renders through the same
+GRAIN adapter every doc uses. Surface: `decisions` (default on) gates `/decisions`, `/decisions/<id>`,
+`/decisions.json` + the nav link; an absent dir degrades to empty-state guidance, never a crash (same
+posture as `/map`). Open decisions LEAD the AI-retrieval context pack (`/llms.txt` + `/knowledge.json`
+`openDecisions`), so an autonomous run resolves them before proceeding (LOOP.md §4). Files:
+`decisions.ts` (pure data, like map.ts) + `pantry-decisions.js` (the client generate-prompt flow) +
+`decisions.test.ts` (8) + app.ts view/routes/asset + retrieval.ts brain wiring + config.ts
+(`decisionsDir` + `decisions` surface) + pantry.css + `plans/decisions/README.md` (the format doc,
+skipped by the parser; dogfoods the inbox). 86/86 suite green, tsc clean, live HTTP smoke passed
+(index/detail/asset/json/llms callout-first). Independent verify PENDING at commit time (verify rule).
 
 **11e — artifacts + home surface + `/timeline` (TODO).** An `artifacts/` dir per run (screenshots, audit
 reports, diffs) that PANTRY serves and decision files / run reports link into; the home surface grows a

@@ -12,6 +12,7 @@ import type { PlanIndex } from "@tjakoen/proof/core/types.ts";
 import { RENDER_OP_KINDS, ENDPOINTS } from "@tjakoen/grain/ai/vocab-reference.ts";
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { buildDecisionsPayload } from "./decisions.ts";
 
 // The plan-id / doc-slug shape MILL + PROOF route on (mill/serve.ts SLUG, proof/routes.ts SLUG).
 // A source can list a file whose stem doesn't conform; such a slug would 404 from its own route, so
@@ -46,6 +47,9 @@ export interface Knowledge {
   docs: KnowledgeCollection[];
   /** the host project's plans as PROOF's derived index (null when the board surface is off) */
   plans: PlanIndex | null;
+  /** how many decision-requests are open — what an autonomous run must resolve (via /decisions) before
+   *  it proceeds (LOOP.md §4). 0 when the inbox is empty or the surface is off. */
+  openDecisions: number;
   /** the machine index of the plan index + the doc raw-source twins (where to fetch the brain) */
   vocabulary: {
     renderOps: typeof RENDER_OP_KINDS;
@@ -62,10 +66,13 @@ async function collectionPages(c: MillCollection): Promise<KnowledgePage[]> {
 
 // The non-doc surfaces this install mounts, gated by the resolved config (same gates app.ts applies
 // to the routes + nav). The board is the front door; the rest are the demoted-but-mounted surfaces.
-function surfacesOf(config: ResolvedPantryConfig): KnowledgeSurface[] {
+function surfacesOf(config: ResolvedPantryConfig, openDecisions: number): KnowledgeSurface[] {
   const { surfaces } = config;
   return [
     surfaces.plans && { route: "/plans", title: "Plan board", description: "The host project's plans and their state (PROOF). Machine index at /plans/plans.json." },
+    // Listed only when something is OPEN — an empty inbox isn't worth pointing an agent at, same rule
+    // as the mindmap below. When present it leads (it gates the run), so it sits first after the board.
+    surfaces.decisions && openDecisions > 0 && { route: "/decisions", title: "Decisions", description: `${openDecisions} open decision(s) the human must resolve before this run proceeds (LOOP.md §4). Machine twin at /decisions.json.` },
     // The mindmap is listed for the machine only when the host actually generated a graphify-out —
     // otherwise /map.json is an available:false placeholder not worth pointing an agent at.
     config.graphPath && { route: "/map", title: "Mindmap", description: "The whole-codebase knowledge graph (graphify's AST + document graph). Machine projection at /map.json." },
@@ -95,13 +102,19 @@ export async function buildKnowledge(
     plans = buildIndex(loaded.map((lp) => lp.plan), generatedAt);
   }
 
+  // The open-decision count (pure read); skipped entirely when the surface is off.
+  const openDecisions = config.surfaces.decisions
+    ? (await buildDecisionsPayload(config, generatedAt)).openCount
+    : 0;
+
   return {
     project: config.projectName,
     generatedAt,
     runsModel: false,
-    surfaces: surfacesOf(config),
+    surfaces: surfacesOf(config, openDecisions),
     docs,
     plans,
+    openDecisions,
     vocabulary: { renderOps: RENDER_OP_KINDS, endpoints: ENDPOINTS },
   };
 }
@@ -121,6 +134,13 @@ export function renderLlmsTxt(k: Knowledge): string {
   out.push("");
   out.push(`> The ${k.project} project, served by PANTRY — its plan board, docs, and reference as one retrievable surface. PANTRY runs no model of its own; this file is what an agent should read first here.`);
 
+  // Open decisions gate the run — surface them FIRST (LOOP.md §4: an autonomous run resolves these
+  // before proceeding). Silent when the inbox is empty, so this only ever shouts when it matters.
+  if (k.openDecisions > 0) {
+    out.push("", "## Decisions — resolve before proceeding");
+    out.push(link(`${k.openDecisions} open decision(s)`, "/decisions", "the human must resolve these; machine twin at /decisions.json"));
+  }
+
   const board = k.surfaces.find((s) => s.route === "/plans");
   if (board && k.plans) {
     out.push("", "## Plans");
@@ -137,7 +157,8 @@ export function renderLlmsTxt(k: Knowledge): string {
     }
   }
 
-  const rest = k.surfaces.filter((s) => s.route !== "/plans");
+  // /plans has its own section above; /decisions has its own callout at the top — keep both out of here.
+  const rest = k.surfaces.filter((s) => s.route !== "/plans" && s.route !== "/decisions");
   if (rest.length) {
     out.push("", "## Reference");
     for (const s of rest) out.push(link(s.title, s.route, s.description));

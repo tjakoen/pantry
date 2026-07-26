@@ -4,6 +4,7 @@
 // merely returns. Model-free, pure reads (PLAN §AI-legible, not AI-powered).
 import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
@@ -12,8 +13,8 @@ const EXAMPLE = join(import.meta.dir, "..", "proof", "example");
 const AT = "2026-07-10T00:00:00.000Z";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
-  projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, ...surfaces },
+  projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, decisionsDir: join(EXAMPLE, "decisions"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, ...surfaces },
 });
 
 // A ContentSource-backed collection with a fixed slug list (one nonconforming, to prove filtering).
@@ -83,5 +84,24 @@ describe("renderLlmsTxt — the session context pack (same brain, human projecti
   test("the board off drops the Plans section", async () => {
     const txt = renderLlmsTxt(await buildKnowledge(configWith({ plans: false }), [], AT));
     expect(txt).not.toContain("## Plans");
+  });
+
+  test("open decisions lead the pack (LOOP.md §4) + are listed as a machine surface; empty inbox is silent", async () => {
+    // no decisions dir → openDecisions 0, no callout, no /decisions surface
+    const quiet = await buildKnowledge(configWith(), [], AT);
+    expect(quiet.openDecisions).toBe(0);
+    expect(renderLlmsTxt(quiet)).not.toContain("## Decisions");
+    expect(quiet.surfaces.some((s) => s.route === "/decisions")).toBe(false);
+
+    // an open decision → counted, surfaced, and shouted first in the context pack
+    const decisionsDir = join(tmpdir(), `pantry-retr-decisions-${Date.now()}`);
+    await Bun.write(join(decisionsDir, "pick.md"), `---\ntitle: Pick one\nstatus: open\n---\n`);
+    const loud = await buildKnowledge({ ...configWith(), decisionsDir }, [], AT);
+    expect(loud.openDecisions).toBe(1);
+    expect(loud.surfaces.some((s) => s.route === "/decisions")).toBe(true);
+    const txt = renderLlmsTxt(loud);
+    expect(txt).toContain("## Decisions — resolve before proceeding");
+    // it precedes the Plans section (it gates the run)
+    expect(txt.indexOf("## Decisions")).toBeLessThan(txt.indexOf("## Plans"));
   });
 });

@@ -40,6 +40,7 @@ async function main() {
     console.log(`PANTRY cockpit on ${server.url}`);
     console.log(`  /          the stack, composed`);
     console.log(`  /plans     this project's plan board`);
+    console.log(`  /decisions the AI's decision inbox (resolve via a generated prompt)`);
     console.log(`  /docs      the framework docs + this project's`);
     console.log(`  /reference the generated AI vocabulary + token slots`);
     console.log(`  /catalog   the GRAIN component catalog`);

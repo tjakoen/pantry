@@ -172,3 +172,57 @@
 .pantry-map-empty { border: var(--hairline, 1px) dashed var(--rule); border-radius: var(--radius, 0.5rem); }
 .pantry-map-cmd { overflow-x: auto; background: color-mix(in srgb, var(--ink) 5%, transparent); border-radius: var(--radius, 0.5rem); padding: var(--space-3, 0.75rem); }
 .pantry-map-cmd code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink); white-space: pre; }
+
+/* ── the decision inbox (piece 11d) ─────────────────────────────────────── */
+/* status badge — open reads as "needs you", resolved recedes. Tokens only, no new palette. */
+.pantry-decision-badge {
+  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 0.1em 0.5em; border-radius: var(--radius, 0.5rem);
+  border: var(--hairline, 1px) solid var(--rule); color: var(--ink-muted); vertical-align: middle;
+}
+.pantry-decision-badge[data-status="open"] {
+  color: var(--ink); border-color: color-mix(in srgb, var(--ink) 40%, transparent);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+}
+.pantry-decision-card .card__title { display: flex; align-items: baseline; gap: var(--space-2, 0.5rem); justify-content: space-between; }
+
+.pantry-decision-resolved-banner {
+  color: var(--ink-muted); font-size: var(--text-sm);
+  border-left: 2px solid var(--rule); padding-left: var(--space-3, 0.75rem); margin: var(--space-4, 1rem) 0;
+}
+
+/* the resolve panel: options + evidence side by side on wide screens, stacked on narrow */
+.pantry-decision { margin-top: var(--space-8, 2rem); }
+.pantry-decision-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--space-8, 2rem); }
+@media (max-width: 40rem) { .pantry-decision-grid { grid-template-columns: 1fr; } }
+
+.pantry-decision-option {
+  display: flex; gap: var(--space-2, 0.5rem); align-items: flex-start;
+  padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem); margin: var(--space-1, 0.25rem) 0;
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem); cursor: pointer;
+}
+.pantry-decision-option:hover { border-color: var(--ink-muted); }
+.pantry-decision-option--rec { border-color: color-mix(in srgb, var(--ink) 40%, transparent); }
+.pantry-decision-rec-tag { color: var(--ink-muted); font-style: normal; font-family: var(--font-mono); font-size: var(--text-xs); }
+
+.pantry-decision-evidence ul { list-style: none; margin: var(--space-2, 0.5rem) 0; padding: 0; }
+.pantry-decision-evidence li { margin: 0.3em 0; font-size: var(--text-sm); }
+.pantry-decision-evidence a { color: var(--ink-muted); }
+.pantry-decision-evidence a:hover { color: var(--ink); }
+
+.pantry-decision-notes-label { display: block; margin: var(--space-4, 1rem) 0 var(--space-1, 0.25rem); font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-decision-notes, .pantry-decision-prompt {
+  width: 100%; box-sizing: border-box; font-family: var(--font-base); font-size: var(--text-sm);
+  color: var(--ink); background: var(--paper); border: var(--hairline, 1px) solid var(--rule);
+  border-radius: var(--radius, 0.5rem); padding: var(--space-3, 0.75rem); resize: vertical;
+}
+.pantry-decision-prompt { font-family: var(--font-mono); background: color-mix(in srgb, var(--ink) 4%, transparent); }
+
+.pantry-decision-generate, .pantry-decision-copy {
+  margin-top: var(--space-3, 0.75rem); font-family: var(--font-base); font-size: var(--text-sm);
+  color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+  padding: var(--space-2, 0.5rem) var(--space-6, 1.5rem); cursor: pointer;
+}
+.pantry-decision-generate:hover, .pantry-decision-copy:hover { border-color: var(--ink-muted); }
+.pantry-decision-output[hidden] { display: none; }

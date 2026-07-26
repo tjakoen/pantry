@@ -15,6 +15,9 @@ export interface PantrySurfaces {
   reference: boolean;
   catalog: boolean;
   standards: boolean;
+  /** the decision inbox (/decisions) — agents write decision-requests, the human resolves via a
+   *  generated prompt. Model-free, read-only, like every surface. Default on. */
+  decisions: boolean;
 }
 
 /** What a host project may put in `pantry.config.(ts|json)`. Every field is optional. */
@@ -31,6 +34,10 @@ export interface PantryConfig {
    *  from here — it never runs graphify; the host generates it (`graphify update .`). Absent → /map
    *  auto-disables, like any other missing surface. */
   graphDir?: string;
+  /** where the agent writes decision-request markdown files; default "./plans/decisions" (kept UNDER
+   *  plans/ so the existing PROOF tooling + `pantry doctor`'s plans-present check already cover it —
+   *  no new tracked dir). PANTRY renders these read-only at /decisions; it never writes them. */
+  decisionsDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
@@ -47,12 +54,14 @@ export interface ResolvedPantryConfig {
   docsDirs: string[];
   /** the graphify node-link JSON the mindmap consumes, or null when no graphify-out is present */
   graphPath: string | null;
+  /** the decision-request folder (absolute); default <plansDir>/decisions */
+  decisionsDir: string;
   surfaces: PantrySurfaces;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
 }
 
-const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true };
+const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 
@@ -86,6 +95,8 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     plansDir,
     docsDirs,
     graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
+    // default under plansDir (not cwd) so it rides along with the board's own folder
+    decisionsDir: raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions"),
     surfaces: { ...ALL_ON, ...raw.surfaces },
     standardsSource: raw.standardsSource,
   };
