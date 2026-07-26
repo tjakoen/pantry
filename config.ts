@@ -33,6 +33,11 @@ export interface PantryConfig {
   graphDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
+  /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
+   *  it legitimately carries real canon-named files in `standards/`, so `pantry doctor`'s
+   *  forked-standards check skips it. Every other repo references the standards by URL (LOOP.md §3),
+   *  so a local canon file there IS a fork and should flag. Default: undefined (not the home). */
+  standardsSource?: "canon";
 }
 
 /** A PantryConfig with every field filled and every path made absolute. */
@@ -43,6 +48,8 @@ export interface ResolvedPantryConfig {
   /** the graphify node-link JSON the mindmap consumes, or null when no graphify-out is present */
   graphPath: string | null;
   surfaces: PantrySurfaces;
+  /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
+  standardsSource?: "canon";
 }
 
 const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true };
@@ -80,6 +87,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     docsDirs,
     graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
     surfaces: { ...ALL_ON, ...raw.surfaces },
+    standardsSource: raw.standardsSource,
   };
 }
 

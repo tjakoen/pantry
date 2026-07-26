@@ -276,6 +276,60 @@ Piece-2's server used to live in `proof/serve.ts`. It was split:
     reviewed. Deferred to a v2: overlaying PROOF `depends`/`touches` + grain vocab as extra edge kinds
     (graphify already folds in the code + document graph; the code graph alone is the headline brain).
 
+## Piece 11 — the control center (P2 of the cross-repo loop)
+
+> Source of the mandate: the portfolio's `plans/ai-workflow-loop.md` (P2) + `standards/LOOP.md`. The
+> loop standard makes PANTRY the per-repo control center of a work-triggered heartbeat: it **shows and
+> checks**, the agent **does**, the standard **governs**. This piece is PANTRY's end of that — and it
+> holds the load-bearing constraint harder than ever: **doctor runs no model.** Every check is a file
+> stat, a symlink read, or an age comparison. LOOP.md §2 forward-references `pantry doctor` by name.
+
+**11a — `pantry doctor` (DONE 2026-07-26, this branch).** One command, CI-able, nonzero exit on a
+compliance break. It is the mechanical tier of the heartbeat: it SURFACES what's due, it never fixes.
+Borrows PROOF's error/warn split (same move as `pantry check`; doctor keeps its own `DoctorCheck`
+shape, and folds the real `CheckReport` in only for the drift check). Two
+severities that matter: **error** (kit is broken → fails CI) and **warn** (something's due → surfaced,
+still exit 0 — acting on it is the cognitive tier's job, per LOOP.md §2, not a robot's). Checks:
+- **Kit compliance (error):** `CLAUDE.md` present; `AGENTS.md` is a symlink to `CLAUDE.md` (not a
+  copy — a copy drifts); no forked standards (a real `standards/` dir carrying canon-named files means
+  the repo forked what it should reference by URL — LOOP.md §3; opt out with `standardsSource: "canon"`
+  in pantry.config for the one repo that IS the home); `plans/` present.
+- **Kit compliance (warn):** `pantry.config.(json|ts)` present (a kit repo should carry one).
+- **Staleness (warn — the heartbeat's whole point, "what's due"):** newest audit report age (an
+  `AUDIT.md` runbook with no recent dated report = overdue); graphify freshness (`graphify-out` present
+  and its age); e2e suite presence (`e2e/` or `*.e2e.ts` — a repo with none can't run the mechanical
+  tier's full gate). Absent-runbook / absent-graph degrade to **info**, never a false alarm.
+- **Drift (error):** folds in the existing `pantry check` (piece 9c) as one check, so `doctor` is the
+  single CI entry point.
+
+Deterministic (inject `now` for the age math, same discipline as the brain's `generatedAt`). Absent
+optional pieces degrade to info, never a crash — the same "a surface never 500s" posture as `/map`.
+
+**11b — `pantry init --kit` (TODO).** Extends `pantry init` with the thin-`CLAUDE.md` kit (LOOP.md §3):
+write-if-absent `CLAUDE.md` from `CLAUDE.starter.md`, the `AGENTS.md → CLAUDE.md` symlink, `plans/`,
+`pantry.config.json`. Explicit opt-in flag; the non-invasive rule holds (new files only, never
+overwrites a host's existing `CLAUDE.md`). Green `doctor` right after is the acceptance test.
+
+**11c — doctor accountability checks (TODO, needs the ledger convention first).** LOOP.md §4's run
+ledger + rails made checkable: stale claims (plan item claimed, no checkpoint in N days), branches with
+no ledger entry, run reports missing gate evidence, unresolved decisions blocking runs. Deferred until
+the ledger format is pinned down on the PROOF board (it isn't a doc-link or a file stat yet — it needs a
+schema). Tracked here so 11a doesn't pretend to cover it.
+
+**11d — the decision inbox (TODO).** Agents write decision-requests as markdown (status open/resolved,
+options, a recommendation, evidence links); PANTRY renders `/decisions` (question + flagged code +
+artifacts side by side); the agent shares the localhost link. Resolution = the generate-prompt pattern
+(click options + an always-present notes box → "generate prompt" assembles resolutions + notes + the
+instruction to mark the files resolved → human pastes it → the AGENT records). PANTRY stays 100%
+read-only — the prompt is the only write path. The decision file doubles as a ledger entry.
+
+**11e — artifacts + home surface + `/timeline` (TODO).** An `artifacts/` dir per run (screenshots, audit
+reports, diffs) that PANTRY serves and decision files / run reports link into; the home surface grows a
+latest-audit + drift-freshness row next to the board; `/timeline` is the retrospective project timeline
+(plan bars from git-derived status-transition dates, `depends` arrows, commit-density, audit markers —
+all derived from git + plans + dated reports, no new tracking, no model; a **dataviz** build). Detail
+stays here as these are built.
+
 ## Non-goals
 
 - **Not a new layer.** PANTRY imports the layers; nothing imports PANTRY. It's an app.

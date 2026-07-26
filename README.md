@@ -24,6 +24,7 @@ at **[tjakoen.github.io/pantry](https://tjakoen.github.io/pantry/)**.
 bun add -d @tjakoen/pantry   # install as a dev dependency (pins the version with your project)
 bunx pantry init             # scaffolds plans/ + pantry.config.json
 bunx proof check             # lints the scaffolded plans
+bunx pantry doctor           # kit compliance + staleness — the loop's mechanical tier (CI-able)
 bunx pantry serve            # renders your plans + docs + reference + catalog
 ```
 
