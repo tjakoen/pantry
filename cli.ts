@@ -3,6 +3,8 @@
 //   pantry [serve] [--port N]   boot against the HOST project's pantry.config (plans + docs + toggles)
 //   pantry check                lint the docs for dead references (CI-able; exits nonzero on a break)
 //   pantry doctor               kit compliance + staleness, the loop's mechanical tier (CI-able)
+//   pantry deps                 layer-pin drift: are the host's @tjakoen/* pins current with the
+//                               sibling layer sources on disk? (the umbrella control-plane surface)
 //   pantry init  [dir] [--kit]  scaffold PANTRY into a project (plans/ + pantry.config.json; --kit also
 //                               seeds CLAUDE.md from the starter + the AGENTS->CLAUDE symlink)
 // Config + plans are read from the caller's cwd (the host); bundled assets + framework docs resolve
@@ -11,6 +13,7 @@ import { isAbsolute, join } from "node:path";
 import { servePantryFromCwd } from "./app.ts";
 import { checkPantryDrift, formatDriftReport } from "./drift.ts";
 import { runDoctor, formatDoctorReport } from "./doctor.ts";
+import { checkPantryDeps, formatDepsReport } from "./deps.ts";
 import { runPantryInit } from "./init.ts";
 
 const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
@@ -60,6 +63,12 @@ async function main() {
     process.exit(report.ok ? 0 : 1);   // nonzero on a broken kit → fails CI (warns/infos don't)
   }
 
+  if (cmd === "deps") {
+    const report = await checkPantryDeps({ cwd: process.cwd() });
+    console.log(formatDepsReport(report));
+    return; // a surface, not a gate — a lagging pin is a chore that's due, not a broken build (LOOP.md §2)
+  }
+
   if (cmd === "init") {
     const targetDir = abs(dir ?? ".");
     const result = await runPantryInit(targetDir, { force, kit });
@@ -69,7 +78,7 @@ async function main() {
     return;
   }
 
-  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|init> [dir] [--port N] [--force] [--kit]`);
+  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|init> [dir] [--port N] [--force] [--kit]`);
   process.exit(1);
 }
 

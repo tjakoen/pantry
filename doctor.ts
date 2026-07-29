@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
 import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
 import { checkPantryDrift } from "./drift.ts";
+import { checkPantryDeps } from "./deps.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
 
@@ -48,6 +49,11 @@ export interface DoctorOptions {
   config?: ResolvedPantryConfig;
   /** fold the doc-drift lint in as a check; default true (set false when packages aren't resolvable) */
   runDrift?: boolean;
+  /** fold the layer-pin drift surface in as a warn check; default true (set false in hermetic unit
+   *  tests so doctor never reaches for sibling checkouts outside the temp host) */
+  runDeps?: boolean;
+  /** the dir holding the sibling layer checkouts; default the parent of cwd (the monorepo root) */
+  layersRoot?: string;
 }
 
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
@@ -125,6 +131,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   const graphMaxAgeDays = opts.graphMaxAgeDays ?? 30;
   const config = opts.config ?? (await loadPantryConfig(cwd));
   const runDrift = opts.runDrift ?? true;
+  const runDeps = opts.runDeps ?? true;
 
   const checks: DoctorCheck[] = [];
 
@@ -310,6 +317,33 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
         label: "doc links resolve",
         detail: `could not run drift lint: ${err instanceof Error ? err.message : String(err)}`,
       });
+    }
+  }
+
+  // ── Layer-pin drift (the umbrella control-plane surface: is the stack pinned to what's on disk?) ──
+  // A warn, never an error: a lagging pin is a chore that's due, not a broken kit (LOOP.md §2). Only
+  // meaningful in the umbrella host (the one that pins the layers); an ordinary repo has no @tjakoen/*
+  // pins and gets an info.
+  if (runDeps) {
+    try {
+      const d = await checkPantryDeps({ cwd, layersRoot: opts.layersRoot });
+      if (d.deps.length === 0) {
+        checks.push({ id: "deps-drift", severity: "info", ok: true, label: "layer pins", detail: "no @tjakoen/* pins in this repo" });
+      } else {
+        const behind = d.deps.filter((x) => x.state === "behind");
+        checks.push({
+          id: "deps-drift",
+          severity: "warn",
+          ok: behind.length === 0,
+          label: "layer pins current",
+          detail:
+            behind.length === 0
+              ? `${d.deps.length} pins, none behind`
+              : `${behind.length} behind: ${behind.map((b) => `${b.name.replace("@tjakoen/", "")} ${b.pinned}<${b.available}`).join(", ")} — run deps:refresh`,
+        });
+      }
+    } catch (err) {
+      checks.push({ id: "deps-drift", severity: "info", ok: true, label: "layer pins", detail: `deps check skipped: ${err instanceof Error ? err.message : String(err)}` });
     }
   }
 

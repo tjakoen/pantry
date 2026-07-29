@@ -29,7 +29,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   graphPath: null,
   decisionsDir: join(dir, "plans", "decisions"),
   artifactsDir: join(dir, "artifacts"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
   ...over,
 });
 
@@ -43,7 +43,7 @@ async function compliantKit() {
 }
 
 const run = (over: Partial<ResolvedPantryConfig> = {}, more = {}): Promise<DoctorReport> =>
-  runDoctor({ cwd: dir, now: NOW, config: cfg(over), runDrift: false, ...more });
+  runDoctor({ cwd: dir, now: NOW, config: cfg(over), runDrift: false, runDeps: false, ...more });
 
 const byId = (r: DoctorReport, id: string) => r.checks.find((c) => c.id === id)!;
 
@@ -271,6 +271,43 @@ describe("pantry doctor — drift fold-in (the single CI entry point)", () => {
     expect(c.severity).toBe("error");
     expect(c.ok).toBe(false);
     expect(r.ok).toBe(false); // an error-severity drift break fails the whole report
+  });
+});
+
+// The deps fold-in makes doctor the whole-stack control-plane surface too (a warn, never a gate). We
+// build a temp monorepo — an umbrella host that pins a layer + a sibling layer source ahead of it —
+// and assert the lagging pin surfaces as a warn WITHOUT flipping the report.
+describe("pantry doctor — layer-pin drift fold-in (warn tier)", () => {
+  test("a pin behind its sibling layer source surfaces as a warn, report stays ok", async () => {
+    const monorepo = await mkdtemp(join(tmpdir(), "pantry-doctor-mono-"));
+    const host = join(monorepo, "bread");
+    try {
+      await mkdir(host);
+      await writeFile(join(host, "CLAUDE.md"), "# CLAUDE");
+      await symlink("CLAUDE.md", join(host, "AGENTS.md"));
+      await mkdir(join(host, "plans"));
+      await writeFile(join(host, "pantry.config.json"), "{}\n");
+      await mkdir(join(host, "e2e"));
+      await writeFile(join(host, "package.json"), JSON.stringify({ devDependencies: { "@tjakoen/mill": "^0.1.2" } }));
+      await mkdir(join(monorepo, "grain", "packages", "mill"), { recursive: true });
+      await writeFile(join(monorepo, "grain", "packages", "mill", "package.json"), JSON.stringify({ version: "0.2.0" }));
+      const r = await runDoctor({ cwd: host, now: NOW, runDrift: false, layersRoot: monorepo });
+      const c = byId(r, "deps-drift");
+      expect(c.severity).toBe("warn");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("mill 0.1.2<0.2.0");
+      expect(r.ok).toBe(true); // a warn never flips the report
+    } finally {
+      await rm(monorepo, { recursive: true, force: true });
+    }
+  });
+
+  test("a repo with no @tjakoen/* pins gets an info, not a warn", async () => {
+    await compliantKit();
+    const r = await runDoctor({ cwd: dir, now: NOW, config: cfg(), runDrift: false });
+    const c = byId(r, "deps-drift");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
   });
 });
 
