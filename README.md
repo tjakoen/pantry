@@ -24,7 +24,7 @@ at **[tjakoen.github.io/pantry](https://tjakoen.github.io/pantry/)**.
 bun add -d @tjakoen/pantry   # install as a dev dependency (pins the version with your project)
 bunx pantry init             # scaffolds plans/ + pantry.config.json
 bunx proof check             # lints the scaffolded plans
-bunx pantry doctor           # kit compliance + staleness — the loop's mechanical tier (CI-able)
+bunx pantry doctor           # kit compliance + staleness, the loop's mechanical tier (CI-able)
 bunx pantry serve            # renders your plans + docs + reference + catalog
 ```
 
@@ -35,13 +35,13 @@ manual checklist as the fallback), is in [INSTALL.md](INSTALL.md).
 
 ```
 bunx pantry            (inside any project)
-  ├─ /            your project's front door — the plan board + the "working with AI" surfaces
+  ├─ /            your project's front door: the plan board + the "working with AI" surfaces
   ├─ /plans       your project's own PROOF board (./plans/*.md)
   ├─ /standards   the writing / README standards, rendered through MILL
   ├─ /about       the BREAD stack showcase (what the layers are)
-  ├─ /llms.txt    the session context pack — what an agent should read first
-  ├─ /knowledge.json  the machine brain — plans + docs + the AI vocabulary, one payload
-  ├─ /map         the mindmap — the whole-codebase knowledge graph, drawn for the human
+  ├─ /llms.txt    the session context pack: what an agent should read first
+  ├─ /knowledge.json  the machine brain: plans + docs + the AI vocabulary, one payload
+  ├─ /map         the mindmap: the whole-codebase knowledge graph, drawn for the human
   ├─ /map.json    the mindmap's machine twin (same model, one brain two projections)
   └─ demoted, still mounted + AI-retrievable (one click from home):
        /docs      the BATCH + GRAIN + MILL + PROOF framework docs, rendered through MILL
