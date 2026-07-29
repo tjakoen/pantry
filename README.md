@@ -1,4 +1,4 @@
-# 🧺 PANTRY — the dev-docs cockpit
+# 🧺 PANTRY: the dev-docs cockpit
 
 [![Made with Claude](https://img.shields.io/badge/Made_with-Claude-D97757?logo=anthropic&logoColor=white)](https://tjakoen.github.io/notes/ten-times-zero)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue)](LICENSE)
@@ -7,11 +7,11 @@
 **PANTRY is the BREAD stack's installable developer-docs and AI cockpit.** You install it into your
 own project (we call that project the "host" below, meaning whatever app you dropped PANTRY into),
 run one command, and it serves your project's plan board, its docs, a whole-codebase map, and a set
-of machine-readable endpoints an AI agent can read to get oriented fast — all in one small server.
+of machine-readable endpoints an AI agent can read to get oriented fast, all in one small server.
 
 It's an **app, not a layer**: nothing imports PANTRY, it imports BATCH, GRAIN, MILL, and PROOF and
 composes them for you. Think of it as the neutral, project-agnostic sibling of
-[the personal site](../tjakoen.github.io/) — the same layers, wired into a second, unbranded app.
+[the personal site](../tjakoen.github.io/): the same layers, wired into a second, unbranded app.
 
 For the plain-language walkthrough (what each surface is for, why it exists), see the docs:
 **[Getting started](https://tjakoen.github.io/pantry/docs/getting-started)** ·
