@@ -22,6 +22,7 @@ afterEach(async () => {
 
 // A resolved config pointing at the temp host; overridable per test.
 const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => ({
+  cwd: dir,
   projectName: "t",
   plansDir: join(dir, "plans"),
   docsDirs: [],

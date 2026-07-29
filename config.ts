@@ -55,6 +55,10 @@ export interface PantryConfig {
 
 /** A PantryConfig with every field filled and every path made absolute. */
 export interface ResolvedPantryConfig {
+  /** the host project root this config was loaded from (absolute). The single source of truth for
+   *  "where is the repo" — doctor's kit/audit checks read from here, so no caller has to guess it
+   *  from plansDir (which may be pointed off-root). */
+  cwd: string;
   projectName: string;
   plansDir: string;
   docsDirs: string[];
@@ -99,6 +103,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     .filter((d) => existsSync(d));
 
   return {
+    cwd,
     projectName: raw.projectName ?? basename(cwd) ?? "project",
     plansDir,
     docsDirs,

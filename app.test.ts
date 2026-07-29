@@ -4,12 +4,15 @@
 import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createPantryHandler } from "./app.ts";
+import { mkdtemp, mkdir } from "node:fs/promises";
+import { createPantryHandler, homeBody } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import type { DoctorReport } from "./doctor.ts";
 
 const EXAMPLE = join(import.meta.dir, "..", "proof", "example");
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
+  cwd: EXAMPLE,
   projectName: "test-project",
   plansDir: EXAMPLE,
   docsDirs: [],
@@ -305,6 +308,76 @@ describe("run artifacts (piece 11e sub-unit 1)", () => {
     const ok = await get(handler, "/artifacts/raw/inside.txt");
     expect(ok.status).toBe(200);
     expect(await ok.text()).toBe("safe");
+  });
+});
+
+describe("the home heartbeat row (piece 11e sub-unit 2)", () => {
+  const stubReport = (overrides: Partial<Record<string, { severity: "error" | "warn" | "info"; ok: boolean; detail: string }>> = {}): DoctorReport => {
+    const base: Record<string, { label: string; severity: "error" | "warn" | "info"; ok: boolean; detail: string }> = {
+      "audit-freshness": { label: "audit freshness", severity: "warn", ok: true, detail: "last audit 3 days old (AUDIT-2026-07-26.md)" },
+      "doc-drift": { label: "doc links resolve", severity: "error", ok: true, detail: "12 pages, 0 problems" },
+      "graphify-freshness": { label: "graphify freshness", severity: "warn", ok: true, detail: "graph 5 days old" },
+      // a non-heartbeat check that must NOT appear in the strip
+      "claude-md": { label: "CLAUDE.md present", severity: "error", ok: true, detail: "found" },
+    };
+    const checks = Object.entries(base).map(([id, c]) => ({ id, ...c, ...(overrides[id] ?? {}) }));
+    return { ok: true, checks };
+  };
+
+  test("renders exactly the three heartbeat pills, in order, and drops non-heartbeat checks", async () => {
+    const html = homeBody(configWith(), configWith().surfaces, stubReport());
+    expect(html).toContain("pantry-heartbeat");
+    // the three labels, in the fixed order
+    const iAudit = html.indexOf("audit freshness");
+    const iDrift = html.indexOf("doc links resolve");
+    const iGraph = html.indexOf("graphify freshness");
+    expect(iAudit).toBeGreaterThan(-1);
+    expect(iDrift).toBeGreaterThan(iAudit);
+    expect(iGraph).toBeGreaterThan(iDrift);
+    // doctor's own detail strings are surfaced verbatim (no re-derivation)
+    expect(html).toContain("last audit 3 days old (AUDIT-2026-07-26.md)");
+    expect(html).toContain("graph 5 days old");
+    // a non-heartbeat check does not leak into the strip
+    expect(html).not.toContain("CLAUDE.md present");
+  });
+
+  test("tone maps outcome → status class: ok, due (warn), danger (error)", async () => {
+    const report = stubReport({
+      "audit-freshness": { severity: "warn", ok: false, detail: "last audit 40 days old — over 30d, run AUDIT.md" }, // due
+      "doc-drift": { severity: "error", ok: false, detail: "12 pages, 2 problems" },                                  // danger
+      "graphify-freshness": { severity: "warn", ok: true, detail: "graph 5 days old" },                               // ok
+    });
+    const html = homeBody(configWith(), configWith().surfaces, report);
+    expect(html).toContain(`data-tone="due"`);
+    expect(html).toContain(`data-tone="danger"`);
+    expect(html).toContain(`data-tone="ok"`);
+  });
+
+  test("a null report renders NO strip (graceful, no heartbeat markup)", async () => {
+    const html = homeBody(configWith(), configWith().surfaces, null);
+    expect(html).not.toContain("pantry-heartbeat");
+    expect(html).not.toContain("pantry-pill");
+    // the rest of the home still renders
+    expect(html).toContain("test-project");
+    expect(html).toContain(`href="/plans"`);
+  });
+
+  test("a report missing every heartbeat id renders no strip", async () => {
+    const report: DoctorReport = { ok: true, checks: [{ id: "claude-md", severity: "error", ok: true, label: "CLAUDE.md present", detail: "found" }] };
+    const html = homeBody(configWith(), configWith().surfaces, report);
+    expect(html).not.toContain("pantry-heartbeat");
+  });
+
+  test("GET / is 200 in a bare repo (runDoctor may warn/throw) — the row degrades, never a 500", async () => {
+    // a temp cwd with a plans/ dir but no CLAUDE.md/AUDIT.md/config — doctor will warn, drift may throw
+    const cwd = await mkdtemp(join(tmpdir(), "pantry-bare-"));
+    await mkdir(join(cwd, "plans"));
+    const config = { ...configWith(), plansDir: join(cwd, "plans") };
+    const handler = createPantryHandler({ plansDir: config.plansDir, config, cwd });
+    const res = await get(handler, "/");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("test-project"); // real home rendered, not an error page
   });
 });
 

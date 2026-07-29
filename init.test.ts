@@ -22,6 +22,7 @@ afterEach(async () => {
 
 // A resolved config pointing doctor at the freshly-scaffolded host; drift off (no package resolution).
 const doctorCfg = (): ResolvedPantryConfig => ({
+  cwd: dir,
   projectName: "t",
   plansDir: join(dir, "plans"),
   docsDirs: [],

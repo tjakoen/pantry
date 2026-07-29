@@ -25,6 +25,7 @@ import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
 import { buildArtifactsPayload, classifyArtifact, type ArtifactsPayload, type ArtifactEntry } from "./artifacts.ts";
+import { runDoctor, type DoctorReport, type DoctorCheck } from "./doctor.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // The framework DOC dirs, the proof stylesheet, and the layer PLANs are resolved as PACKAGES
@@ -194,7 +195,34 @@ function aiSurfaceTeasers(surfaces: PantrySurfaces): { title: string; role: stri
       : []),
   ];
 }
-function homeBody(config: ResolvedPantryConfig, surfaces: PantrySurfaces): string {
+// The heartbeat row (piece 11e sub-unit 2): a compact freshness strip next to the board card, one
+// pill per staleness check doctor already computes — model-free (doctor runs no model; every check is
+// a stat/age compare). The tone maps the check's outcome onto the existing status-badge palette:
+// ok → ok, else the severity (error → danger, warn → due, info → muted). Reuses doctor's own detail
+// strings ("last audit 3 days old (…)", "12 pages, 0 problems", "graph 5 days old"), so the home never
+// forecasts or re-derives anything — it just surfaces what doctor found. Absent report → no strip.
+const HEARTBEAT_IDS = ["audit-freshness", "doc-drift", "graphify-freshness"] as const;
+function heartbeatTone(c: DoctorCheck): "ok" | "danger" | "due" | "muted" {
+  if (c.ok) return "ok";
+  if (c.severity === "error") return "danger";
+  if (c.severity === "warn") return "due";
+  return "muted"; // info that isn't ok (rare) — quietest tone
+}
+function freshnessStrip(freshness: DoctorReport | null): string {
+  if (!freshness) return "";
+  const byId = new Map(freshness.checks.map((c) => [c.id, c]));
+  const pills = HEARTBEAT_IDS
+    .map((id) => byId.get(id))
+    .filter((c): c is DoctorCheck => Boolean(c))
+    .map((c) => `<span class="pantry-pill" data-tone="${heartbeatTone(c)}"><b class="pantry-pill__label">${escapeHtml(c.label)}</b> <span class="pantry-pill__detail">${escapeHtml(c.detail)}</span></span>`);
+  if (!pills.length) return "";
+  return `<div class="pantry-heartbeat" role="status" aria-label="Project heartbeat">
+  ${pills.join("\n  ")}
+  <span class="pantry-heartbeat__hint">Run pantry doctor for the full heartbeat.</span>
+</div>`;
+}
+
+export function homeBody(config: ResolvedPantryConfig, surfaces: PantrySurfaces, freshness: DoctorReport | null): string {
   const teasers = aiSurfaceTeasers(surfaces).map((t) => {
     const inner = `<h3 class="card__title">${escapeHtml(t.title)}</h3>
     <p class="pantry-member__role">${escapeHtml(t.role)}</p>
@@ -217,6 +245,7 @@ ${surfaces.plans ? `<a class="card pantry-board-card" data-pad="md" href="/plans
   <h2 class="card__title">Plan board</h2>
   <p class="pantry-member__role">The project's plans and their state — PROOF's board, the front door.</p>
 </a>` : ""}
+${freshnessStrip(freshness)}
 <section class="pantry-ai">
   <h2 class="pantry-section-title">Working with AI</h2>
   <div class="card-grid pantry-members">${teasers}</div>
@@ -554,11 +583,16 @@ export interface PantryOptions {
   plansDir: string;
   /** the full resolved host config (from loadPantryConfig); when omitted a default is derived from plansDir */
   config?: ResolvedPantryConfig;
+  /** the HOST project root — where doctor runs its heartbeat checks (CLAUDE.md/AUDIT.md/standards live
+   *  here, not under plansDir). servePantryFromCwd passes it; when omitted it falls back to the plans
+   *  dir's parent (plansDir is conventionally <cwd>/plans). */
+  cwd?: string;
   /** override GRAIN's location (defaults to the resolved package) */
   grainRoot?: string;
 }
 
 const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
+  cwd: dirname(plansDir),
   projectName: basename(dirname(plansDir)) || "project",
   plansDir, docsDirs: [], graphPath: null, decisionsDir: join(plansDir, "decisions"),
   artifactsDir: join(dirname(plansDir), "artifacts"),
@@ -576,6 +610,10 @@ export function createPantryHandler(opts: PantryOptions) {
     config.surfaces.standards = false;
   }
   const { surfaces } = config;
+  // The host root doctor's heartbeat reads from — CLAUDE.md/AUDIT.md/standards sit here. The resolved
+  // config already knows it (loadPantryConfig set config.cwd), so there is nothing to guess; an
+  // explicit opts.cwd still wins for a caller that overrides.
+  const cwd = opts.cwd ?? config.cwd;
   const grainRoot = opts.grainRoot ?? GRAIN_ROOT;
   const page = (title: string, body: string) => pantryPage(title, body, surfaces);
 
@@ -687,7 +725,19 @@ export function createPantryHandler(opts: PantryOptions) {
     }
 
     // --- landings PANTRY owns ---
-    if (path === "/") return html(page("Home", homeBody(config, surfaces)));
+    if (path === "/") {
+      // The heartbeat row: doctor's staleness checks, computed at request time with `now` injected for
+      // determinism. Doctor runs NO model — every check is a stat/age compare. ANY throw (a bare repo,
+      // an unresolvable drift lint) degrades to a home WITHOUT the row, never a 500. Reuse the already
+      // resolved config so doctor doesn't re-read pantry.config off disk.
+      let freshness: DoctorReport | null = null;
+      try {
+        freshness = await runDoctor({ cwd, config, now: new Date(), runDrift: true });
+      } catch {
+        freshness = null;
+      }
+      return html(page("Home", homeBody(config, surfaces, freshness)));
+    }
     if (path === "/about") return html(page("About", aboutBody()));
     if (surfaces.docs && path === "/docs") return html(page("Docs", docsBody(docCollections)));
 
@@ -740,6 +790,7 @@ export function servePantry(opts: PantryOptions & { port?: number }) {
 
 /** Boot from a host cwd: load the pantry.config there, then serve. The CLI's entry point. */
 export async function servePantryFromCwd(opts: { cwd?: string; port?: number } = {}) {
-  const config = await loadPantryConfig(opts.cwd);
-  return servePantry({ plansDir: config.plansDir, config, port: opts.port });
+  const cwd = opts.cwd ?? process.cwd();
+  const config = await loadPantryConfig(cwd);
+  return servePantry({ plansDir: config.plansDir, config, cwd, port: opts.port });
 }
