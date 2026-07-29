@@ -13,6 +13,7 @@ import { RENDER_OP_KINDS, ENDPOINTS } from "@tjakoen/grain/ai/vocab-reference.ts
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
+import { buildArtifactsPayload } from "./artifacts.ts";
 
 // The plan-id / doc-slug shape MILL + PROOF route on (mill/serve.ts SLUG, proof/routes.ts SLUG).
 // A source can list a file whose stem doesn't conform; such a slug would 404 from its own route, so
@@ -66,13 +67,18 @@ async function collectionPages(c: MillCollection): Promise<KnowledgePage[]> {
 
 // The non-doc surfaces this install mounts, gated by the resolved config (same gates app.ts applies
 // to the routes + nav). The board is the front door; the rest are the demoted-but-mounted surfaces.
-function surfacesOf(config: ResolvedPantryConfig, openDecisions: number): KnowledgeSurface[] {
+function surfacesOf(config: ResolvedPantryConfig, openDecisions: number, artifactCount: number): KnowledgeSurface[] {
   const { surfaces } = config;
   return [
     surfaces.plans && { route: "/plans", title: "Plan board", description: "The host project's plans and their state (PROOF). Machine index at /plans/plans.json." },
     // Listed only when something is OPEN — an empty inbox isn't worth pointing an agent at, same rule
     // as the mindmap below. When present it leads (it gates the run), so it sits first after the board.
     surfaces.decisions && openDecisions > 0 && { route: "/decisions", title: "Decisions", description: `${openDecisions} open decision(s) the human must resolve before this run proceeds (LOOP.md §4). Machine twin at /decisions.json.` },
+    // Run evidence — screenshots, audit reports, diffs a run deposited. After decisions (which gate
+    // the run) but before the rest, since it's still project-run output rather than static reference.
+    // Listed only when the dir actually holds something — an empty artifacts dir isn't worth pointing
+    // an agent at, same rule as decisions + the mindmap.
+    surfaces.artifacts && artifactCount > 0 && { route: "/artifacts", title: "Artifacts", description: `${artifactCount} run artifact(s) — screenshots, audit reports, diffs — deposited by this project's own tooling, served read-only. Machine twin at /artifacts.json.` },
     // The mindmap is listed for the machine only when the host actually generated a graphify-out —
     // otherwise /map.json is an available:false placeholder not worth pointing an agent at.
     config.graphPath && { route: "/map", title: "Mindmap", description: "The whole-codebase knowledge graph (graphify's AST + document graph). Machine projection at /map.json." },
@@ -107,11 +113,17 @@ export async function buildKnowledge(
     ? (await buildDecisionsPayload(config, generatedAt)).openCount
     : 0;
 
+  // The artifact count (pure read); skipped entirely when the surface is off. Gates whether /artifacts
+  // is worth listing for the machine (an empty dir isn't).
+  const artifactCount = config.surfaces.artifacts
+    ? (await buildArtifactsPayload(config, generatedAt)).count
+    : 0;
+
   return {
     project: config.projectName,
     generatedAt,
     runsModel: false,
-    surfaces: surfacesOf(config, openDecisions),
+    surfaces: surfacesOf(config, openDecisions, artifactCount),
     docs,
     plans,
     openDecisions,

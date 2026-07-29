@@ -226,3 +226,16 @@
 }
 .pantry-decision-generate:hover, .pantry-decision-copy:hover { border-color: var(--ink-muted); }
 .pantry-decision-output[hidden] { display: none; }
+
+/* ── run artifacts (piece 11e) ──────────────────────────────────────────── */
+/* the kind badge reuses the decision-badge shape (mono, uppercase pill); only image/html pick up a
+   little colour so a screenshot or a served page reads at a glance — everything else stays neutral */
+.pantry-artifact-card .card__title { display: flex; align-items: baseline; gap: var(--space-2, 0.5rem); flex-wrap: wrap; }
+.pantry-artifact-badge[data-kind="image"] {
+  color: var(--ink); border-color: color-mix(in srgb, var(--pantry-map-repo-1, var(--ink)) 50%, transparent);
+  background: color-mix(in srgb, var(--pantry-map-repo-1, var(--ink)) 10%, transparent);
+}
+.pantry-artifact-badge[data-kind="html"] {
+  color: var(--ink); border-color: color-mix(in srgb, var(--pantry-map-repo-3, var(--ink)) 50%, transparent);
+  background: color-mix(in srgb, var(--pantry-map-repo-3, var(--ink)) 10%, transparent);
+}

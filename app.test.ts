@@ -15,7 +15,8 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   docsDirs: [],
   graphPath: null,
   decisionsDir: join(EXAMPLE, "decisions"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, ...surfaces },
+  artifactsDir: join(EXAMPLE, "artifacts"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, ...surfaces },
 });
 
 const get = async (handler: (r: Request) => Promise<Response>, path: string) =>
@@ -183,6 +184,14 @@ describe("surface toggles gate their routes", () => {
     const home = await (await get(handler, "/")).text();
     expect(home).not.toContain(`href="/decisions"`);
   });
+
+  test("artifacts off → /artifacts 404, the nav + home teaser drop the link", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ artifacts: false }) });
+    expect((await get(handler, "/artifacts")).status).toBe(404);
+    expect((await get(handler, "/artifacts.json")).status).toBe(404);
+    const home = await (await get(handler, "/")).text();
+    expect(home).not.toContain(`href="/artifacts"`);
+  });
 });
 
 describe("the decision inbox (piece 11d)", () => {
@@ -237,6 +246,65 @@ The context to decide.`);
 
     // a missing id is a 404, not a crash
     expect((await get(handler, "/decisions/nope")).status).toBe(404);
+  });
+});
+
+describe("run artifacts (piece 11e sub-unit 1)", () => {
+  test("with no artifacts dir, /artifacts renders empty-state guidance (still 200, nav link present)", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith() });
+    const res = await get(handler, "/artifacts");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("No artifacts yet");
+    expect(html).toContain(`href="/artifacts"`);
+    const j = await (await get(handler, "/artifacts.json")).json();
+    expect(j.available).toBe(false);
+  });
+
+  test("real artifact files render as cards, newest first; the machine twin agrees; raw bytes are servable", async () => {
+    const artifactsDir = join(tmpdir(), `pantry-app-artifacts-${Date.now()}`);
+    await Bun.write(join(artifactsDir, "old-report.md"), "# an old report");
+    await Bun.write(join(artifactsDir, "run-1", "shot.png"), "not-really-a-png");
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), artifactsDir } });
+
+    const index = await (await get(handler, "/artifacts")).text();
+    expect(index).toContain("old-report.md");
+    expect(index).toContain("shot.png");
+
+    const j = await (await get(handler, "/artifacts.json")).json();
+    expect(j.available).toBe(true);
+    expect(j.count).toBe(2);
+
+    const rawRes = await get(handler, "/artifacts/raw/run-1/shot.png");
+    expect(rawRes.status).toBe(200);
+    expect(await rawRes.text()).toBe("not-really-a-png");
+    expect(rawRes.headers.get("Content-Type")).toBe("image/png");
+  });
+
+  test("SECURITY: a traversal relPath cannot escape artifactsDir — 404, never the outside file's bytes", async () => {
+    // artifactsDir and the "secret" are siblings under tmpdir(), so one ".." from artifactsDir
+    // reaches the secret — the shape a `../../etc/passwd`-style attack takes, just fewer hops.
+    const artifactsDir = join(tmpdir(), `pantry-app-artifacts-traversal-${Date.now()}`);
+    await Bun.write(join(artifactsDir, "inside.txt"), "safe");
+    const secretName = `pantry-app-secret-${Date.now()}.txt`;
+    await Bun.write(join(tmpdir(), secretName), "SECRET");
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), artifactsDir } });
+
+    // "../<secret>" with the slash percent-encoded, as a browser/curl would send it
+    const res1 = await handler(new Request(`http://localhost/artifacts/raw/..%2F${secretName}`));
+    expect(res1.status).toBe(404);
+
+    // the doubled form named in the spec: ../../<something>
+    const res2 = await handler(new Request(`http://localhost/artifacts/raw/..%2f..%2f${secretName}`));
+    expect(res2.status).toBe(404);
+
+    // a nonexistent file inside the dir is also a clean 404, not a crash
+    expect((await get(handler, "/artifacts/raw/nope.txt")).status).toBe(404);
+
+    // the legitimate file is still servable (the guard doesn't over-block)
+    const ok = await get(handler, "/artifacts/raw/inside.txt");
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toBe("safe");
   });
 });
 

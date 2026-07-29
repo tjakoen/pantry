@@ -18,6 +18,9 @@ export interface PantrySurfaces {
   /** the decision inbox (/decisions) — agents write decision-requests, the human resolves via a
    *  generated prompt. Model-free, read-only, like every surface. Default on. */
   decisions: boolean;
+  /** run evidence (/artifacts) — screenshots, audit reports, diffs a run deposits, served read-only.
+   *  Model-free, like every surface. Default on. */
+  artifacts: boolean;
 }
 
 /** What a host project may put in `pantry.config.(ts|json)`. Every field is optional. */
@@ -38,6 +41,9 @@ export interface PantryConfig {
    *  plans/ so the existing PROOF tooling + `pantry doctor`'s plans-present check already cover it —
    *  no new tracked dir). PANTRY renders these read-only at /decisions; it never writes them. */
   decisionsDir?: string;
+  /** where runs deposit evidence — screenshots, audit reports, diffs — that PANTRY serves read-only;
+   *  default ./artifacts. Absent → the /artifacts surface degrades to guidance. */
+  artifactsDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
@@ -56,12 +62,14 @@ export interface ResolvedPantryConfig {
   graphPath: string | null;
   /** the decision-request folder (absolute); default <plansDir>/decisions */
   decisionsDir: string;
+  /** the artifacts folder (absolute); default <cwd>/artifacts */
+  artifactsDir: string;
   surfaces: PantrySurfaces;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
 }
 
-const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true };
+const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 
@@ -97,6 +105,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
     // default under plansDir (not cwd) so it rides along with the board's own folder
     decisionsDir: raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions"),
+    artifactsDir: abs(cwd, raw.artifactsDir ?? "artifacts"),
     surfaces: { ...ALL_ON, ...raw.surfaces },
     standardsSource: raw.standardsSource,
   };

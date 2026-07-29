@@ -18,12 +18,22 @@
   },
   "files": [
     "app.ts",
+    "artifacts.ts",
     "cli.ts",
     "config.ts",
+    "decisions.ts",
+    "doctor.ts",
+    "drift.ts",
     "init.ts",
+    "map.ts",
+    "retrieval.ts",
     "pantry.css",
+    "pantry-cmdk.js",
+    "pantry-decisions.js",
+    "pantry-map.js",
     "PLAN.md",
     "INSTALL.md",
+    "NOTICE",
     "tools"
   ],
   "scripts": {

@@ -5,9 +5,9 @@
 // PANTRY. It reads the HOST project's content (plans + optional docs, via the host contract in
 // config.ts) and resolves its OWN bundled assets/docs via package resolution (never a relative path),
 // so it runs from anywhere and survives the repo split.
-import { join, dirname, basename } from "node:path";
+import { join, dirname, basename, sep, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync, statSync } from "node:fs";
 import { bunRuntime } from "@tjakoen/batch/platform/bun-runtime.ts";
 import { makeStatic } from "@tjakoen/batch/http/static.ts";
 import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
@@ -24,6 +24,7 @@ import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
+import { buildArtifactsPayload, classifyArtifact, type ArtifactsPayload, type ArtifactEntry } from "./artifacts.ts";
 
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 // The framework DOC dirs, the proof stylesheet, and the layer PLANs are resolved as PACKAGES
@@ -143,6 +144,7 @@ function nav(surfaces: PantrySurfaces): string {
   const links = [
     surfaces.plans && `<a href="/plans">Plans</a>`,
     surfaces.decisions && `<a href="/decisions">Decisions</a>`,
+    surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
     surfaces.standards && `<a href="/standards">Standards</a>`,
     `<a href="/about">About</a>`,
   ].filter(Boolean).join("\n  ");
@@ -181,8 +183,19 @@ const AI_SURFACES: { title: string; role: string; href?: string; status: string 
   { title: "AI-retrieval", role: "Machine-readable surfaces (llms.txt · knowledge.json) your own agent reads to work this project — model-free, pure reads.", href: "/llms.txt", status: "live" },
   { title: "Mindmap", role: "A picture of the AI's brain for this project: the whole-codebase knowledge graph, drawn for the human. Machine twin at /map.json.", href: "/map", status: "live" },
 ];
+// Artifacts (piece 11e) is a real surface (config.surfaces.artifacts), unlike the two above which
+// have no off-switch of their own — so its href is gated the same way the nav gates it (below), and
+// the entry is dropped entirely when the surface is off rather than shown disabled.
+function aiSurfaceTeasers(surfaces: PantrySurfaces): { title: string; role: string; href?: string; status: string }[] {
+  return [
+    ...AI_SURFACES,
+    ...(surfaces.artifacts
+      ? [{ title: "Artifacts", role: "Run evidence — screenshots, audit reports, diffs — served read-only. Machine twin at /artifacts.json.", href: "/artifacts", status: "live" }]
+      : []),
+  ];
+}
 function homeBody(config: ResolvedPantryConfig, surfaces: PantrySurfaces): string {
-  const teasers = AI_SURFACES.map((t) => {
+  const teasers = aiSurfaceTeasers(surfaces).map((t) => {
     const inner = `<h3 class="card__title">${escapeHtml(t.title)}</h3>
     <p class="pantry-member__role">${escapeHtml(t.role)}</p>
     <span class="pantry-member__status">${escapeHtml(t.status)}</span>`;
@@ -413,6 +426,129 @@ ${resolvedBanner}
 <script src="/pantry-decisions.js" defer></script>`;
 }
 
+// /artifacts (piece 11e sub-unit 1) — run evidence: screenshots, audit reports, diffs a run
+// deposited. Static server-rendered (no client script, unlike /decisions and /map); the payload is
+// the machine twin at /artifacts.json. An absent/empty dir degrades to guidance, never a crash —
+// same posture as every other absent-source surface.
+const KIND_LABEL: Record<ArtifactEntry["kind"], string> = {
+  image: "image", report: "report", diff: "diff", html: "html", other: "file",
+};
+
+function humanSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let n = bytes / 1024;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return `${n.toFixed(n < 10 ? 1 : 0)} ${units[i]}`;
+}
+
+// A short "how long ago" for the newest-first list — humans scan for "what just happened", not a
+// precise timestamp. Falls back to the ISO date once it's stale enough that "N days ago" stops helping.
+function relativeAge(iso: string, now: Date): string {
+  const then = new Date(iso);
+  const ms = now.getTime() - then.getTime();
+  if (!Number.isFinite(ms) || ms < 0) return then.toISOString().slice(0, 10);
+  const min = Math.floor(ms / 60_000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  return then.toISOString().slice(0, 10);
+}
+
+function artifactCard(a: ArtifactEntry, now: Date): string {
+  const badge = `<span class="pantry-decision-badge pantry-artifact-badge" data-kind="${escapeHtml(a.kind)}">${escapeHtml(KIND_LABEL[a.kind])}</span>`;
+  return `<a class="card pantry-member pantry-artifact-card" data-pad="sm" href="/artifacts/raw/${a.relPath.split("/").map(encodeURIComponent).join("/")}">
+    <h3 class="card__title">${escapeHtml(a.name)} ${badge}</h3>
+    <p class="pantry-member__role">${escapeHtml(a.relPath)}</p>
+    <span class="pantry-member__status">${escapeHtml(humanSize(a.size))} · ${escapeHtml(relativeAge(a.mtime, now))}</span>
+  </a>`;
+}
+
+function artifactsIndexBody(payload: ArtifactsPayload): string {
+  const header = `<header>
+  <h1 class="proof-masthead">Artifacts</h1>
+  <p class="proof-lede">Run evidence for ${escapeHtml(payload.project)} — screenshots, audit reports, diffs a run deposited, served read-only. PANTRY runs no model and writes nothing here. Machine twin at <a href="/artifacts.json">/artifacts.json</a>.</p>
+</header>`;
+  if (!payload.available || payload.artifacts.length === 0) {
+    return `${header}
+<div class="card pantry-map-empty" data-pad="md">
+  <h2 class="card__title">No artifacts yet</h2>
+  <p class="pantry-member__role">Drop run evidence here and it shows up as cards:</p>
+  <pre class="pantry-map-cmd"><code>${escapeHtml(payload.dir)}/&lt;file&gt;
+${escapeHtml(payload.dir)}/&lt;run-id&gt;/&lt;file&gt;   # per-run subfolders are walked too</code></pre>
+  <p class="pantry-member__role">Screenshots, audit reports, diffs — anything a run writes to prove what it did.</p>
+</div>`;
+  }
+  const now = new Date();
+  return `${header}
+<section class="pantry-artifacts">
+  <h2 class="pantry-section-title">${payload.count} artifact${payload.count === 1 ? "" : "s"}</h2>
+  <div class="card-grid pantry-members">${payload.artifacts.map((a) => artifactCard(a, now)).join("\n")}</div>
+</section>`;
+}
+
+// The Content-Type served for a raw artifact — the same extension table `classifyArtifact` sorts
+// on, plus the handful of exact types worth being precise about (an `other` kind still deserves the
+// right MIME when it's a knowable extension; only truly unknown extensions fall to octet-stream).
+const RAW_CONTENT_TYPE: Record<string, string> = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+  ".webp": "image/webp", ".svg": "image/svg+xml", ".avif": "image/avif",
+  ".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
+  ".diff": "text/plain; charset=utf-8", ".patch": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8", ".txt": "text/plain; charset=utf-8",
+  ".json": "application/json; charset=utf-8", ".log": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8", ".pdf": "application/pdf",
+};
+function rawContentType(name: string): string {
+  const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
+  return RAW_CONTENT_TYPE[ext] ?? "application/octet-stream";
+}
+
+// Resolve a requested artifact path safely against the absolute artifactsDir and serve its bytes.
+// SECURITY: `reqPath` is attacker-controlled (it's the URL path segment after /artifacts/raw/, already
+// URL-decoded by the caller) — it can legitimately contain `../../etc/passwd`, an absolute path, or a
+// segment that resolves through a symlink to somewhere outside artifactsDir. `join` alone does NOT
+// stop `..` (it normalises the string but happily walks above the base), so this resolves the joined
+// path to its real, symlink-expanded form and then checks it is still (a) exactly artifactsDir's real
+// path (only possible if reqPath is empty) or (b) a real descendant of it — i.e. starts with the real
+// artifactsDir plus a path separator. Anything else — traversal, an absolute reqPath, or a symlink
+// that escapes the dir — returns 404 without ever opening the file. The file must also actually exist
+// (not just resolve validly) before we treat it as in-bounds, so a nonexistent path can't be probed.
+async function serveArtifactRaw(artifactsDir: string, reqPath: string): Promise<Response> {
+  const joined = resolve(artifactsDir, `.${sep}${reqPath}`);
+  if (!existsSync(joined)) return new Response("Not found", { status: 404 });
+  let realBase: string;
+  let realTarget: string;
+  try {
+    realBase = realpathSync(artifactsDir);
+    realTarget = realpathSync(joined);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+  const inBounds = realTarget === realBase || realTarget.startsWith(realBase + sep);
+  if (!inBounds) return new Response("Not found", { status: 404 });
+  let st;
+  try {
+    st = statSync(realTarget);
+  } catch {
+    return new Response("Not found", { status: 404 });
+  }
+  if (!st.isFile()) return new Response("Not found", { status: 404 }); // no directory listings
+  const contentType = rawContentType(basename(realTarget));
+  const headers: Record<string, string> = { "Content-Type": contentType };
+  // A served HTML artifact must not be able to script the cockpit origin (it's arbitrary run output,
+  // not PANTRY's own content) — sandbox it and stop MIME-sniffing from upgrading anything else to HTML.
+  if (contentType.startsWith("text/html")) {
+    headers["Content-Security-Policy"] = "sandbox";
+    headers["X-Content-Type-Options"] = "nosniff";
+  }
+  return new Response(Bun.file(realTarget), { headers });
+}
+
 export interface PantryOptions {
   /** the HOST project's plans folder (absolute or cwd-relative) — back-compat shorthand */
   plansDir: string;
@@ -425,7 +561,8 @@ export interface PantryOptions {
 const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   projectName: basename(dirname(plansDir)) || "project",
   plansDir, docsDirs: [], graphPath: null, decisionsDir: join(plansDir, "decisions"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true },
+  artifactsDir: join(dirname(plansDir), "artifacts"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true },
 });
 
 export function createPantryHandler(opts: PantryOptions) {
@@ -533,6 +670,20 @@ export function createPantryHandler(opts: PantryOptions) {
       const d = payload.decisions.find((x) => x.id === id);
       if (d) return html(page(d.title, decisionDetailBody(d)));
       return new Response("Not found", { status: 404 });
+    }
+
+    // --- run artifacts (piece 11e sub-unit 1): human /artifacts, machine twin /artifacts.json, raw
+    // bytes at /artifacts/raw/<relPath>. Same model (buildArtifactsPayload over the host's artifacts
+    // dir) backs both views. Read-only + model-free, like every surface; /raw is the one route here
+    // that touches the filesystem beyond a directory read, so its path handling is the load-bearing
+    // security boundary (see serveArtifactRaw above) — never trust the URL path uncontained. ---
+    if (surfaces.artifacts && path === "/artifacts.json")
+      return Response.json(await buildArtifactsPayload(config, new Date().toISOString()));
+    if (surfaces.artifacts && path === "/artifacts")
+      return html(page("Artifacts", artifactsIndexBody(await buildArtifactsPayload(config, new Date().toISOString()))));
+    if (surfaces.artifacts && path.startsWith("/artifacts/raw/")) {
+      const reqPath = decodeURIComponent(path.slice("/artifacts/raw/".length));
+      return serveArtifactRaw(config.artifactsDir, reqPath);
     }
 
     // --- landings PANTRY owns ---

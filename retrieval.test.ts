@@ -13,8 +13,8 @@ const EXAMPLE = join(import.meta.dir, "..", "proof", "example");
 const AT = "2026-07-10T00:00:00.000Z";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
-  projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, decisionsDir: join(EXAMPLE, "decisions"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, ...surfaces },
+  projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, decisionsDir: join(EXAMPLE, "decisions"), artifactsDir: join(EXAMPLE, "artifacts"),
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, ...surfaces },
 });
 
 // A ContentSource-backed collection with a fixed slug list (one nonconforming, to prove filtering).
