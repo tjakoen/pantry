@@ -19,7 +19,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   graphPath: null,
   decisionsDir: join(EXAMPLE, "decisions"),
   artifactsDir: join(EXAMPLE, "artifacts"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, ...surfaces },
 });
 
 const get = async (handler: (r: Request) => Promise<Response>, path: string) =>

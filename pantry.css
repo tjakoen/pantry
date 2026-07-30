@@ -267,3 +267,16 @@
   color: var(--ink); border-color: color-mix(in srgb, var(--pantry-map-repo-3, var(--ink)) 50%, transparent);
   background: color-mix(in srgb, var(--pantry-map-repo-3, var(--ink)) 10%, transparent);
 }
+
+/* ── the retrospective timeline (piece 11e sub-unit 3) ──────────────────────
+   The SVG itself carries its OWN palette per FIGURES (hardcoded on its root, never themed from here) —
+   only the surrounding page chrome (the figure frame, the audit-marker list) is styled below. */
+.pantry-timeline {
+  margin: var(--space-6, 1.5rem) 0 var(--space-8, 2rem);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+  padding: var(--space-4, 1rem); background: transparent;
+}
+.pantry-timeline svg { display: block; margin: 0 auto; }
+.pantry-timeline-audit-list { list-style: none; margin: var(--space-2, 0.5rem) 0; padding: 0; }
+.pantry-timeline-audit-list li { margin: 0.3em 0; font-size: var(--text-sm); }
+.pantry-timeline-audit-list code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink); }

@@ -67,7 +67,12 @@ async function collectionPages(c: MillCollection): Promise<KnowledgePage[]> {
 
 // The non-doc surfaces this install mounts, gated by the resolved config (same gates app.ts applies
 // to the routes + nav). The board is the front door; the rest are the demoted-but-mounted surfaces.
-function surfacesOf(config: ResolvedPantryConfig, openDecisions: number, artifactCount: number): KnowledgeSurface[] {
+function surfacesOf(
+  config: ResolvedPantryConfig,
+  openDecisions: number,
+  artifactCount: number,
+  timelinePlanCount: number,
+): KnowledgeSurface[] {
   const { surfaces } = config;
   return [
     surfaces.plans && { route: "/plans", title: "Plan board", description: "The host project's plans and their state (PROOF). Machine index at /plans/plans.json." },
@@ -79,6 +84,11 @@ function surfacesOf(config: ResolvedPantryConfig, openDecisions: number, artifac
     // Listed only when the dir actually holds something — an empty artifacts dir isn't worth pointing
     // an agent at, same rule as decisions + the mindmap.
     surfaces.artifacts && artifactCount > 0 && { route: "/artifacts", title: "Artifacts", description: `${artifactCount} run artifact(s) — screenshots, audit reports, diffs — deposited by this project's own tooling, served read-only. Machine twin at /artifacts.json.` },
+    // The retrospective timeline — plan bars from git-derived dates, depends arrows, commit density,
+    // audit markers. Listed only when there is at least one plan to draw (same "don't point an agent
+    // at an empty surface" rule as decisions/artifacts above); it needs no git-repo check here since an
+    // available:false payload (no git) is itself informative, but an empty PLAN list never is.
+    surfaces.timeline && timelinePlanCount > 0 && { route: "/timeline", title: "Timeline", description: "The project's own retrospective history — plan bars from git-derived status-transition dates, dependency arrows, commit density, and audit-report markers. No forecast, git-derived only. Machine twin at /timeline.json." },
     // The mindmap is listed for the machine only when the host actually generated a graphify-out —
     // otherwise /map.json is an available:false placeholder not worth pointing an agent at.
     config.graphPath && { route: "/map", title: "Mindmap", description: "The whole-codebase knowledge graph (graphify's AST + document graph). Machine projection at /map.json." },
@@ -119,11 +129,17 @@ export async function buildKnowledge(
     ? (await buildArtifactsPayload(config, generatedAt)).count
     : 0;
 
+  // The plan count that gates whether /timeline is worth listing (an empty board has nothing to draw).
+  // A plain loadPlans, not buildTimelinePayload — the count is all this needs, and it stays off git.
+  const timelinePlanCount = config.surfaces.timeline
+    ? (await loadPlans(config.plansDir, async () => null)).plans.length
+    : 0;
+
   return {
     project: config.projectName,
     generatedAt,
     runsModel: false,
-    surfaces: surfacesOf(config, openDecisions, artifactCount),
+    surfaces: surfacesOf(config, openDecisions, artifactCount, timelinePlanCount),
     docs,
     plans,
     openDecisions,

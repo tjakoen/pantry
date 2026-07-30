@@ -29,7 +29,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   graphPath: null,
   decisionsDir: join(dir, "plans", "decisions"),
   artifactsDir: join(dir, "artifacts"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
 });
 
 const runDoctorHere = () => runDoctor({ cwd: dir, config: doctorCfg(), runDrift: false });

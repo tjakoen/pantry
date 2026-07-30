@@ -21,6 +21,10 @@ export interface PantrySurfaces {
   /** run evidence (/artifacts) — screenshots, audit reports, diffs a run deposits, served read-only.
    *  Model-free, like every surface. Default on. */
   artifacts: boolean;
+  /** the retrospective project timeline (/timeline) — plan bars from git-derived status-transition
+   *  dates, depends arrows, commit density, dated audit markers. Reads git + plans/ + report mtimes;
+   *  no new tracking, no model. Default on. */
+  timeline: boolean;
 }
 
 /** What a host project may put in `pantry.config.(ts|json)`. Every field is optional. */
@@ -73,7 +77,7 @@ export interface ResolvedPantryConfig {
   standardsSource?: "canon";
 }
 
-const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true };
+const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 
