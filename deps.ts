@@ -11,7 +11,7 @@
 // the fs edge (`resolveLayerVersions`, `readPins`) is isolated so the logic never needs a real tree.
 //
 // "Available" here is the layer source ON DISK — the working copy in the sibling monorepo, not the
-// GitHub Packages registry. In this dev layout that IS the practical drift ("my pin lags the grain I
+// npm registry. In this dev layout that IS the practical drift ("my pin lags the grain I
 // have checked out but haven't re-pinned"). A registry/tag-based resolver could swap in behind the
 // same `checkDeps` core without touching the logic; disk is the network-free default.
 //

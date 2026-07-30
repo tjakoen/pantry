@@ -38,11 +38,15 @@ bun cli.ts init    # scaffold plans/ + pantry.config.json (host-side)
   already live. It never copies, moves, or edits anything the host owns.
 - **Never edit the bundled framework docs.** They render from the installed packages — the layer
   repos own them.
+- **No committed `.npmrc`, ever.** The `@tjakoen` scope resolves from the public npm registry by
+  default (moved off GitHub Packages 2026-07-30, which demanded a token even for public packages). A
+  committed scope mapping would outrank `publishConfig` and `--registry` and drag that back.
 - **Plans are the source of truth; the board is a read-only projection** (PROOF's rule, inherited).
 - **Package-resolved, always.** Assets/docs/PLANs resolve via `import.meta.resolve('@tjakoen/…')`,
   never relative sibling paths. The four layers (`@tjakoen/batch`, `@tjakoen/grain`, `@tjakoen/mill`,
-  `@tjakoen/proof`) are caret-range npm deps from GitHub Packages (`bun update` picks up new
-  releases); only `tjakoen.github.io` is a sha-pinned git dep (`deps:refresh` re-pins it).
+  `@tjakoen/proof`) are caret-range deps from the public npm registry, installable with no token
+  (`bun update` picks up new releases); only `tjakoen.github.io` is a sha-pinned git dep
+  (`deps:refresh` re-pins it).
 - **A missing package disables its surface — visibly, never a crash.**
 - **Tests are part of the work.** `tsc` + `bun test` green before "done".
 
