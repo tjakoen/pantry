@@ -315,6 +315,7 @@ describe("the home heartbeat row (piece 11e sub-unit 2)", () => {
   const stubReport = (overrides: Partial<Record<string, { severity: "error" | "warn" | "info"; ok: boolean; detail: string }>> = {}): DoctorReport => {
     const base: Record<string, { label: string; severity: "error" | "warn" | "info"; ok: boolean; detail: string }> = {
       "audit-freshness": { label: "audit freshness", severity: "warn", ok: true, detail: "last audit 3 days old (AUDIT-2026-07-26.md)" },
+      "deps-drift": { label: "layer pins current", severity: "warn", ok: true, detail: "3 pins, none behind" },
       "doc-drift": { label: "doc links resolve", severity: "error", ok: true, detail: "12 pages, 0 problems" },
       "graphify-freshness": { label: "graphify freshness", severity: "warn", ok: true, detail: "graph 5 days old" },
       // a non-heartbeat check that must NOT appear in the strip
@@ -324,18 +325,22 @@ describe("the home heartbeat row (piece 11e sub-unit 2)", () => {
     return { ok: true, checks };
   };
 
-  test("renders exactly the three heartbeat pills, in order, and drops non-heartbeat checks", async () => {
+  test("renders exactly the four heartbeat pills, in order, and drops non-heartbeat checks", async () => {
     const html = homeBody(configWith(), configWith().surfaces, stubReport());
     expect(html).toContain("pantry-heartbeat");
-    // the three labels, in the fixed order
+    // the four labels, in the fixed order (deps-drift — the control-plane layer-pin surface — sits
+    // right after the audit pill, ahead of the doc/graph freshness checks)
     const iAudit = html.indexOf("audit freshness");
+    const iPins = html.indexOf("layer pins current");
     const iDrift = html.indexOf("doc links resolve");
     const iGraph = html.indexOf("graphify freshness");
     expect(iAudit).toBeGreaterThan(-1);
-    expect(iDrift).toBeGreaterThan(iAudit);
+    expect(iPins).toBeGreaterThan(iAudit);
+    expect(iDrift).toBeGreaterThan(iPins);
     expect(iGraph).toBeGreaterThan(iDrift);
     // doctor's own detail strings are surfaced verbatim (no re-derivation)
     expect(html).toContain("last audit 3 days old (AUDIT-2026-07-26.md)");
+    expect(html).toContain("3 pins, none behind");
     expect(html).toContain("graph 5 days old");
     // a non-heartbeat check does not leak into the strip
     expect(html).not.toContain("CLAUDE.md present");

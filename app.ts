@@ -204,9 +204,12 @@ function aiSurfaceTeasers(surfaces: PantrySurfaces): { title: string; role: stri
 // pill per staleness check doctor already computes — model-free (doctor runs no model; every check is
 // a stat/age compare). The tone maps the check's outcome onto the existing status-badge palette:
 // ok → ok, else the severity (error → danger, warn → due, info → muted). Reuses doctor's own detail
-// strings ("last audit 3 days old (…)", "12 pages, 0 problems", "graph 5 days old"), so the home never
-// forecasts or re-derives anything — it just surfaces what doctor found. Absent report → no strip.
-const HEARTBEAT_IDS = ["audit-freshness", "doc-drift", "graphify-freshness"] as const;
+// strings ("last audit 3 days old (…)", "3 pins, none behind", "12 pages, 0 problems", "graph 5 days
+// old"), so the home never forecasts or re-derives anything — it just surfaces what doctor found. The
+// deps-drift pill is the umbrella control-plane surface (are the layer pins current vs the sibling
+// checkouts?); it degrades to a quiet info in an ordinary repo with no @tjakoen/* pins. Absent report
+// → no strip.
+const HEARTBEAT_IDS = ["audit-freshness", "deps-drift", "doc-drift", "graphify-freshness"] as const;
 function heartbeatTone(c: DoctorCheck): "ok" | "danger" | "due" | "muted" {
   if (c.ok) return "ok";
   if (c.severity === "error") return "danger";

@@ -350,7 +350,9 @@ reports, diffs) that PANTRY serves and decision files / run reports link into; t
 latest-audit + drift-freshness row next to the board; `/timeline` is the retrospective project timeline
 (plan bars from git-derived status-transition dates, `depends` arrows, commit-density, audit markers —
 all derived from git + plans + dated reports, no new tracking, no model; a **dataviz** build). Detail
-stays here as these are built.
+stays here as these are built. **Built:** `artifacts/` + `/timeline`; the home freshness strip (sub-unit
+2) now carries the `deps-drift` pill too, so the control-plane layer-pin drift surfaces on the front door
+next to audit / doc / graph freshness.
 
 ## Non-goals
 
