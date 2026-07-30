@@ -9,7 +9,7 @@
 > *dev side-tool* — the front door becomes the project's own board, the stack pitch moves to
 > `/about`, and AI-retrieval + the whole-codebase mindmap become the headline "working with AI"
 > features. See §The reshape.**
-> Canonical plan: this file. Cross-layer sequencing is Track F in [`../ROADMAP.md`](../ROADMAP.md).
+> Canonical plan: this file. Cross-layer sequencing is Track F in [ROADMAP.md](https://github.com/tjakoen/bread/blob/main/ROADMAP.md).
 
 ## What PANTRY is for (the purpose)
 
