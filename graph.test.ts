@@ -14,6 +14,9 @@ import {
   createGraphifyRunner,
   formatGraphMergeReport,
   type GraphifyRunner,
+  affectedBy,
+  scopeRadius,
+  formatScopeRadius,
   type GraphifyRunResult,
 } from "./graph.ts";
 
@@ -225,5 +228,152 @@ describe("formatGraphMergeReport", () => {
     });
     expect(out).toContain("found 0 graphs under /parent — need at least 2 to merge");
     expect(out.trim().endsWith("FAIL")).toBe(true);
+  });
+});
+
+// ── Blast radius ─────────────────────────────────────────────────────────────
+//
+// The traversal is a reimplementation of `graphify affected`, so the bar is that it agrees with the
+// real binary. That agreement was established empirically before these tests existed (8 seeds in
+// pantry's own graph, including the 22-file config.ts case, all exact matches). What is pinned HERE is
+// the behaviour that agreement rests on, against hand-built graphs a reader can hold in their head.
+describe("affectedBy — the reverse walk `graphify affected` performs", () => {
+  // a -> b -> c, plus a `contains` edge that must never be followed.
+  const graph = {
+    nodes: [
+      { id: "a", label: "a.ts" },
+      { id: "b", label: "b.ts" },
+      { id: "c", label: "c.ts" },
+      { id: "sym", label: "helper()" },
+    ],
+    links: [
+      { relation: "imports_from", source: "b", target: "a" }, // b imports a
+      { relation: "imports_from", source: "c", target: "b" }, // c imports b
+      { relation: "contains", source: "a", target: "sym" },   // a.ts contains helper()
+    ],
+  };
+
+  test("returns what depends on the seed, not what the seed depends on", () => {
+    expect(affectedBy(graph, ["a.ts"], 1)).toEqual(["b.ts"]);
+    expect(affectedBy(graph, ["c.ts"], 1)).toEqual([]); // nothing imports c
+  });
+
+  test("depth controls how far the impact is followed", () => {
+    expect(affectedBy(graph, ["a.ts"], 1)).toEqual(["b.ts"]);
+    expect(affectedBy(graph, ["a.ts"], 2)).toEqual(["b.ts", "c.ts"]);
+  });
+
+  test("`contains` is never traversed — it is location, not impact", () => {
+    // helper() lives IN a.ts. Walking `contains` in reverse would report a.ts as affected by its own
+    // symbol, which is how a radius quietly fills up with noise.
+    expect(affectedBy(graph, ["helper()"], 2)).toEqual([]);
+  });
+
+  test("the seed is never part of its own radius", () => {
+    expect(affectedBy(graph, ["a.ts"], 5)).not.toContain("a.ts");
+  });
+
+  test("an unknown seed contributes nothing rather than throwing", () => {
+    expect(affectedBy(graph, ["nope.ts"], 2)).toEqual([]);
+    expect(affectedBy(graph, ["nope.ts", "a.ts"], 1)).toEqual(["b.ts"]);
+  });
+
+  test("a cycle terminates instead of looping forever", () => {
+    const cyclic = {
+      nodes: [{ id: "x", label: "x.ts" }, { id: "y", label: "y.ts" }],
+      links: [
+        { relation: "imports", source: "x", target: "y" },
+        { relation: "imports", source: "y", target: "x" },
+      ],
+    };
+    expect(affectedBy(cyclic, ["x.ts"], 10)).toEqual(["y.ts"]);
+  });
+
+  test("a graph with no links, or a malformed one, yields an empty radius", () => {
+    expect(affectedBy({ nodes: [{ id: "a", label: "a.ts" }] }, ["a.ts"], 2)).toEqual([]);
+    expect(affectedBy({}, ["a.ts"], 2)).toEqual([]);
+  });
+});
+
+describe("scopeRadius — the pre-flight query behind `pantry scope`", () => {
+  const writeLocalGraph = async (nodes: unknown[], links: unknown[]) => {
+    const p = join(root, "graph.json");
+    await writeFile(p, JSON.stringify({ nodes, links }));
+    return p;
+  };
+
+  test("a seed given as a path matches the graph's bare filename label", async () => {
+    const p = await writeLocalGraph(
+      [{ id: "a", label: "a.ts" }, { id: "b", label: "b.ts" }],
+      [{ relation: "imports_from", source: "b", target: "a" }],
+    );
+    const r = await scopeRadius(p, ["pantry/a.ts"]);
+    expect(r.ok).toBe(true);
+    expect(r.known).toEqual(["pantry/a.ts"]);
+    expect(r.radius).toEqual(["b.ts"]);
+  });
+
+  test("a seed the graph does not carry is REPORTED, not silently dropped", async () => {
+    // The failure this guards: an unknown seed contributes no radius, so a typo produces a
+    // reassuringly small answer. Saying which seeds landed is what makes the number readable.
+    const p = await writeLocalGraph([{ id: "a", label: "a.ts" }], []);
+    const r = await scopeRadius(p, ["a.ts", "typo.ts"]);
+    expect(r.known).toEqual(["a.ts"]);
+    expect(formatScopeRadius(r)).toContain("not in the graph, contributing no radius: typo.ts");
+  });
+
+  test("no graph and no seeds are both clean failures, never throws", async () => {
+    const noGraph = await scopeRadius(null, ["a.ts"]);
+    expect(noGraph.ok).toBe(false);
+    expect(formatScopeRadius(noGraph)).toContain("no graph");
+
+    const p = await writeLocalGraph([{ id: "a", label: "a.ts" }], []);
+    const noSeeds = await scopeRadius(p, []);
+    expect(noSeeds.ok).toBe(false);
+    expect(formatScopeRadius(noSeeds)).toContain("no files given");
+  });
+
+  test("an empty radius says so rather than printing an empty list", async () => {
+    const p = await writeLocalGraph([{ id: "a", label: "a.ts" }], []);
+    expect(formatScopeRadius(await scopeRadius(p, ["a.ts"]))).toContain("nothing depends on these");
+  });
+});
+
+describe("scopeRadius — label collisions are reported, not inherited", () => {
+  // Found by review against pantry's own graph: `isoDay()` is both app.ts:L541 and timeline.ts:L103,
+  // and 19 labels there collide. Seeding one of them unions two unrelated radii, which is the only
+  // defensible behaviour when we cannot know which was meant — but it used to be silent, so the answer
+  // looked precise while being a merge of two different things.
+  const collidingGraph = {
+    nodes: [
+      { id: "a_iso", label: "isoDay()", source_file: "a.ts", source_location: "L10" },
+      { id: "b_iso", label: "isoDay()", source_file: "b.ts", source_location: "L20" },
+      { id: "a_dep", label: "aDep.ts", source_file: "aDep.ts", source_location: "L1" },
+      { id: "b_dep", label: "bDep.ts", source_file: "bDep.ts", source_location: "L1" },
+      { id: "solo", label: "solo.ts", source_file: "solo.ts", source_location: "L1" },
+    ],
+    links: [
+      { relation: "calls", source: "a_dep", target: "a_iso" },
+      { relation: "calls", source: "b_dep", target: "b_iso" },
+    ],
+  };
+
+  test("a colliding seed names every location and says the radius unions them", async () => {
+    const p = join(root, "collide.json");
+    await writeFile(p, JSON.stringify(collidingGraph));
+    const r = await scopeRadius(p, ["isoDay()"]);
+    expect(r.ambiguous).toEqual([{ seed: "isoDay()", locations: ["a.ts:L10", "b.ts:L20"] }]);
+    // both sides' dependents are present — the union is real, which is exactly why it must be said
+    expect(r.radius).toEqual(["aDep.ts", "bDep.ts"]);
+    const out = formatScopeRadius(r);
+    expect(out).toContain("AMBIGUOUS isoDay() matches 2 nodes (a.ts:L10, b.ts:L20)");
+  });
+
+  test("an unambiguous seed stays quiet", async () => {
+    const p = join(root, "collide.json");
+    await writeFile(p, JSON.stringify(collidingGraph));
+    const r = await scopeRadius(p, ["solo.ts"]);
+    expect(r.ambiguous).toEqual([]);
+    expect(formatScopeRadius(r)).not.toContain("AMBIGUOUS");
   });
 });

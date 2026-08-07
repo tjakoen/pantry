@@ -20,6 +20,7 @@ import { checkPantryDrift, checkPantrySymbolDrift, usesMergedGraph } from "./dri
 import { checkPantryDeps } from "./deps.ts";
 import { listSkills } from "./skills.ts";
 import { buildRunsPayload } from "./runs.ts";
+import { affectedBy, loadGraph } from "./graph.ts";
 import type { GitRunner } from "./timeline.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
@@ -580,6 +581,61 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     }
   } catch (err) {
     checks.push({ id: "run-report-evidence", severity: "info", ok: true, label: "run ledger", detail: `run-ledger check skipped: ${err instanceof Error ? err.message : String(err)}` });
+  }
+
+  // ── Scope growth, diagnosed rather than just reported (S4) ───────────────
+  //
+  // The run ledger above already says a run grew past its declared scope. This says whether the graph
+  // SAW IT COMING, which is the part a session can act on. For each report that grew, the growth is
+  // split against the blast radius of what it declared: files the graph already connected to the
+  // declared scope were predictable, and the session could have widened its scope up front by asking.
+  // Files outside the radius are the interesting ones, because the run reached somewhere structurally
+  // unconnected.
+  //
+  // Measured over all three run reports in pantry before this was written: 11 of 11 growth files were
+  // inside the radius, 0 surprising. So on every piece of evidence we have, scope growth here has been
+  // predictable and the answer was one query away. Info severity: the run ledger already carries the
+  // warn, and saying the same thing twice at warn would just teach people to skim both.
+  //
+  // Deliberately NOT the check the plan first specified ("flag a plan whose declared touches are
+  // narrower than the blast radius"). Measured, that rule demands the whole repo: the radius of a
+  // single config file is 22 of pantry's files, of which 12 went untouched. Requiring scope to cover
+  // the radius would make every declaration meaningless, so it was rejected on the numbers.
+  if (runSymbols) {
+    try {
+      // This repo's OWN graph, deliberately not `config.graphPath`. A run report's scope names files in
+      // THIS repo, and the merged estate graph relabels and cross-links them, so it silently reports
+      // local files as "outside any blast radius" — which is exactly what it did on the first run here.
+      const graph = await loadGraph(join(config.graphDir, "graph.json"));
+      const r = await buildRunsPayload(config, now.toISOString());
+      const grew = r.available ? r.runs.filter((x) => x.outOfScope.length > 0) : [];
+      if (!graph) {
+        checks.push({ id: "scope-radius", severity: "info", ok: true, label: "scope growth vs the graph", detail: "no graph — run graphify update ." });
+      } else if (grew.length === 0) {
+        checks.push({ id: "scope-radius", severity: "info", ok: true, label: "scope growth vs the graph", detail: `${r.count ?? 0} run reports, none grew past its declared scope` });
+      } else {
+        let predictable = 0;
+        const surprising = new Set<string>(); // deduped: the same file often grows two reports
+        for (const run of grew) {
+          const radius = new Set(affectedBy(graph, run.scope.map((s) => basename(s))));
+          for (const f of run.outOfScope) {
+            if (radius.has(f) || radius.has(basename(f))) predictable++;
+            else surprising.add(f);
+          }
+        }
+        checks.push({
+          id: "scope-radius",
+          severity: "info",
+          ok: true,
+          label: "scope growth vs the graph",
+          detail: surprising.size === 0
+            ? `${predictable} growth files across ${grew.length} report${grew.length === 1 ? "" : "s"}, all inside the declared scope's blast radius — ask the graph before declaring`
+            : `${predictable} predictable, ${surprising.size} outside any blast radius: ${[...surprising].slice(0, 4).join(", ")}`,
+        });
+      }
+    } catch (err) {
+      checks.push({ id: "scope-radius", severity: "info", ok: true, label: "scope growth vs the graph", detail: `skipped: ${err instanceof Error ? err.message : String(err)}` });
+    }
   }
 
   const ok = !checks.some((c) => !c.ok && c.severity === "error");

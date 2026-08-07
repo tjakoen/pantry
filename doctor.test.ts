@@ -458,6 +458,52 @@ describe("pantry doctor — staleness (warn tier, surfaces but never fails CI)",
     expect(c.detail).toContain("predates");
   });
 
+  // The run ledger says a run grew past its scope; this says whether the graph saw it coming, which is
+  // the actionable half. It reads the repo's OWN graph.json deliberately — the merged estate graph
+  // relabels local files and reported every one of them as "outside any blast radius" on the first
+  // live run, so the graph choice is pinned here rather than left to a comment.
+  const runWithGrowth = async (graph: { nodes: unknown[]; links: unknown[] }) => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir, { recursive: true });
+    await writeFile(join(graphDir, "graph.json"), JSON.stringify(graph));
+    const runsDir = join(dir, "artifacts", "runs");
+    await mkdir(runsDir, { recursive: true });
+    await writeFile(
+      join(runsDir, "2026-01-01-grew.md"),
+      ["---", "title: t", "date: 2026-01-01", "scope:", "  - a.ts", "touched:", "  - a.ts", "  - b.ts", "---", "## Gate output", "```", "ok", "```", "## What was not done", "## What needs human eyes"].join("\n"),
+    );
+    return run();
+  };
+
+  test("growth the graph already connected reads as predictable", async () => {
+    const r = await runWithGrowth({
+      nodes: [{ id: "a", label: "a.ts" }, { id: "b", label: "b.ts" }],
+      links: [{ relation: "imports_from", source: "b", target: "a" }], // b.ts depends on a.ts
+    });
+    const c = byId(r, "scope-radius");
+    expect(c.severity).toBe("info");
+    expect(c.detail).toContain("all inside the declared scope's blast radius");
+  });
+
+  test("growth the graph does NOT connect is called out as surprising", async () => {
+    const r = await runWithGrowth({
+      nodes: [{ id: "a", label: "a.ts" }, { id: "b", label: "b.ts" }],
+      links: [], // nothing links b.ts to a.ts
+    });
+    const c = byId(r, "scope-radius");
+    expect(c.detail).toContain("outside any blast radius");
+    expect(c.detail).toContain("b.ts");
+  });
+
+  test("no graph → the check says so instead of calling every file surprising", async () => {
+    await compliantKit();
+    const r = await run();
+    const c = byId(r, "scope-radius");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("no graph");
+  });
+
   test("a missing e2e suite warns", async () => {
     await compliantKit();
     await rm(join(dir, "e2e"), { recursive: true });

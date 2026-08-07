@@ -24,7 +24,164 @@
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, dirname, sep } from "node:path";
+import { join, dirname, sep, basename } from "node:path";
+
+// ── Blast radius ─────────────────────────────────────────────────────────────────────────────────
+//
+// What `graphify affected "X"` computes: a reverse walk from X over the dependency relations, i.e.
+// "who would feel it if X changed". We reimplement it over `graph.json` rather than shelling out,
+// for one reason that matters and one that is convenience. The reason that matters: doctor runs this
+// once per file per run report, and a subprocess each time is far too slow for something that fires at
+// every session start. The convenience: no spawn means no timeout, no PATH check, no hang risk, so
+// none of the `merge-graphs` safety machinery above has to be repeated here.
+//
+// `contains` is deliberately NOT traversed. It is the file-to-symbol containment edge, so following it
+// in reverse walks from a symbol up to its own file, which is not impact, it is location.
+const IMPACT_RELATIONS = new Set([
+  "calls", "indirect_call", "references", "imports", "imports_from",
+  "re_exports", "inherits", "extends", "implements", "uses", "mixes_in", "embeds",
+]);
+
+interface GraphLink { relation?: unknown; source?: unknown; target?: unknown }
+
+/**
+ * The labels of everything that would be affected by a change to `seeds`, walked `depth` levels back
+ * along the impact relations. Seeds are matched by node label (a filename like `drift.ts`, or a symbol)
+ * and are never included in the result. Unknown seeds contribute nothing rather than throwing — a run
+ * report naming a file the graph does not carry is a normal state, not an error.
+ */
+export function affectedBy(graph: { nodes?: unknown[]; links?: unknown[] }, seeds: string[], depth = 2): string[] {
+  const nodes = Array.isArray(graph.nodes) ? (graph.nodes as { id?: unknown; label?: unknown }[]) : [];
+  const links = Array.isArray(graph.links) ? (graph.links as GraphLink[]) : [];
+
+  const labelById = new Map<string, string>();
+  const idsByLabel = new Map<string, string[]>();
+  for (const n of nodes) {
+    if (typeof n.id !== "string" || typeof n.label !== "string") continue;
+    labelById.set(n.id, n.label);
+    const list = idsByLabel.get(n.label);
+    if (list) list.push(n.id);
+    else idsByLabel.set(n.label, [n.id]);
+  }
+
+  // Reverse adjacency: target -> the sources that depend on it.
+  const dependents = new Map<string, string[]>();
+  for (const l of links) {
+    if (typeof l.relation !== "string" || !IMPACT_RELATIONS.has(l.relation)) continue;
+    if (typeof l.source !== "string" || typeof l.target !== "string") continue;
+    const list = dependents.get(l.target);
+    if (list) list.push(l.source);
+    else dependents.set(l.target, [l.source]);
+  }
+
+  const seedIds = new Set(seeds.flatMap((s) => idsByLabel.get(s) ?? []));
+  const seen = new Set(seedIds);
+  let frontier = [...seedIds];
+  const out = new Set<string>();
+
+  for (let d = 0; d < depth && frontier.length; d++) {
+    const next: string[] = [];
+    for (const id of frontier) {
+      for (const dep of dependents.get(id) ?? []) {
+        if (seen.has(dep)) continue;
+        seen.add(dep);
+        next.push(dep);
+        const label = labelById.get(dep);
+        if (label && !seeds.includes(label)) out.add(label);
+      }
+    }
+    frontier = next;
+  }
+
+  return [...out].sort();
+}
+
+export interface ScopeRadiusReport {
+  ok: boolean;
+  seeds: string[];
+  /** the seeds the graph actually carries; a seed it does not know contributes no radius */
+  known: string[];
+  /** seeds whose label sits on more than one node, with where each one lives. The radius unions them,
+   *  which is the only defensible thing to do when we cannot know which was meant — but it has to be
+   *  SAID, or the answer looks precise when it is a merge of two unrelated things. */
+  ambiguous: { seed: string; locations: string[] }[];
+  radius: string[];
+  reason?: string;
+}
+
+/**
+ * The pre-flight half of the scope cap: what a change to `seeds` is likely to reach, asked BEFORE the
+ * work rather than audited after it. The run ledger already reports growth past a declared scope; this
+ * is the query that would have let the declaration be right in the first place.
+ *
+ * Takes an explicit graph path rather than reading `config.graphPath`, because the two graph-backed
+ * checks in this codebase want OPPOSITE artifacts and getting it wrong is silent. The symbol lint wants
+ * the WIDEST graph available (a portfolio doc may name any sibling repo's symbol, so the merged estate
+ * graph is what makes it usable). A blast radius wants the NARROWEST: a run report's scope names files
+ * in THIS repo, so feeding it the merged graph drags in sibling symbols that can never be touched here
+ * and mismatches the local file labels. Callers pass `<graphDir>/graph.json`.
+ */
+export async function scopeRadius(graphPath: string | null, seeds: string[], depth = 2): Promise<ScopeRadiusReport> {
+  const graph = await loadGraph(graphPath);
+  if (!graph) return { ok: false, seeds, known: [], ambiguous: [], radius: [], reason: "no graph — run graphify update ." };
+  if (seeds.length === 0) return { ok: false, seeds, known: [], ambiguous: [], radius: [], reason: "no files given — usage: pantry scope <file...>" };
+
+  // Where each label lives, not just whether it exists: a label can sit on several nodes (19 of them do
+  // in pantry alone — `isoDay()` is both app.ts:541 and timeline.ts:103), and a seed that matches two
+  // unrelated symbols unions two unrelated radii.
+  const locations = new Map<string, string[]>();
+  for (const n of graph.nodes as { label?: unknown; source_file?: unknown; source_location?: unknown }[]) {
+    if (typeof n.label !== "string") continue;
+    const where = typeof n.source_file === "string"
+      ? `${n.source_file}${typeof n.source_location === "string" ? `:${n.source_location}` : ""}`
+      : "unknown";
+    const list = locations.get(n.label);
+    if (list) list.push(where);
+    else locations.set(n.label, [where]);
+  }
+
+  // Accept a path and match on its basename: scope lists and command lines both carry `pantry/drift.ts`
+  // or `./drift.ts`, while the graph labels the node `drift.ts`.
+  const known = seeds.filter((s) => locations.has(s) || locations.has(basename(s)));
+  const resolved = known.map((s) => (locations.has(s) ? s : basename(s)));
+  const ambiguous = resolved
+    .map((s) => ({ seed: s, locations: locations.get(s) ?? [] }))
+    .filter((a) => a.locations.length > 1);
+  return { ok: true, seeds, known, ambiguous, radius: affectedBy(graph, resolved, depth) };
+}
+
+export function formatScopeRadius(report: ScopeRadiusReport): string {
+  if (!report.ok) return `${report.reason ?? "no radius"}\nFAIL`;
+  const unknown = report.seeds.filter((s) => !report.known.includes(s));
+  const lines = [`seeds (${report.known.length} known to the graph): ${report.known.join(", ") || "none"}`];
+  // Naming what the graph does not carry matters more than it looks: an unknown seed silently
+  // contributes nothing, so a radius that looks reassuringly small may just be a typo.
+  if (unknown.length) lines.push(`not in the graph, contributing no radius: ${unknown.join(", ")}`);
+  // Same reasoning as the line above: a radius that merges two same-named symbols looks precise and is
+  // not. Naming both locations lets the reader see the merge instead of inheriting it.
+  for (const a of report.ambiguous) {
+    lines.push(`AMBIGUOUS ${a.seed} matches ${a.locations.length} nodes (${a.locations.join(", ")}) — the radius below unions them`);
+  }
+  lines.push(
+    report.radius.length
+      ? `blast radius (${report.radius.length}): ${report.radius.join(", ")}`
+      : "blast radius: nothing depends on these",
+  );
+  lines.push("declare a scope that covers what you intend to touch, not the whole radius");
+  return lines.join("\n");
+}
+
+/** Parse a graph.json (or merged-graph.json) off disk. Null on absent/unparseable, so every caller
+ *  degrades to "no radius known" instead of throwing — same posture as drift.ts's graphSymbols. */
+export async function loadGraph(graphPath: string | null): Promise<{ nodes?: unknown[]; links?: unknown[] } | null> {
+  if (!graphPath) return null;
+  try {
+    const g = JSON.parse(await Bun.file(graphPath).text());
+    return Array.isArray(g?.nodes) ? g : null;
+  } catch {
+    return null;
+  }
+}
 
 /** One sibling repo whose graph is going into the merge. */
 export interface SiblingGraph {

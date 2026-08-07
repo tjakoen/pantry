@@ -14,6 +14,8 @@
 //   pantry graph merge [dir]    merge sibling repos' graphify-out/graph.json into <dir>/graphify-out/
 //                               merged-graph.json (never runs `graphify update` — explicit only, never
 //                               called by doctor; see graph.ts's header)
+//   pantry scope <file...>      what a change to these files is likely to reach, asked BEFORE the work
+//                               so the declared scope in a run report can be right the first time
 // Config + plans are read from the caller's cwd (the host); bundled assets + framework docs resolve
 // relative to the pantry module, so `bunx pantry` works from any project. See INSTALL.md.
 import { isAbsolute, join } from "node:path";
@@ -22,8 +24,9 @@ import { checkPantryDrift, formatDriftReport } from "./drift.ts";
 import { runDoctor, formatDoctorReport } from "./doctor.ts";
 import { checkPantryDeps, formatDepsReport } from "./deps.ts";
 import { runPantryInit } from "./init.ts";
+import { loadPantryConfig } from "./config.ts";
 import { syncSkills, listSkills, formatSkillsSync, formatSkillsList } from "./skills.ts";
-import { mergeGraphs, formatGraphMergeReport } from "./graph.ts";
+import { mergeGraphs, formatGraphMergeReport, scopeRadius, formatScopeRadius } from "./graph.ts";
 
 const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
 
@@ -109,6 +112,16 @@ async function main() {
     process.exit(1);
   }
 
+  if (cmd === "scope") {
+    // Every positional is a file, so this does NOT follow the `<cmd> [dir]` shape the others use.
+    const config = await loadPantryConfig(process.cwd());
+    // This repo's OWN graph, never the merged one — see scopeRadius's note on why the two graph-backed
+    // checks want opposite artifacts.
+    const report = await scopeRadius(join(config.graphDir, "graph.json"), rest);
+    console.log(formatScopeRadius(report));
+    process.exit(report.ok ? 0 : 1);
+  }
+
   if (cmd === "init") {
     const targetDir = abs(dir ?? ".");
     const result = await runPantryInit(targetDir, { force, kit });
@@ -118,7 +131,7 @@ async function main() {
     return;
   }
 
-  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|skills|graph|init> [dir] [--port N] [--force] [--kit]`);
+  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|skills|graph|scope|init> [dir] [--port N] [--force] [--kit]`);
   process.exit(1);
 }
 
