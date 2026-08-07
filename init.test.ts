@@ -27,6 +27,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   plansDir: join(dir, "plans"),
   docsDirs: [],
   graphPath: null,
+  graphDir: join(dir, "graphify-out"),
   decisionsDir: join(dir, "plans", "decisions"),
   artifactsDir: join(dir, "artifacts"),
   runsDir: join(dir, "artifacts", "runs"),

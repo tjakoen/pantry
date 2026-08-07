@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { runDoctor, formatDoctorReport, type DoctorReport } from "./doctor.ts";
+import type { GitRunner } from "./timeline.ts";
 
 const NOW = new Date("2026-07-26T00:00:00.000Z");
 
@@ -27,6 +28,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   plansDir: join(dir, "plans"),
   docsDirs: [],
   graphPath: null,
+  graphDir: join(dir, "graphify-out"),
   decisionsDir: join(dir, "plans", "decisions"),
   artifactsDir: join(dir, "artifacts"),
   runsDir: join(dir, "artifacts", "runs"),
@@ -228,6 +230,232 @@ describe("pantry doctor — staleness (warn tier, surfaces but never fails CI)",
     const r = await run({ graphPath: graph }, { graphMaxAgeDays: 30 });
     expect(byId(r, "graphify-freshness").ok).toBe(true);
     expect(byId(r, "graphify-freshness").detail).toContain("5 days old");
+  });
+
+  // GRAPH_REPORT.md's "Built from commit" line, compared against an injected gitRunner's HEAD — never
+  // real git, so these stay hermetic. The commit compare wins over the age check whenever both a report
+  // and a git HEAD resolve; two of the tests below cover the fallback for when either does not.
+  //
+  // The double dispatches on args[0] exactly the way the check calls git (`rev-parse HEAD`, then, only
+  // when behind HEAD, `diff --name-only <from>..HEAD`) — so each test states which git answer it is
+  // exercising instead of one blanket response standing in for both calls.
+  const fakeGraphifyGit = (head: string | null, diffOut: string | null): GitRunner => async (args) => {
+    if (args[0] === "rev-parse") return head === null ? null : `${head}\n`;
+    if (args[0] === "diff") return diffOut;
+    return null;
+  };
+
+  test("graph built from HEAD's commit → ok, detail names HEAD (diff never needed)", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    // at HEAD short-circuits before codeChangedSince ever runs, so a `diff` call here would be a bug —
+    // give it something that would read as "code moved" if it were ever (wrongly) reached.
+    const gitRunner = fakeGraphifyGit("18017a67", "doctor.ts\n");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("HEAD");
+    expect(c.detail).toContain("18017a67");
+  });
+
+  test("behind HEAD, a non-doc file moved → warn, not ok, \"code moved since\"", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    const gitRunner = fakeGraphifyGit("deadbeef", "doctor.ts\n");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("code moved since");
+  });
+
+  test("behind HEAD, only a doc file changed → ok, \"docs only, graph still current\"", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    // the live false positive this branch exists to fix: the graph was current, the only churn since
+    // was a plan doc, and the old mismatch-is-stale check would have warned anyway.
+    const gitRunner = fakeGraphifyGit("deadbeef", "plans/skills-runtime.md\n");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("docs only");
+  });
+
+  test("behind HEAD, a mix of doc and code files changed → not ok (one code file is enough)", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    const gitRunner = fakeGraphifyGit("deadbeef", "README.md\ndrift.ts\n");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("code moved since");
+  });
+
+  test("behind HEAD, diff returns no files at all → ok, docs-only wording", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    const gitRunner = fakeGraphifyGit("deadbeef", "");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("docs only");
+  });
+
+  test("behind HEAD, diff resolves null (commit unreachable, e.g. after a history rewrite) → not ok, \"unreachable\"", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    const gitRunner = fakeGraphifyGit("deadbeef", null);
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("unreachable");
+  });
+
+  test("an abbreviated report sha matches a full HEAD sha it's a prefix of → ok", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n"); // 8-char abbrev
+    // full 40-char HEAD that starts with the abbreviated report sha; diff should never be reached.
+    const gitRunner = fakeGraphifyGit("18017a67abcdef0123456789abcdef0123456789", "doctor.ts\n");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+  });
+
+  test("no GRAPH_REPORT.md → falls back to the age check, even with a resolvable HEAD", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await setAge(graph, 5);
+    const gitRunner = fakeGraphifyGit("18017a67", "doctor.ts\n");
+    const r = await run({ graphPath: graph }, { graphMaxAgeDays: 30, gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.detail).toContain("5 days old");
+    expect(c.detail).not.toContain("graph built from");
+  });
+
+  test("gitRunner resolves null (git absent / not a repo) → falls back to the age check", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    await setAge(graph, 5);
+    const gitRunner = fakeGraphifyGit(null, null);
+    const r = await run({ graphPath: graph }, { graphMaxAgeDays: 30, gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.detail).toContain("5 days old");
+    expect(c.detail).not.toContain("graph built from");
+  });
+
+  // The merged graph is a SEPARATE artifact with no report of its own: `GRAPH_REPORT.md` describes the
+  // extraction that wrote `graph.json`, while `resolveGraphPath` prefers `merged-graph.json`. So the
+  // commit compare can pass honestly about a file nothing reads. Found by review and reproduced live:
+  // the portfolio's edit hook re-extracted `graph.json` three minutes after a merge, and doctor went on
+  // reporting "built from HEAD" while the stale merged graph was what the symbol lint consumed.
+  //
+  // `setAge` moves mtimes relative to the injected NOW, so "the merge is older than the extraction" is
+  // expressed as a larger age in days rather than by touching real clocks.
+  const bothGraphs = async (mergedAgeDays: number, ownAgeDays: number, reportSha: string | null) => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const merged = join(graphDir, "merged-graph.json");
+    const own = join(graphDir, "graph.json");
+    await writeFile(merged, "{}");
+    await writeFile(own, "{}");
+    await setAge(merged, mergedAgeDays);
+    await setAge(own, ownAgeDays);
+    if (reportSha) await writeFile(join(graphDir, "GRAPH_REPORT.md"), `- Built from commit: \`${reportSha}\`\n`);
+    return { merged, own };
+  };
+
+  test("merged graph older than the extraction → warn, even when the report's commit IS HEAD", async () => {
+    // The exact reproduction. Before the fix this returned ok with "graph built from HEAD (18017a67)",
+    // so the detail is asserted too — `ok` alone would not have caught it.
+    const { merged } = await bothGraphs(5, 1, "18017a67");
+    const gitRunner = fakeGraphifyGit("18017a67", "doctor.ts\n");
+    const r = await run({ graphPath: merged }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("predates");
+    expect(c.detail).not.toContain("built from HEAD");
+  });
+
+  test("merged graph newer than the extraction → falls through to the commit compare", async () => {
+    const { merged } = await bothGraphs(1, 5, "18017a67");
+    const gitRunner = fakeGraphifyGit("18017a67", "doctor.ts\n");
+    const r = await run({ graphPath: merged }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("built from HEAD");
+    expect(c.detail).not.toContain("predates");
+  });
+
+  test("merged graph with no graph.json beside it → nothing to compare, no stale-merge warn", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const merged = join(graphDir, "merged-graph.json");
+    await writeFile(merged, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    const gitRunner = fakeGraphifyGit("18017a67", "doctor.ts\n");
+    const r = await run({ graphPath: merged }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).not.toContain("predates");
+  });
+
+  test("graphPath is graph.json → the stale-merge rule never applies, however old the merge is", async () => {
+    const { own } = await bothGraphs(90, 1, "18017a67");
+    const gitRunner = fakeGraphifyGit("18017a67", "doctor.ts\n");
+    const r = await run({ graphPath: own }, { gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).not.toContain("predates");
+  });
+
+  test("a stale merge is reported even when git cannot answer at all", async () => {
+    // The short-circuit runs ahead of the commit compare, so it must not depend on git resolving. This
+    // pins that: without it, a stale merge on a machine with no git would silently take the age branch.
+    const { merged } = await bothGraphs(5, 1, null);
+    const gitRunner = fakeGraphifyGit(null, null);
+    const r = await run({ graphPath: merged }, { graphMaxAgeDays: 30, gitRunner });
+    const c = byId(r, "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("predates");
   });
 
   test("a missing e2e suite warns", async () => {

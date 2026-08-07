@@ -44,6 +44,7 @@ const cfg = (): ResolvedPantryConfig => ({
   plansDir: join(host, "plans"),
   docsDirs: [],
   graphPath: null,
+  graphDir: join(host, "graphify-out"),
   decisionsDir: join(host, "plans", "decisions"),
   artifactsDir: join(host, "artifacts"),
   runsDir: join(host, "artifacts", "runs"),

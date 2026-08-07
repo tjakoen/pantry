@@ -11,6 +11,9 @@
 //   pantry skills sync [dir]    materialize the standards as .claude/skills/<slug>/SKILL.md (generated,
 //                               gitignored, never committed)
 //   pantry skills list [dir]    what is mounted here and whether it still matches canon
+//   pantry graph merge [dir]    merge sibling repos' graphify-out/graph.json into <dir>/graphify-out/
+//                               merged-graph.json (never runs `graphify update` — explicit only, never
+//                               called by doctor; see graph.ts's header)
 // Config + plans are read from the caller's cwd (the host); bundled assets + framework docs resolve
 // relative to the pantry module, so `bunx pantry` works from any project. See INSTALL.md.
 import { isAbsolute, join } from "node:path";
@@ -20,12 +23,13 @@ import { runDoctor, formatDoctorReport } from "./doctor.ts";
 import { checkPantryDeps, formatDepsReport } from "./deps.ts";
 import { runPantryInit } from "./init.ts";
 import { syncSkills, listSkills, formatSkillsSync, formatSkillsList } from "./skills.ts";
+import { mergeGraphs, formatGraphMergeReport } from "./graph.ts";
 
 const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
 
-// Positionals are collected in order rather than folded into a single `dir`, because `skills` takes a
-// subcommand before its optional dir (`pantry skills sync ../grain`). For every other command the
-// first positional IS the dir, exactly as before.
+// Positionals are collected in order rather than folded into a single `dir`, because `skills` (and now
+// `graph`) take a subcommand before their optional dir (`pantry skills sync ../grain`, `pantry graph
+// merge ../bread`). For every other command the first positional IS the dir, exactly as before.
 function parseArgs(argv: string[]): { cmd: string; rest: string[]; port: number; force: boolean; kit: boolean } {
   const [cmd = "serve", ...args] = argv;
   const rest: string[] = [];
@@ -93,6 +97,18 @@ async function main() {
     process.exit(1);
   }
 
+  if (cmd === "graph") {
+    const [sub, subDir] = rest;
+    if (sub === "merge") {
+      const hostRoot = abs(subDir ?? ".");
+      const report = await mergeGraphs({ hostRoot });
+      console.log(formatGraphMergeReport(report));
+      process.exit(report.ok ? 0 : 1); // nonzero only when a merge was asked for and not delivered
+    }
+    console.error(`pantry graph: unknown subcommand "${sub ?? ""}"\nusage: pantry graph merge [dir]`);
+    process.exit(1);
+  }
+
   if (cmd === "init") {
     const targetDir = abs(dir ?? ".");
     const result = await runPantryInit(targetDir, { force, kit });
@@ -102,7 +118,7 @@ async function main() {
     return;
   }
 
-  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|skills|init> [dir] [--port N] [--force] [--kit]`);
+  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|skills|graph|init> [dir] [--port N] [--force] [--kit]`);
   process.exit(1);
 }
 

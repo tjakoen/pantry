@@ -77,6 +77,11 @@ export interface ResolvedPantryConfig {
   docsDirs: string[];
   /** the graphify node-link JSON the mindmap consumes, or null when no graphify-out is present */
   graphPath: string | null;
+  /** the graphify output folder itself (absolute), whether or not it exists. Kept alongside
+   *  `graphPath` because two consumers need the DIR, not the graph: doctor reads `GRAPH_REPORT.md`
+   *  out of it for the built-from commit, and the symbol lint prefers this repo's own `graph.json`
+   *  over the merged estate graph when it has to say which repo a symbol should live in. */
+  graphDir: string;
   /** the decision-request folder (absolute); default <plansDir>/decisions */
   decisionsDir: string;
   /** the artifacts folder (absolute); default <cwd>/artifacts */
@@ -124,6 +129,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     plansDir,
     docsDirs,
     graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
+    graphDir: abs(cwd, raw.graphDir ?? "graphify-out"),
     // default under plansDir (not cwd) so it rides along with the board's own folder
     decisionsDir: raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions"),
     artifactsDir,

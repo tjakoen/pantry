@@ -16,10 +16,11 @@ import { lstat, readlink, stat, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname } from "node:path";
 import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
-import { checkPantryDrift } from "./drift.ts";
+import { checkPantryDrift, checkPantrySymbolDrift, usesMergedGraph } from "./drift.ts";
 import { checkPantryDeps } from "./deps.ts";
 import { listSkills } from "./skills.ts";
 import { buildRunsPayload } from "./runs.ts";
+import type { GitRunner } from "./timeline.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
 
@@ -61,6 +62,10 @@ export interface DoctorOptions {
   runSkills?: boolean;
   /** inject the canon standards dir the skills check compares against (tests); default resolved */
   canonDir?: string | null;
+  /** fold the doc-symbol lint in as an info check; default true (set false when no graph is wanted) */
+  runSymbols?: boolean;
+  /** inject the git reader the graph-freshness check uses (tests); default spawns real git */
+  gitRunner?: GitRunner;
 }
 
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
@@ -79,6 +84,73 @@ const CANON_STANDARDS = new Set([
 
 const DAY_MS = 86_400_000;
 const daysBetween = (now: Date, then: Date): number => Math.floor((now.getTime() - then.getTime()) / DAY_MS);
+
+// `graphify` writes a Graph Freshness block into GRAPH_REPORT.md carrying the commit the extraction
+// ran against:  "- Built from commit: `18017a67`". Read that instead of stat-ing the file. Null when
+// there is no report or the block is absent — the caller falls back to the age check.
+const BUILT_FROM = /Built from commit:\s*`?([0-9a-f]{7,40})`?/i;
+async function graphBuiltFromCommit(graphDir: string): Promise<string | null> {
+  const report = join(graphDir, "GRAPH_REPORT.md");
+  if (!existsSync(report)) return null;
+  try {
+    return BUILT_FROM.exec(await Bun.file(report).text())?.[1] ?? null;
+  } catch {
+    return null; // unreadable report — degrade to the age check, never throw
+  }
+}
+
+// Same degrade-never-throw contract as timeline's runner: null when git is absent, cwd is not a repo,
+// or the repo has no commits yet.
+const defaultGitRunner: GitRunner = async (args, cwd) => {
+  try {
+    const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "ignore" });
+    const out = await new Response(proc.stdout).text();
+    return (await proc.exited) === 0 ? out : null;
+  } catch {
+    return null;
+  }
+};
+
+async function gitHead(cwd: string, git: GitRunner): Promise<string | null> {
+  const out = await git(["rev-parse", "HEAD"], cwd);
+  const head = out?.trim();
+  return head && /^[0-9a-f]{7,40}$/i.test(head) ? head : null;
+}
+
+// Prose, pictures and lockfiles do not move a symbol. GRAPH.md §4 is explicit that the per-edit
+// refresh re-extracts CODE, so a run of doc commits legitimately leaves the graph current and warning
+// about it would be crying wolf. Found the honest way: the first live run of the commit check flagged
+// the portfolio, whose only churn since the graph was built was one markdown file.
+const NON_INVALIDATING = /\.(md|mdx|txt|png|jpe?g|gif|svg|webp|ico|lock)$|(^|\/)(bun\.lock|package-lock\.json|yarn\.lock)$/i;
+
+// `GRAPH_REPORT.md` describes `graph.json` — the extraction `graphify update` ran. It says nothing
+// about `merged-graph.json`, which `pantry graph merge` produces from the SIBLINGS' graphs and which
+// `resolveGraphPath` then PREFERS. So a repo can hold a report that is honestly current, a merged graph
+// that is stale, and a freshness check reading the first while every consumer reads the second. That is
+// the same lie the mtime check was telling, one artifact over, and it was live in the portfolio within
+// minutes of the merge command existing: the edit hook re-extracted `graph.json` at 16:13 and the
+// merged graph from 16:10 went on being served.
+//
+// Cheap, honest signal: a merge built BEFORE the extraction it should have included is stale. Only
+// meaningful when the merged graph is the one being consumed; false otherwise.
+async function mergedGraphIsStale(config: ResolvedPantryConfig): Promise<boolean> {
+  if (!config.graphPath?.endsWith("merged-graph.json")) return false;
+  try {
+    const [merged, own] = await Promise.all([stat(config.graphPath), stat(join(config.graphDir, "graph.json"))]);
+    return merged.mtime < own.mtime;
+  } catch {
+    return false; // no own graph to compare against, or an unreadable pair — nothing to claim
+  }
+}
+
+/** Did anything the graph extracts from change between `from` and HEAD? Null when git cannot answer —
+ *  the commit is unreachable after a history rewrite, say — which the caller reads as "don't guess". */
+async function codeChangedSince(from: string, cwd: string, git: GitRunner): Promise<boolean | null> {
+  const out = await git(["diff", "--name-only", `${from}..HEAD`], cwd);
+  if (out === null) return null;
+  const changed = out.split("\n").map((l) => l.trim()).filter(Boolean);
+  return changed.some((f) => !NON_INVALIDATING.test(f));
+}
 
 // Newest audit REPORT (not the AUDIT.md runbook) across the few dirs a report is likely to land in.
 // Cheap by design: one shallow readdir per candidate dir, no full-tree walk (doctor must stay fast
@@ -140,6 +212,8 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   const runDrift = opts.runDrift ?? true;
   const runDeps = opts.runDeps ?? true;
   const runSkills = opts.runSkills ?? true;
+  const runSymbols = opts.runSymbols ?? true;
+  const git = opts.gitRunner ?? defaultGitRunner;
 
   const checks: DoctorCheck[] = [];
 
@@ -272,6 +346,12 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   }
 
   // graphify-out freshness (the mindmap's brain; regenerable, host-local).
+  //
+  // Preferred signal is the COMMIT, not the mtime. `GRAPH_REPORT.md` records the commit the graph was
+  // extracted from and tells the reader in prose to diff it against HEAD; doing that mechanically is
+  // strictly better than an age comparison, because age answers the wrong question. Measured
+  // 2026-08-07: the portfolio's graph was zero days old and built one commit behind HEAD, so the age
+  // check called a stale graph fresh. Age stays as the fallback for a graphify-out with no report.
   if (!config.graphPath) {
     checks.push({ id: "graphify-freshness", severity: "info", ok: true, label: "graphify freshness", detail: "no graphify-out — run graphify update ." });
   } else {
@@ -284,15 +364,53 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     if (!st) {
       checks.push({ id: "graphify-freshness", severity: "info", ok: true, label: "graphify freshness", detail: "no graphify-out — run graphify update ." });
     } else {
-      const age = daysBetween(now, st.mtime);
-      const fresh = age <= graphMaxAgeDays;
-      checks.push({
-        id: "graphify-freshness",
-        severity: "warn",
-        ok: fresh,
-        label: "graphify freshness",
-        detail: fresh ? `graph ${age} days old` : `graph ${age} days old — over ${graphMaxAgeDays}d, run graphify update .`,
-      });
+      const builtFrom = await graphBuiltFromCommit(config.graphDir);
+      const head = await gitHead(cwd, git);
+      // A stale merge overrides everything below: the report can be honestly current and still be
+      // describing a file nobody reads. Say so plainly rather than passing on a technicality.
+      const staleMerge = await mergedGraphIsStale(config);
+      if (staleMerge) {
+        checks.push({
+          id: "graphify-freshness",
+          severity: "warn",
+          ok: false,
+          label: "graphify freshness",
+          detail: "merged-graph.json predates this repo's own extraction — run pantry graph merge",
+        });
+      } else if (builtFrom && head) {
+        // Compare on the shorter of the two, so an abbreviated report hash matches a full HEAD.
+        const n = Math.min(builtFrom.length, head.length);
+        const atHead = builtFrom.slice(0, n) === head.slice(0, n);
+        // Behind HEAD is only stale if CODE moved in between; doc commits leave the graph current.
+        const codeMoved = atHead ? false : await codeChangedSince(builtFrom, cwd, git);
+        const shortHead = head.slice(0, builtFrom.length);
+        checks.push({
+          id: "graphify-freshness",
+          severity: "warn",
+          // Explicitly `=== false`: an unreachable built-from commit (null) is a warn, not a pass. We
+          // could not verify it, and silently calling an unverifiable graph fresh is the exact failure
+          // the mtime check was making.
+          ok: codeMoved === false,
+          label: "graphify freshness",
+          detail: atHead
+            ? `graph built from HEAD (${builtFrom})`
+            : codeMoved === null
+              ? `graph built from ${builtFrom}, unreachable from HEAD (${shortHead}) — run graphify update .`
+              : codeMoved
+                ? `graph built from ${builtFrom}, code moved since — run graphify update .`
+                : `graph built from ${builtFrom}, HEAD is ${shortHead} (docs only, graph still current)`,
+        });
+      } else {
+        const age = daysBetween(now, st.mtime);
+        const fresh = age <= graphMaxAgeDays;
+        checks.push({
+          id: "graphify-freshness",
+          severity: "warn",
+          ok: fresh,
+          label: "graphify freshness",
+          detail: fresh ? `graph ${age} days old` : `graph ${age} days old — over ${graphMaxAgeDays}d, run graphify update .`,
+        });
+      }
     }
   }
 
@@ -324,6 +442,35 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
         ok: false,
         label: "doc links resolve",
         detail: `could not run drift lint: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  // ── Symbol drift (S4) ────────────────────────────────────────────────────
+  // Info, never warn: measured at 56% precision on the portfolio (drift.ts documents the run), which
+  // is worth SHOWING a session and not worth making anyone dismiss. The detail names which graph
+  // answered, because a per-repo graph flags roughly three times as much as the merged estate graph
+  // on docs that describe sibling repos, and a count means nothing without knowing which one ran.
+  if (runSymbols) {
+    try {
+      const s = await checkPantrySymbolDrift({ cwd });
+      const graph = usesMergedGraph(config) ? "merged estate graph" : "this repo's graph only";
+      checks.push({
+        id: "doc-symbol-drift",
+        severity: "info",
+        ok: s.problems.length === 0,
+        label: "doc symbols resolve",
+        detail: config.graphPath
+          ? `${s.planCount} pages, ${s.problems.length} unresolved identifiers (${graph})`
+          : `${s.planCount} pages, skipped — no graph (run graphify update .)`,
+      });
+    } catch (err) {
+      checks.push({
+        id: "doc-symbol-drift",
+        severity: "info",
+        ok: true,
+        label: "doc symbols resolve",
+        detail: `skipped: ${err instanceof Error ? err.message : String(err)}`,
       });
     }
   }

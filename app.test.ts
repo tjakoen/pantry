@@ -17,6 +17,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   plansDir: EXAMPLE,
   docsDirs: [],
   graphPath: null,
+  graphDir: join(EXAMPLE, "graphify-out"),
   decisionsDir: join(EXAMPLE, "decisions"),
   artifactsDir: join(EXAMPLE, "artifacts"),
   runsDir: join(EXAMPLE, "artifacts", "runs"),
