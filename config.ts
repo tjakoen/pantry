@@ -25,6 +25,10 @@ export interface PantrySurfaces {
    *  dates, depends arrows, commit density, dated audit markers. Reads git + plans/ + report mtimes;
    *  no new tracking, no model. Default on. */
   timeline: boolean;
+  /** the run ledger (/runs.json) — run reports parsed against LOOP §9, and which items each is
+   *  missing. Machine twin only for now; whether adherence earns a human surface of its own is still
+   *  an open owner question. Model-free, read-only. Default on. */
+  runs: boolean;
 }
 
 /** What a host project may put in `pantry.config.(ts|json)`. Every field is optional. */
@@ -84,7 +88,7 @@ export interface ResolvedPantryConfig {
   standardsSource?: "canon";
 }
 
-const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true };
+const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 

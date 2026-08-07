@@ -14,7 +14,7 @@ const AT = "2026-07-10T00:00:00.000Z";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
   cwd: EXAMPLE, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, decisionsDir: join(EXAMPLE, "decisions"), artifactsDir: join(EXAMPLE, "artifacts"), runsDir: join(EXAMPLE, "artifacts", "runs"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
 });
 
 // A ContentSource-backed collection with a fixed slug list (one nonconforming, to prove filtering).
@@ -103,5 +103,44 @@ describe("renderLlmsTxt — the session context pack (same brain, human projecti
     expect(txt).toContain("## Decisions — resolve before proceeding");
     // it precedes the Plans section (it gates the run)
     expect(txt.indexOf("## Decisions")).toBeLessThan(txt.indexOf("## Plans"));
+  });
+
+  test("run reports missing §9 evidence lead the pack too; a clean ledger stays silent", async () => {
+    // no runs dir → nothing to inherit, no callout, no surface
+    const quiet = await buildKnowledge(configWith(), [], AT);
+    expect(quiet.incompleteRuns).toBe(0);
+    expect(renderLlmsTxt(quiet)).not.toContain("## Loop hygiene");
+    expect(quiet.surfaces.some((s) => s.route === "/runs.json")).toBe(false);
+
+    // a report missing evidence → counted, surfaced, and read BEFORE this run writes its own
+    const runsDir = join(tmpdir(), `pantry-retr-runs-${Date.now()}`);
+    await Bun.write(join(runsDir, "2026-08-07-a.md"), `---\ntitle: a thin report\n---\nIt went well.`);
+    const loud = await buildKnowledge({ ...configWith(), runsDir }, [], AT);
+    expect(loud.incompleteRuns).toBe(1);
+    expect(loud.surfaces.some((s) => s.route === "/runs.json")).toBe(true);
+    const txt = renderLlmsTxt(loud);
+    expect(txt).toContain("## Loop hygiene — the last runs' own record");
+    expect(txt.indexOf("## Loop hygiene")).toBeLessThan(txt.indexOf("## Plans"));
+    // the callout is the only place it appears — not duplicated into the Reference tail
+    expect(txt.split("/runs.json")).toHaveLength(2);
+  });
+
+  test("a COMPLETE run report contributes nothing to the pack — only gaps are worth an agent's attention", async () => {
+    const runsDir = join(tmpdir(), `pantry-retr-runs-ok-${Date.now()}`);
+    await Bun.write(
+      join(runsDir, "2026-08-07-ok.md"),
+      `---\nscope:\n  - a.ts\ntouched:\n  - a.ts\ndiffstat: 1 file changed\nunpushed: 0\nverifiedBy: someone else\ndoctor: 0 failing\n---\n## Gate output\n\`\`\`\n1 pass\n\`\`\`\n## What was not done\nNothing.\n## What needs human eyes\nNothing.\n`,
+    );
+    const k = await buildKnowledge({ ...configWith(), runsDir }, [], AT);
+    expect(k.incompleteRuns).toBe(0);
+    expect(renderLlmsTxt(k)).not.toContain("## Loop hygiene");
+  });
+
+  test("the runs surface off → the ledger is not read at all", async () => {
+    const runsDir = join(tmpdir(), `pantry-retr-runs-off-${Date.now()}`);
+    await Bun.write(join(runsDir, "2026-08-07-a.md"), `---\ntitle: thin\n---\nbody`);
+    const k = await buildKnowledge({ ...configWith({ runs: false }), runsDir }, [], AT);
+    expect(k.incompleteRuns).toBe(0);
+    expect(k.surfaces.some((s) => s.route === "/runs.json")).toBe(false);
   });
 });

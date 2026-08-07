@@ -25,6 +25,7 @@ import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
 import { buildArtifactsPayload, classifyArtifact, type ArtifactsPayload, type ArtifactEntry } from "./artifacts.ts";
+import { buildRunsPayload } from "./runs.ts";
 import { runDoctor, type DoctorReport, type DoctorCheck } from "./doctor.ts";
 import { buildTimelinePayload, type TimelinePayload, type TimelinePlan } from "./timeline.ts";
 
@@ -792,7 +793,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   plansDir, docsDirs: [], graphPath: null, decisionsDir: join(plansDir, "decisions"),
   artifactsDir: join(dirname(plansDir), "artifacts"),
   runsDir: join(dirname(plansDir), "artifacts", "runs"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 
 export function createPantryHandler(opts: PantryOptions) {
@@ -905,6 +906,17 @@ export function createPantryHandler(opts: PantryOptions) {
       if (d) return html(page(d.title, decisionDetailBody(d)));
       return new Response("Not found", { status: 404 });
     }
+
+    // --- the run ledger (piece 11c): machine twin ONLY for now. Each closed run report parsed against
+    // LOOP.md §9, with the items it is missing. There is deliberately no human page yet: whether
+    // adherence earns its own surface or a row on the home freshness strip is an open owner question,
+    // and a JSON twin serves the agent that reads /llms.txt at orientation either way. On the DEFAULT
+    // layout the report source is already fetchable too — reports live under artifacts/, so
+    // /artifacts/raw/runs/<file>.md serves the bytes with the containment that route enforces. That
+    // only holds while runsDir sits under artifactsDir; a host that points runsDir elsewhere gets the
+    // parsed twin here and no raw route, which is a deliberate limit rather than a promise to keep. ---
+    if (surfaces.runs && path === "/runs.json")
+      return Response.json(await buildRunsPayload(config, new Date().toISOString()));
 
     // --- run artifacts (piece 11e sub-unit 1): human /artifacts, machine twin /artifacts.json, raw
     // bytes at /artifacts/raw/<relPath>. Same model (buildArtifactsPayload over the host's artifacts

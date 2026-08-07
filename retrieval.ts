@@ -14,6 +14,7 @@ import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
 import { buildArtifactsPayload } from "./artifacts.ts";
+import { buildRunsPayload } from "./runs.ts";
 
 // The plan-id / doc-slug shape MILL + PROOF route on (mill/serve.ts SLUG, proof/routes.ts SLUG).
 // A source can list a file whose stem doesn't conform; such a slug would 404 from its own route, so
@@ -51,6 +52,11 @@ export interface Knowledge {
   /** how many decision-requests are open — what an autonomous run must resolve (via /decisions) before
    *  it proceeds (LOOP.md §4). 0 when the inbox is empty or the surface is off. */
   openDecisions: number;
+  /** the previous runs' own adherence record: how many closed run reports are missing LOOP §9 evidence.
+   *  This is the loop closing — a session reads what the last sessions failed to write down, at
+   *  orientation, before it repeats the omission. 0 when clean, when the ledger is empty, or when the
+   *  surface is off. */
+  incompleteRuns: number;
   /** the machine index of the plan index + the doc raw-source twins (where to fetch the brain) */
   vocabulary: {
     renderOps: typeof RENDER_OP_KINDS;
@@ -72,10 +78,15 @@ function surfacesOf(
   openDecisions: number,
   artifactCount: number,
   timelinePlanCount: number,
+  incompleteRuns: number,
 ): KnowledgeSurface[] {
   const { surfaces } = config;
   return [
     surfaces.plans && { route: "/plans", title: "Plan board", description: "The host project's plans and their state (PROOF). Machine index at /plans/plans.json." },
+    // The run ledger is listed only when a previous run left evidence missing — a clean ledger is not
+    // worth pointing an agent at, the same rule decisions and artifacts follow. When it IS listed it
+    // sits with decisions, because both are things this run inherits rather than reference material.
+    surfaces.runs && incompleteRuns > 0 && { route: "/runs.json", title: "Run ledger", description: `${incompleteRuns} closed run report(s) missing LOOP §9 evidence — read before writing this run's own report, so the same omission is not repeated.` },
     // Listed only when something is OPEN — an empty inbox isn't worth pointing an agent at, same rule
     // as the mindmap below. When present it leads (it gates the run), so it sits first after the board.
     surfaces.decisions && openDecisions > 0 && { route: "/decisions", title: "Decisions", description: `${openDecisions} open decision(s) the human must resolve before this run proceeds (LOOP.md §4). Machine twin at /decisions.json.` },
@@ -135,14 +146,21 @@ export async function buildKnowledge(
     ? (await loadPlans(config.plansDir, async () => null)).plans.length
     : 0;
 
+  // The adherence record (pure read); skipped entirely when the surface is off. Counts only reports
+  // that are missing evidence — a complete ledger contributes nothing to the pack, by design.
+  const incompleteRuns = config.surfaces.runs
+    ? (await buildRunsPayload(config, generatedAt)).incompleteCount
+    : 0;
+
   return {
     project: config.projectName,
     generatedAt,
     runsModel: false,
-    surfaces: surfacesOf(config, openDecisions, artifactCount, timelinePlanCount),
+    surfaces: surfacesOf(config, openDecisions, artifactCount, timelinePlanCount, incompleteRuns),
     docs,
     plans,
     openDecisions,
+    incompleteRuns,
     vocabulary: { renderOps: RENDER_OP_KINDS, endpoints: ENDPOINTS },
   };
 }
@@ -169,6 +187,14 @@ export function renderLlmsTxt(k: Knowledge): string {
     out.push(link(`${k.openDecisions} open decision(s)`, "/decisions", "the human must resolve these; machine twin at /decisions.json"));
   }
 
+  // The previous runs' adherence record, second only to the decisions that gate the run. It leads for
+  // the same reason: it is something this session INHERITS, and reading it after the report is written
+  // is reading it too late. Silent when the ledger is clean, so it only ever shouts when it matters.
+  if (k.incompleteRuns > 0) {
+    out.push("", "## Loop hygiene — the last runs' own record");
+    out.push(link(`${k.incompleteRuns} run report(s) missing evidence`, "/runs.json", "which LOOP §9 items each one skipped; do not repeat them in this run's report"));
+  }
+
   const board = k.surfaces.find((s) => s.route === "/plans");
   if (board && k.plans) {
     out.push("", "## Plans");
@@ -185,8 +211,9 @@ export function renderLlmsTxt(k: Knowledge): string {
     }
   }
 
-  // /plans has its own section above; /decisions has its own callout at the top — keep both out of here.
-  const rest = k.surfaces.filter((s) => s.route !== "/plans" && s.route !== "/decisions");
+  // /plans has its own section above; /decisions and /runs.json have their own callouts at the top —
+  // keep all three out of here.
+  const rest = k.surfaces.filter((s) => s.route !== "/plans" && s.route !== "/decisions" && s.route !== "/runs.json");
   if (rest.length) {
     out.push("", "## Reference");
     for (const s of rest) out.push(link(s.title, s.route, s.description));

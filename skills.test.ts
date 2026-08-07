@@ -47,7 +47,7 @@ const cfg = (): ResolvedPantryConfig => ({
   decisionsDir: join(host, "plans", "decisions"),
   artifactsDir: join(host, "artifacts"),
   runsDir: join(host, "artifacts", "runs"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 
 describe("pantry skills sync — the generated view", () => {

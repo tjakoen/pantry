@@ -364,6 +364,22 @@ Files: `runs.ts` (pure data, like decisions.ts) + `runs.test.ts` (40) + the doct
 fixtures were red before this branch, confirmed by stashing and re-running), tsc clean, live
 `pantry doctor` 0 failing.
 
+**The loop actually closes (S3c's unblocked half, same branch).** `Knowledge.incompleteRuns` counts
+reports missing evidence, `/llms.txt` grows a `## Loop hygiene` callout carrying it, and `/runs.json`
+is the machine twin. The callout sits with open decisions at the top of the pack and follows the same
+rule the inbox does: **silent when there is nothing to inherit**. A clean ledger contributes nothing.
+So a session reads the previous runs' adherence record at orientation, before it writes its own report
+rather than after — which is the whole point of feeding it back. Proven live rather than asserted: the
+first report written under the schema flagged its own author's scope growth, and that warn is now the
+first thing `/llms.txt` says.
+
+Deliberately NOT built: a human `/runs` page. Whether adherence earns its own surface or a row on the
+home freshness strip is an open owner question, and a JSON twin serves the agent either way. On the
+default layout the report source is fetchable through the existing `/artifacts/raw/` route; point
+`runsDir` outside `artifactsDir` and you get the parsed twin and no raw route, which is a limit worth
+stating rather than a promise to keep. The `runs` surface toggle disables all of it — route, count,
+callout, surface entry.
+
 **Still open from 11c's original list, and deliberately:** stale claims (plan item claimed, no
 checkpoint in N days) and branches with no ledger entry both need an age threshold, and every threshold
 in this area is one owner call with 11a's — they land together in the portfolio plan's S3a alongside

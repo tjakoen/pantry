@@ -20,7 +20,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   decisionsDir: join(EXAMPLE, "decisions"),
   artifactsDir: join(EXAMPLE, "artifacts"),
   runsDir: join(EXAMPLE, "artifacts", "runs"),
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
 });
 
 const get = async (handler: (r: Request) => Promise<Response>, path: string) =>
@@ -263,6 +263,29 @@ describe("run artifacts (piece 11e sub-unit 1)", () => {
     expect(html).toContain(`href="/artifacts"`);
     const j = await (await get(handler, "/artifacts.json")).json();
     expect(j.available).toBe(false);
+  });
+
+  test("the run ledger (piece 11c) has a machine twin at /runs.json, and its reports are fetchable as raw bytes", async () => {
+    const artifactsDir = join(tmpdir(), `pantry-app-runs-${Date.now()}`);
+    await Bun.write(join(artifactsDir, "runs", "2026-08-07-a.md"), `---\ntitle: a thin report\n---\nIt went well.`);
+    const config = { ...configWith(), artifactsDir, runsDir: join(artifactsDir, "runs") };
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config });
+
+    const j = await (await get(handler, "/runs.json")).json();
+    expect(j.available).toBe(true);
+    expect(j.count).toBe(1);
+    expect(j.incompleteCount).toBe(1);
+    expect(j.runs[0].gaps.map((g: { id: string }) => g.id)).toContain("diffstat");
+
+    // Reports live under artifacts/, so the existing raw route serves the source with no new surface.
+    const raw = await get(handler, "/artifacts/raw/runs/2026-08-07-a.md");
+    expect(raw.status).toBe(200);
+    expect(await raw.text()).toContain("It went well.");
+  });
+
+  test("the runs surface off → /runs.json 404s like any other disabled surface", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ runs: false }) });
+    expect((await get(handler, "/runs.json")).status).toBe(404);
   });
 
   test("real artifact files render as cards, newest first; the machine twin agrees; raw bytes are servable", async () => {
