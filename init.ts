@@ -13,6 +13,7 @@ import { writeFile, access, symlink, lstat } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runInit } from "@tjakoen/proof/init.ts";
+import { syncSkills } from "./skills.ts";
 import type { PantryConfig } from "./config.ts";
 
 export interface PantryInitResult {
@@ -134,11 +135,16 @@ export async function runPantryInit(
   return { created, skipped, instructions: buildInstructions(kit) };
 }
 
-// The `--kit` extension: seed CLAUDE.md from the published starter and add the AGENTS -> CLAUDE.md
-// symlink. Both are write-if-absent and never overwritten (the non-invasive rule; --force does not
-// reach here on purpose). A relative symlink target ("CLAUDE.md") is what doctor's agents-symlink
-// check resolves against the link's own dir — keep it relative so the check passes and the link is
-// portable. Mutates created/skipped in place so the CLI prints one unified list.
+// The `--kit` extension: seed CLAUDE.md from the published starter, add the AGENTS -> CLAUDE.md
+// symlink, and mount the standards as skills. The first two are write-if-absent and never overwritten
+// (the non-invasive rule; --force does not reach here on purpose). A relative symlink target
+// ("CLAUDE.md") is what doctor's agents-symlink check resolves against the link's own dir — keep it
+// relative so the check passes and the link is portable. Mutates created/skipped in place so the CLI
+// prints one unified list.
+//
+// Skills are part of the kit for the same reason CLAUDE.md is: a standard the harness never lists is a
+// standard that never fires (S2). Unlike the two files above they ARE regenerated on every sync, since
+// they are a generated view of canon rather than a host's own file — see skills.ts.
 async function scaffoldKit(targetDir: string, created: string[], skipped: string[]): Promise<void> {
   // lexists, not exists: a host CLAUDE.md that is itself a (possibly dangling) symlink must be left
   // untouched — exists() follows the link, so a dangling one would read as absent and writeFile would
@@ -167,5 +173,16 @@ async function scaffoldKit(targetDir: string, created: string[], skipped: string
     created.push(`${AGENTS_FILE} -> ${CLAUDE_FILE}`);
   } else {
     skipped.push(`${AGENTS_FILE} (no CLAUDE.md to link to)`);
+  }
+
+  // Mount the standards as skills. Degrades to a named skip when the portfolio package is absent,
+  // the same posture readStarter takes above — an optional package is never a scaffold failure.
+  const skills = await syncSkills({ cwd: targetDir });
+  if (skills.canonDir === null) {
+    skipped.push(".claude/skills (standards unavailable — install the tjakoen.github.io package)");
+  } else if (skills.mounted.length === 0) {
+    skipped.push(".claude/skills (no standards carry a when: key)");
+  } else {
+    created.push(`.claude/skills (${skills.mounted.length} standards mounted, gitignored)`);
   }
 }

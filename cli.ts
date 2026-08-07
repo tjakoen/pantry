@@ -6,7 +6,11 @@
 //   pantry deps                 layer-pin drift: are the host's @tjakoen/* pins current with the
 //                               sibling layer sources on disk? (the umbrella control-plane surface)
 //   pantry init  [dir] [--kit]  scaffold PANTRY into a project (plans/ + pantry.config.json; --kit also
-//                               seeds CLAUDE.md from the starter + the AGENTS->CLAUDE symlink)
+//                               seeds CLAUDE.md from the starter + the AGENTS->CLAUDE symlink, and
+//                               mounts the standards as skills)
+//   pantry skills sync [dir]    materialize the standards as .claude/skills/<slug>/SKILL.md (generated,
+//                               gitignored, never committed)
+//   pantry skills list [dir]    what is mounted here and whether it still matches canon
 // Config + plans are read from the caller's cwd (the host); bundled assets + framework docs resolve
 // relative to the pantry module, so `bunx pantry` works from any project. See INSTALL.md.
 import { isAbsolute, join } from "node:path";
@@ -15,28 +19,33 @@ import { checkPantryDrift, formatDriftReport } from "./drift.ts";
 import { runDoctor, formatDoctorReport } from "./doctor.ts";
 import { checkPantryDeps, formatDepsReport } from "./deps.ts";
 import { runPantryInit } from "./init.ts";
+import { syncSkills, listSkills, formatSkillsSync, formatSkillsList } from "./skills.ts";
 
 const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
 
-function parseArgs(argv: string[]): { cmd: string; dir: string | null; port: number; force: boolean; kit: boolean } {
-  const [cmd = "serve", ...rest] = argv;
-  let dir: string | null = null;
+// Positionals are collected in order rather than folded into a single `dir`, because `skills` takes a
+// subcommand before its optional dir (`pantry skills sync ../grain`). For every other command the
+// first positional IS the dir, exactly as before.
+function parseArgs(argv: string[]): { cmd: string; rest: string[]; port: number; force: boolean; kit: boolean } {
+  const [cmd = "serve", ...args] = argv;
+  const rest: string[] = [];
   let port = 4400;
   let force = false;
   let kit = false;
-  for (let i = 0; i < rest.length; i++) {
-    const a = rest[i];
-    if (a === "--port" || a === "-p") { port = Number(rest[++i]); continue; }
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--port" || a === "-p") { port = Number(args[++i]); continue; }
     if (a.startsWith("--port=")) { port = Number(a.slice("--port=".length)); continue; }
     if (a === "--force" || a === "-f") { force = true; continue; }
     if (a === "--kit") { kit = true; continue; }
-    if (!a.startsWith("-")) dir = a;
+    if (!a.startsWith("-")) rest.push(a);
   }
-  return { cmd, dir, port, force, kit };
+  return { cmd, rest, port, force, kit };
 }
 
 async function main() {
-  const { cmd, dir, port, force, kit } = parseArgs(Bun.argv.slice(2));
+  const { cmd, rest, port, force, kit } = parseArgs(Bun.argv.slice(2));
+  const dir = rest[0] ?? null;
 
   if (cmd === "serve") {
     const server = await servePantryFromCwd({ port });
@@ -69,6 +78,21 @@ async function main() {
     return; // a surface, not a gate — a lagging pin is a chore that's due, not a broken build (LOOP.md §2)
   }
 
+  if (cmd === "skills") {
+    const [sub = "list", subDir] = rest;
+    const cwd = abs(subDir ?? ".");
+    if (sub === "sync") {
+      console.log(formatSkillsSync(await syncSkills({ cwd })));
+      return; // a materializer, not a gate — a missing canon package is a skip, not a failure
+    }
+    if (sub === "list") {
+      console.log(formatSkillsList(await listSkills({ cwd })));
+      return;
+    }
+    console.error(`pantry skills: unknown subcommand "${sub}"\nusage: pantry skills <sync|list> [dir]`);
+    process.exit(1);
+  }
+
   if (cmd === "init") {
     const targetDir = abs(dir ?? ".");
     const result = await runPantryInit(targetDir, { force, kit });
@@ -78,7 +102,7 @@ async function main() {
     return;
   }
 
-  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|init> [dir] [--port N] [--force] [--kit]`);
+  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|skills|init> [dir] [--port N] [--force] [--kit]`);
   process.exit(1);
 }
 

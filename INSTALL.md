@@ -40,6 +40,12 @@ numbered step:
 4. Run `bunx proof check` to lint the scaffolded plans/ folder. Fix anything it flags.
 5. Run `bunx pantry serve`. Confirm the plan board renders at /plans and the docs render at
    /docs (both the bundled framework docs and, if configured, this project's own docs).
+6. Run `bunx pantry skills sync`. This mounts the cross-repo standards as agent skills under
+   .claude/skills/, so they load themselves in this repo instead of waiting to be cited. They are
+   generated and gitignored; never commit them and never edit them in place, and re-run this after
+   the standards change. Then run `bunx pantry skills list` and confirm every skill reads ok. A
+   skill that is written to disk but missing from your agent's skill listing has hit a name
+   collision with a built-in; the fix is a `skill:` key in the standard, not a rename here.
 
 Hard rules, non-negotiable:
 
@@ -76,6 +82,17 @@ Run these from the root of the project you want PANTRY in, one command at a time
 
    You should see a new `plans/` folder (a starter plan `000-welcome.md` and `plans/README.md`)
    and a new `pantry.config.json` at the project root, plus a printed list of next steps.
+
+2b. Mount the standards as agent skills.
+
+   ```
+   bunx pantry skills sync
+   bunx pantry skills list
+   ```
+
+   This writes `.claude/skills/<name>/SKILL.md` for each standard, generated from the canon in the
+   `tjakoen.github.io` package. The folder gitignores itself, so nothing here is ever committed and
+   no repo carries a copy of a standard. Edit the standard in its home repo and re-run the sync.
 
 3. Point PANTRY at your project's existing docs. Open `pantry.config.json` and set `docsDirs`
    to the folder(s) where your docs already live, for example:

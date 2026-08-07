@@ -18,6 +18,7 @@ import { join, basename, resolve, dirname } from "node:path";
 import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
 import { checkPantryDrift } from "./drift.ts";
 import { checkPantryDeps } from "./deps.ts";
+import { listSkills } from "./skills.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
 
@@ -54,6 +55,11 @@ export interface DoctorOptions {
   runDeps?: boolean;
   /** the dir holding the sibling layer checkouts; default the parent of cwd (the monorepo root) */
   layersRoot?: string;
+  /** fold the mounted-skills freshness check in; default true (set false in hermetic unit tests so
+   *  doctor never reaches for the portfolio package) */
+  runSkills?: boolean;
+  /** inject the canon standards dir the skills check compares against (tests); default resolved */
+  canonDir?: string | null;
 }
 
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
@@ -132,6 +138,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   const config = opts.config ?? (await loadPantryConfig(cwd));
   const runDrift = opts.runDrift ?? true;
   const runDeps = opts.runDeps ?? true;
+  const runSkills = opts.runSkills ?? true;
 
   const checks: DoctorCheck[] = [];
 
@@ -344,6 +351,49 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
       }
     } catch (err) {
       checks.push({ id: "deps-drift", severity: "info", ok: true, label: "layer pins", detail: `deps check skipped: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+
+  // ── Skills freshness (S2: a standard the harness never lists is a standard that never fires) ──
+  // Warn, never error: an out-of-date mount is one `pantry skills sync` away, and a repo that has
+  // simply never mounted them is not broken. Absence only reads as due in a KIT repo (one carrying a
+  // CLAUDE.md) — a bare repo gets an info, so this can never become a false alarm in a host that
+  // never opted in. No standards package at all is an info for the same reason graphify-out is.
+  if (runSkills) {
+    try {
+      const s = await listSkills({ cwd, config, canonDir: opts.canonDir });
+      const stale = s.skills.filter((x) => x.state === "stale");
+      const missing = s.skills.filter((x) => x.state === "missing");
+      const shadowed = s.skills.filter((x) => x.state === "shadowed");
+      if (s.canonDir === null) {
+        checks.push({ id: "skills-freshness", severity: "info", ok: true, label: "skills mounted", detail: "no standards package installed — nothing to mount here" });
+      } else if (s.skills.length === 0) {
+        // The package resolves but no standard in it carries a `when:` key: the pin predates S1.
+        // Worth naming rather than folding into "no package", because the fix is a pin bump, not an
+        // install, and the two read identically from the outside.
+        checks.push({ id: "skills-freshness", severity: "info", ok: true, label: "skills mounted", detail: `standards package has no skill-shaped standards (pin predates when: keys) — ${s.canonDir}` });
+      } else if (stale.length === 0 && missing.length === 0 && shadowed.length === 0) {
+        checks.push({ id: "skills-freshness", severity: "info", ok: true, label: "skills mounted", detail: `${s.skills.length} standards mounted and current` });
+      } else if (missing.length === s.skills.length && !claudeMd) {
+        checks.push({ id: "skills-freshness", severity: "info", ok: true, label: "skills mounted", detail: "not a kit repo — run pantry init --kit to mount the standards" });
+      } else {
+        const parts: string[] = [];
+        if (stale.length > 0) parts.push(`${stale.length} stale (${stale.map((x) => x.slug).join(", ")})`);
+        if (missing.length > 0) parts.push(`${missing.length} unmounted (${missing.map((x) => x.slug).join(", ")})`);
+        // Shadowed gets its own remedy: sync refuses to write through a file it did not generate, so
+        // pointing at sync here would name a fix that cannot work.
+        if (shadowed.length > 0) parts.push(`${shadowed.length} shadowed by a hand-authored SKILL.md (${shadowed.map((x) => x.slug).join(", ")}), remove it to let sync own the slot`);
+        const fix = stale.length > 0 || missing.length > 0 ? " — run pantry skills sync" : "";
+        checks.push({
+          id: "skills-freshness",
+          severity: "warn",
+          ok: false,
+          label: "skills mounted",
+          detail: `${parts.join(", ")}${fix}`,
+        });
+      }
+    } catch (err) {
+      checks.push({ id: "skills-freshness", severity: "info", ok: true, label: "skills mounted", detail: `skills check skipped: ${err instanceof Error ? err.message : String(err)}` });
     }
   }
 

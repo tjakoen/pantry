@@ -28,6 +28,7 @@
     "init.ts",
     "map.ts",
     "retrieval.ts",
+    "skills.ts",
     "pantry.css",
     "pantry-cmdk.js",
     "pantry-decisions.js",

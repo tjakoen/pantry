@@ -354,6 +354,43 @@ stays here as these are built. **Built:** `artifacts/` + `/timeline`; the home f
 2) now carries the `deps-drift` pill too, so the control-plane layer-pin drift surfaces on the front door
 next to audit / doc / graph freshness.
 
+**11f — `pantry skills` (DONE 2026-08-07, this branch).** The estate-wide half of the portfolio's
+skills-runtime plan (S2). A standard only fires if the agent's harness lists it, so
+`pantry skills sync [dir]` materializes each standard carrying a `when:` key as
+`.claude/skills/<slug>/SKILL.md`: the `when:` becomes the skill `description` (the only text read at
+rest), the body is carried verbatim. `pantry skills list` reports fresh / stale / unmounted, doctor
+gained a `skills-freshness` warn, and `pantry init --kit` mounts them on day one. Canon resolves out
+of the portfolio package via `import.meta.resolve` (11b's trick), except in the canon home itself
+(`standardsSource: "canon"`), which reads its own `standards/` — syncing the home from its own
+pinned copy would mount yesterday's canon over today's. Mounts are generated, self-gitignoring
+(`.claude/skills/.gitignore` holds `*`, so no host file is edited) and never committed, the
+graphify-out posture. Every write is sentinel-guarded: a hand-authored or symlinked skill at the same
+slug is reported and left alone, and pruning only ever removes what this command generated.
+Freshness is a content diff, not an mtime compare, because an install rewrites mtimes for reasons
+that have nothing to do with canon moving.
+
+Two findings worth keeping. **Name collisions are silent**: the harness ships its own `loop` skill,
+and our LOOP.md mount landed on disk, never appeared in the listing, and so could never fire. Canon
+now carries an optional `skill:` key that overrides the slug (`skill: loop-standard`), and the rule
+is to check the listing after mounting, not to assume a written file is a live skill. **A stale pin
+and a missing package read identically** from the outside and have different fixes, so they are now
+separate messages; pantry's own pin currently predates the `when:` keys, which is why syncing here
+mounts nothing until the portfolio is pushed and `deps:refresh` runs.
+
+An independent second pass (LOOP.md §2, a reviewer that did not write the code) found three real
+defects, all fixed before commit and all now covered by tests. Worth recording because two of them
+are the same class, a guard that existed on one path and not its twin: `pruneStale` refused to delete
+through a symlinked slot while `syncSkills` would happily *write* through one, landing a file outside
+the repo entirely. A `skill:` override that normalized to an empty string collapsed
+`join(skillsDir, slug)` back to the mount root, and two standards claiming one slug last-writer-won in
+silence while both reported as mounted. The third was an honesty bug rather than a safety one:
+`list` labelled a hand-authored file at a live slug "stale" and told the reader to run sync, which
+refuses to touch it. That state is now `shadowed`, with the remedy that actually works.
+
+Open, deferred out of S2 on purpose: whether third-party skills are mounted by the same command from
+a config allowlist. The allowlist is the estate-consistent answer, but nothing third-party is adopted
+yet, and a config key with no consumer is speculative surface. Revisit when the first one lands.
+
 ## Non-goals
 
 - **Not a new layer.** PANTRY imports the layers; nothing imports PANTRY. It's an app.
