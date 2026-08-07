@@ -317,11 +317,57 @@ expected e2e warn). 74/74 suite green, tsc clean, init.test.ts added (6 cases). 
 (didn't write it) → one must-fix (the `exists`→`lstat` write-through gap), FIXED + re-verified with a
 new dangling-symlink test.
 
-**11c — doctor accountability checks (TODO, needs the ledger convention first).** LOOP.md §4's run
-ledger + rails made checkable: stale claims (plan item claimed, no checkpoint in N days), branches with
-no ledger entry, run reports missing gate evidence, unresolved decisions blocking runs. Deferred until
-the ledger format is pinned down on the PROOF board (it isn't a doc-link or a file stat yet — it needs a
-schema). Tracked here so 11a doesn't pretend to cover it.
+**11c — the run ledger + its evidence check (schema DONE 2026-08-07, this branch).** The blocker was
+never the code, it was the missing schema: a ledger entry isn't a doc-link or a file stat. **LOOP.md §9
+is the schema** — nine items, each one absent-or-present, written as a checklist precisely so a machine
+can read it. `runs.ts` is that checklist made parseable.
+
+A run closes with one markdown file at `artifacts/runs/<date>-<slug>.md` (config key `runsDir`, default
+`<artifactsDir>/runs` — kept UNDER artifacts/ so a report sits with the screenshots and diffs it cites
+and no new tracked dir appears, the same move decisions made under `plans/`). Frontmatter is the
+MILL-parseable subset (scalars + dash-lists), so a two-field entry uses the `label | detail` pipe
+convention 11d established for evidence: `gates: - bun test | 212 pass`. Three body headings are
+required — `Gate output`, `What was not done`, `What needs human eyes` — matched loosely on case,
+punctuation and heading level, because a report is hand-written prose and a check that fails on a
+trailing colon teaches nobody anything. The format doc is `artifacts/runs/README.md`, which dogfoods
+the inbox's own README-is-not-an-entry rule.
+
+Doctor gains **run-report-evidence** (warn): reports that are missing §9 items, the two most recent
+named in full with their gaps and the rest counted. Warn, never error — a report missing its diffstat
+is a report to finish, not a broken kit, and a repo with no runs dir at all gets an info naming where a
+report goes, so a host that never opted in cannot be nagged. This check reads only the host's own files,
+so it needs no package to resolve.
+
+**One check computes rather than looks up.** `scope:` (the envelope declared before the run) versus
+`touched:` (what it actually hit) yields `scope-growth` — a touched path outside every declared scope
+entry. LOOP.md §4b calls scope growth an ask-trigger and until now nothing measured it; this does, by
+prefix compare, with no model and no graph. Two rules ride in the schema: gate output is **verbatim**
+(the check rejects prose where a fenced block belongs), and it is **never compressed** — a lossy pass
+mangled `2026-07-30` into `2026:7:30` in testing, which is why that is a rule and not a preference.
+
+**Every defect in this piece was a false POSITIVE**, which is the failure mode that matters here: a
+check that flags a correct report teaches the next run to ignore the check. Three independent reviewers
+(none of which wrote it) found six, and each one had the same shape — the parser was stricter than the
+markdown a human actually writes. A `#`-prefixed line inside the gate fence (a shell comment, in almost
+every real paste) read as a heading and truncated the section; a ` ``` ` inside a longer ` ```` ` fence
+closed it early; a heading indented one space vanished; `## Gates run` did not match the alias `gates`;
+`scope: .` (the whole repo) matched nothing instead of everything; `/Src/` and `src/a.ts` read as scope
+growth. Heading and fence scanning are now CommonMark-shaped (fence-aware, 0-3 space indents, prefix
+alias matching) and paths normalise case, leading `/` and `./`, and trailing `/`. Two hardening
+findings landed with them: `plans:` hrefs get decisions.ts's `safeHref` treatment (same committed-file
+threat, and the guard sits in the data layer so a future view cannot forget it), and the reader gets
+artifacts.ts's `lstat`+`realpath` containment — this module reads file CONTENTS, so an escaping symlink
+would be an exfiltration path through the cockpit rather than a metadata leak.
+
+Files: `runs.ts` (pure data, like decisions.ts) + `runs.test.ts` (40) + the doctor check (4) + the
+`runsDir` config key + `artifacts/runs/README.md`. 227/230 suite green (the same 3 retrieval/app plan
+fixtures were red before this branch, confirmed by stashing and re-running), tsc clean, live
+`pantry doctor` 0 failing.
+
+**Still open from 11c's original list, and deliberately:** stale claims (plan item claimed, no
+checkpoint in N days) and branches with no ledger entry both need an age threshold, and every threshold
+in this area is one owner call with 11a's — they land together in the portfolio plan's S3a alongside
+uncommitted-age and unpushed-age rather than each inventing its own number.
 
 **11d — the decision inbox (DONE 2026-07-26, this branch).** Agents write decision-requests as markdown
 (status open/resolved, options, a recommendation, evidence links); PANTRY renders `/decisions` (question

@@ -29,6 +29,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   graphPath: null,
   decisionsDir: join(dir, "plans", "decisions"),
   artifactsDir: join(dir, "artifacts"),
+  runsDir: join(dir, "artifacts", "runs"),
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
   ...over,
 });
@@ -308,6 +309,76 @@ describe("pantry doctor — layer-pin drift fold-in (warn tier)", () => {
     const c = byId(r, "deps-drift");
     expect(c.severity).toBe("info");
     expect(c.ok).toBe(true);
+  });
+});
+
+describe("pantry doctor — run-ledger evidence (11c, warn tier)", () => {
+  const runsDir = () => join(dir, "artifacts", "runs");
+  const writeRun = async (name: string, body: string) => {
+    await mkdir(runsDir(), { recursive: true });
+    await writeFile(join(runsDir(), name), body);
+  };
+  // The minimum that satisfies every LOOP §9 item; runs.test.ts owns the per-item cases.
+  const COMPLETE_RUN = `---
+date: 2026-07-26
+scope:
+  - doctor.ts
+touched:
+  - doctor.ts
+diffstat: 1 file changed, 2 insertions(+)
+unpushed: 0
+verifiedBy: a reviewer that did not write it
+doctor: 0 failing
+---
+## Gate output
+\`\`\`
+132 pass, 0 fail
+\`\`\`
+## What was not done
+Nothing.
+## What needs human eyes
+Nothing.
+`;
+
+  test("a repo with no runs dir gets an info naming where a report goes, not a warn", async () => {
+    await compliantKit();
+    const c = byId(await run(), "run-report-evidence");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain(runsDir());
+  });
+
+  test("reports that carry their evidence read as info", async () => {
+    await compliantKit();
+    await writeRun("2026-07-26-a.md", COMPLETE_RUN);
+    const c = byId(await run(), "run-report-evidence");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("1 run reports, all carry their evidence");
+  });
+
+  test("a report missing §9 evidence warns, names the gaps, and never fails CI", async () => {
+    await compliantKit();
+    await writeRun("2026-07-26-a.md", COMPLETE_RUN);
+    await writeRun("2026-07-25-b.md", `---\ndate: 2026-07-25\ntitle: a thin report\n---\nIt went well.`);
+    const r = await run();
+    const c = byId(r, "run-report-evidence");
+    expect(c.severity).toBe("warn");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("1 of 2 run reports missing evidence");
+    expect(c.detail).toContain("2026-07-25-b");
+    expect(c.detail).toContain("no diffstat");
+    expect(r.ok).toBe(true); // a warn never flips the report
+  });
+
+  test("only the two most recent offenders are named in full, the rest are counted", async () => {
+    await compliantKit();
+    for (const d of ["2026-07-26", "2026-07-25", "2026-07-24"]) await writeRun(`${d}-x.md`, `---\ndate: ${d}\n---\nthin`);
+    const c = byId(await run(), "run-report-evidence");
+    expect(c.detail).toContain("2026-07-26-x");
+    expect(c.detail).toContain("2026-07-25-x");
+    expect(c.detail).not.toContain("2026-07-24-x");
+    expect(c.detail).toContain("and 1 more");
   });
 });
 

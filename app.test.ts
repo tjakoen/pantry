@@ -19,6 +19,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   graphPath: null,
   decisionsDir: join(EXAMPLE, "decisions"),
   artifactsDir: join(EXAMPLE, "artifacts"),
+  runsDir: join(EXAMPLE, "artifacts", "runs"),
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, ...surfaces },
 });
 

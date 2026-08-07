@@ -791,6 +791,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   projectName: basename(dirname(plansDir)) || "project",
   plansDir, docsDirs: [], graphPath: null, decisionsDir: join(plansDir, "decisions"),
   artifactsDir: join(dirname(plansDir), "artifacts"),
+  runsDir: join(dirname(plansDir), "artifacts", "runs"),
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
 });
 

@@ -19,6 +19,7 @@ import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
 import { checkPantryDrift } from "./drift.ts";
 import { checkPantryDeps } from "./deps.ts";
 import { listSkills } from "./skills.ts";
+import { buildRunsPayload } from "./runs.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
 
@@ -395,6 +396,43 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     } catch (err) {
       checks.push({ id: "skills-freshness", severity: "info", ok: true, label: "skills mounted", detail: `skills check skipped: ${err instanceof Error ? err.message : String(err)}` });
     }
+  }
+
+  // ── Run-ledger evidence (11c: LOOP.md §9 made checkable) ─────────────────
+  // Warn, never error: a report missing its diffstat is a report to finish, not a broken kit, and the
+  // cognitive tier is what fixes it (LOOP.md §2). A repo with no runs dir at all gets an info — the
+  // convention is opt-in per host and an unstarted ledger is not a failure. This check reads only the
+  // host's own files, so it needs no package to resolve and cannot reach outside cwd.
+  try {
+    const r = await buildRunsPayload(config, now.toISOString());
+    if (!r.available || r.count === 0) {
+      checks.push({
+        id: "run-report-evidence",
+        severity: "info",
+        ok: true,
+        label: "run ledger",
+        detail: `no run reports yet — a run closes with one at ${config.runsDir} (LOOP.md §4a)`,
+      });
+    } else if (r.incompleteCount === 0) {
+      checks.push({ id: "run-report-evidence", severity: "info", ok: true, label: "run ledger", detail: `${r.count} run reports, all carry their evidence` });
+    } else {
+      // Name the two most recent offenders in full rather than every one: the detail is a terminal
+      // line, and the oldest incomplete report is the least likely to be the one worth fixing now.
+      const named = r.runs
+        .filter((x) => x.gaps.length > 0)
+        .slice(0, 2)
+        .map((x) => `${x.id} (${x.gaps.map((g) => g.label).join("; ")})`);
+      const rest = r.incompleteCount - named.length;
+      checks.push({
+        id: "run-report-evidence",
+        severity: "warn",
+        ok: false,
+        label: "run ledger",
+        detail: `${r.incompleteCount} of ${r.count} run reports missing evidence: ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}`,
+      });
+    }
+  } catch (err) {
+    checks.push({ id: "run-report-evidence", severity: "info", ok: true, label: "run ledger", detail: `run-ledger check skipped: ${err instanceof Error ? err.message : String(err)}` });
   }
 
   const ok = !checks.some((c) => !c.ok && c.severity === "error");

@@ -46,6 +46,7 @@ const cfg = (): ResolvedPantryConfig => ({
   graphPath: null,
   decisionsDir: join(host, "plans", "decisions"),
   artifactsDir: join(host, "artifacts"),
+  runsDir: join(host, "artifacts", "runs"),
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true },
 });
 

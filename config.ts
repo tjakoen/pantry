@@ -48,6 +48,11 @@ export interface PantryConfig {
   /** where runs deposit evidence — screenshots, audit reports, diffs — that PANTRY serves read-only;
    *  default ./artifacts. Absent → the /artifacts surface degrades to guidance. */
   artifactsDir?: string;
+  /** where a run closes its ledger entry (LOOP.md §4a's run report); default "<artifactsDir>/runs",
+   *  kept UNDER artifacts/ so it rides along with the evidence it cites and adds no new tracked dir.
+   *  PANTRY parses these read-only and reports which §9 items each report is missing; it never
+   *  writes one. */
+  runsDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
@@ -72,6 +77,8 @@ export interface ResolvedPantryConfig {
   decisionsDir: string;
   /** the artifacts folder (absolute); default <cwd>/artifacts */
   artifactsDir: string;
+  /** the run-report folder (absolute); default <artifactsDir>/runs */
+  runsDir: string;
   surfaces: PantrySurfaces;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
@@ -100,6 +107,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
   const raw = await readConfig(cwd);
 
   const plansDir = abs(cwd, raw.plansDir ?? "plans");
+  const artifactsDir = abs(cwd, raw.artifactsDir ?? "artifacts");
 
   // docsDirs: explicit list wins; otherwise auto-mount ./docs only when it actually exists.
   const docsDirs = (raw.docsDirs ?? ["docs"])
@@ -114,7 +122,9 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
     // default under plansDir (not cwd) so it rides along with the board's own folder
     decisionsDir: raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions"),
-    artifactsDir: abs(cwd, raw.artifactsDir ?? "artifacts"),
+    artifactsDir,
+    // default under artifactsDir (not cwd) so the ledger rides along with the evidence it cites
+    runsDir: raw.runsDir ? abs(cwd, raw.runsDir) : join(artifactsDir, "runs"),
     surfaces: { ...ALL_ON, ...raw.surfaces },
     standardsSource: raw.standardsSource,
   };
