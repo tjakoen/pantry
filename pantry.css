@@ -277,15 +277,53 @@
 }
 .pantry-run-summary { font-size: var(--text-sm); color: var(--ink-muted); }
 .pantry-run-summary[data-tone="due"] { color: var(--ink); }
+/* A long diffstat on its own line: it wraps to three lines inside the date run and stretches the
+   card's grid row, and this surface does not shorten evidence to make a layout work. */
+.pantry-run-diffstat {
+  font-size: var(--text-sm); color: var(--ink-muted);
+  font-variant-numeric: tabular-nums; margin-top: var(--space-1, 0.25rem);
+}
+/* The detail page's summary strip — five facts read left to right before anything else. Same small
+   caps + tabular figures as the meta list below it, so the two read as one family rather than two. */
+.pantry-run-summary-block {
+  display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-4, 1rem);
+  margin-top: var(--space-4, 1rem); padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+}
+/* A real diffstat is a sentence, not a number, so each fact is capped and wraps inside its own
+   column rather than stretching the strip into one item per line. */
+.pantry-run-summary-block div {
+  display: flex; flex-direction: column; gap: 0.1em; min-width: 6rem; max-width: 30ch;
+}
+.pantry-run-summary-block b {
+  font-size: var(--text-sm); color: var(--ink-muted);
+  font-variant-numeric: tabular-nums; overflow-wrap: break-word;
+}
+.pantry-run-summary-block div[data-tone="due"] b { color: var(--ink); }
+.pantry-run-summary-block span {
+  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-faint);
+}
 .pantry-run-section { margin-top: var(--space-6, 1.5rem); }
+/* The folded middle sections. Only the run's inventory of itself folds — never the gaps, the scope
+   growth, the gates or the body. The count rides the summary line so a shut section still informs. */
+.pantry-run-fold { margin-top: var(--space-4, 1rem); }
+.pantry-run-fold > summary { cursor: pointer; margin: 0; }
+.pantry-run-fold[open] > summary { margin-bottom: var(--space-2, 0.5rem); }
+.pantry-run-fold-count {
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-faint);
+}
 .pantry-run-gap-list, .pantry-run-pairs { margin: 0; padding-left: var(--space-5, 1.25rem); }
 .pantry-run-gap-list li, .pantry-run-pairs li { font-size: var(--text-sm); margin: 0.2em 0; }
 .pantry-run-gap-list li { color: var(--ink); }
 /* The meta block is a definition list read as a row of small facts, tabular so diffstats line up. */
 .pantry-run-meta {
-  display: flex; flex-wrap: wrap; gap: var(--space-4, 1rem);
+  display: flex; flex-wrap: wrap; align-items: start; gap: var(--space-4, 1rem);
   margin-top: var(--space-6, 1.5rem); font-size: var(--text-sm);
 }
+/* Same cap as the summary strip: a verified-by line is a sentence, and without a ceiling it takes a
+   row to itself and leaves the short facts stranded in ragged columns beside it. */
+.pantry-run-meta > div { max-width: 60ch; }
 .pantry-run-meta dt {
   font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
   letter-spacing: 0.04em; color: var(--ink-faint);
@@ -293,6 +331,7 @@
 .pantry-run-meta dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 /* Gate output is pasted verbatim into a fence, so it must scroll rather than reflow — a wrapped log
    line is a changed log line to anyone comparing it against a terminal. */
+.pantry-run-body { margin-top: var(--space-8, 2rem); }
 .pantry-run-body pre { overflow-x: auto; }
 
 /* ── run artifacts (piece 11e) ──────────────────────────────────────────── */

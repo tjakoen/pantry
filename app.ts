@@ -504,9 +504,17 @@ function runCard(r: RunReport): string {
   const growth = r.outOfScope.length
     ? `<p class="pantry-run-growth">Scope grew: ${r.outOfScope.length} path${r.outOfScope.length === 1 ? "" : "s"} outside the declared envelope</p>`
     : "";
+  // The diffstat gets its OWN line rather than trailing the date · branch run. A real one is long
+  // enough to wrap that line to three and squash the card's neighbour in the grid, and shortening it
+  // was rejected on the same grounds as everywhere else on this surface: the page does not truncate
+  // evidence, so the fix is layout.
+  const diffstat = r.diffstat
+    ? `<p class="pantry-run-diffstat">${escapeHtml(r.diffstat)}</p>`
+    : "";
   return `<a class="card pantry-member pantry-run-card" data-pad="sm" href="/runs/${encodeURIComponent(r.id)}">
     <h3 class="card__title">${escapeHtml(r.title)} <span class="pantry-run-badge" data-status="${r.status}">${r.status}</span></h3>
-    <p class="pantry-member__role">${escapeHtml(r.date ?? "no date")}${r.branch ? ` · ${escapeHtml(r.branch)}` : ""}${r.diffstat ? ` · ${escapeHtml(r.diffstat)}` : ""}</p>
+    <p class="pantry-member__role">${escapeHtml(r.date ?? "no date")}${r.branch ? ` · ${escapeHtml(r.branch)}` : ""}</p>
+    ${diffstat}
     ${evidence}
     ${growth}
   </a>`;
@@ -542,9 +550,10 @@ ${summary}
 <div class="card-grid pantry-members">${payload.runs.map(runCard).join("\n")}</div>`;
 }
 
-// The DETAIL view. Order is deliberate and is the reviewer's reading order, not the file's: what is
-// MISSING first (the reason to open the page at all), then scope growth, then the meta, then the
-// report's own prose last — because the body is where a run is most able to sound finished.
+// The DETAIL view. Order is deliberate and is the reviewer's reading order, not the file's: a
+// five-fact summary strip (is this worth reading), then what is MISSING (the reason to open the page
+// at all), then scope growth, then the meta, then the report's own prose last — because the body is
+// where a run is most able to sound finished.
 function runDetailBody(r: RunReport): string {
   // The scope-growth gap's label spells out every path that grew, and the section below lists them
   // again as bullets. Shorten the checklist line rather than dropping it: the count stays honest and
@@ -583,19 +592,52 @@ function runDetailBody(r: RunReport): string {
   const block = (title: string, inner: string) =>
     inner ? `<section class="pantry-run-section"><h2 class="pantry-section-title">${title}</h2>${inner}</section>` : "";
 
+  // Accordions for the middle. <details> is the whole mechanism: every PANTRY surface but /decisions
+  // and /map is static server-rendered, and wanting a section to fold is not a reason to make this
+  // the first one that ships a client script. The count sits in the summary line so the sections
+  // still skim shut.
+  //
+  // What may NOT fold, and this is the constraint the surface exists to serve: the missing-evidence
+  // list, scope growth, the gates with their results, and the report body that carries gate output
+  // verbatim. LOOP §4a's point is that the evidence is PRESENT rather than summarized, and a thing
+  // behind a click is a thing nobody opens. Only the run's own inventory of itself folds.
+  const fold = (title: string, count: number, inner: string) =>
+    inner
+      ? `<details class="pantry-run-section pantry-run-fold">
+  <summary class="pantry-section-title">${title} <span class="pantry-run-fold-count">${count}</span></summary>
+  ${inner}
+</details>`
+      : "";
+
+  // The one-line answer to "do I need to read this", before anything else on the page: how it ended,
+  // when, how big, how much of §9 it carries, whether it stayed inside its envelope. Every fact here
+  // is also below in full — this shortens the DECISION to read on, never the evidence.
+  // Label above value, the same way round as the meta list right below it — the two blocks are the
+  // same kind of thing and reading them in opposite orders is what made the first cut hard to scan.
+  const summaryItem = (value: string, label: string, tone?: string) =>
+    `<div${tone ? ` data-tone="${tone}"` : ""}><span>${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`;
+  const summaryBlock = `<div class="pantry-run-summary-block">
+  ${summaryItem(r.status, "outcome", r.status === "blocked" ? "due" : undefined)}
+  ${summaryItem(r.date ?? "no date", "closed", r.date ? undefined : "due")}
+  ${summaryItem(r.diffstat ?? "no diffstat", "diffstat", r.diffstat ? undefined : "due")}
+  ${summaryItem(`${9 - r.gaps.length} of 9`, "evidence carried", r.gaps.length ? "due" : undefined)}
+  ${summaryItem(r.outOfScope.length ? `grew by ${r.outOfScope.length}` : "held", "scope", r.outOfScope.length ? "due" : undefined)}
+</div>`;
+
   return `<header>
   <h1 class="proof-masthead">${escapeHtml(r.title)} <span class="pantry-run-badge" data-status="${r.status}">${r.status}</span></h1>
   <p class="proof-lede"><a href="/runs">← All runs</a></p>
 </header>
+${summaryBlock}
 ${gaps}
 ${growth}
 ${metaBlock}
 ${block("Gates", r.gates.length ? runPairList(r.gates) : "")}
-${block("Plans claimed", r.plans.length ? runPlanList(r.plans) : "")}
 ${block("Left dirty", r.dirty.length ? runPairList(r.dirty) : "")}
-${block("Declared scope", r.scope.length ? `<ul class="pantry-run-pairs">${r.scope.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "")}
-${block("Touched", r.touched.length ? `<ul class="pantry-run-pairs">${r.touched.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "")}
-${block("Skills", r.skills.length ? `<p class="pantry-member__role">${r.skills.map((s) => escapeHtml(s)).join(" · ")}</p>` : "")}
+${fold("Plans claimed", r.plans.length, r.plans.length ? runPlanList(r.plans) : "")}
+${fold("Declared scope", r.scope.length, r.scope.length ? `<ul class="pantry-run-pairs">${r.scope.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "")}
+${fold("Touched", r.touched.length, r.touched.length ? `<ul class="pantry-run-pairs">${r.touched.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "")}
+${fold("Skills", r.skills.length, r.skills.length ? `<p class="pantry-member__role">${r.skills.map((s) => escapeHtml(s)).join(" · ")}</p>` : "")}
 <article class="note pantry-run-body" data-grade="smooth">${renderAgentBody(r.body)}</article>`;
 }
 

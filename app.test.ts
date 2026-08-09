@@ -364,6 +364,64 @@ The wording on the empty state.
     // a missing id is a 404, not a crash
     expect((await get(handler, "/runs/nope")).status).toBe(404);
   });
+
+  // The detail page reads at two altitudes: a summary strip that answers "do I need to read this",
+  // and a middle that folds so the strip is not buried. The one thing the fold may never swallow is
+  // the evidence — LOOP §4a wants gate output present, and behind a click is not present.
+  test("the detail page leads with a summary strip, folds only the run's own inventory, and never folds the evidence", async () => {
+    const runsDir = await mkdtemp(join(tmpdir(), "pantry-app-runs-fold-"));
+    await Bun.write(join(runsDir, "2026-08-10-full.md"), `---
+title: A run with a long middle
+date: 2026-08-10
+status: partial
+branch: main
+scope:
+  - app.ts
+touched:
+  - app.ts
+  - pantry.css
+skills:
+  - loop-standard
+plans:
+  - runs-surface-polish | /plans/runs-surface-polish
+gates:
+  - bun test | 300 pass, 0 fail
+dirty:
+  - PLAN.md | lands with the next commit
+diffstat: 3 files changed, 210 insertions(+), 3 deletions(-)
+---
+## Gate output
+\`\`\`
+300 pass, 0 fail
+\`\`\`
+## What was not done
+The timeline layer.
+## What needs human eyes
+The fold's default state.
+`);
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), runsDir } });
+    const html = await (await get(handler, "/runs/2026-08-10-full")).text();
+
+    // the strip: outcome, date, diffstat, evidence score, scope verdict — before the first section
+    expect(html).toContain("evidence carried");
+    expect(html).toContain("3 files changed, 210 insertions(+), 3 deletions(-)");
+    expect(html).toContain("grew by 1");             // pantry.css was touched outside the envelope
+    expect(html.indexOf("pantry-run-summary-block")).toBeLessThan(html.indexOf("Missing evidence"));
+
+    // the inventory folds, and says how much it is hiding
+    expect(html).toContain(`<summary class="pantry-section-title">Touched`);
+    expect(html).toContain(`<summary class="pantry-section-title">Declared scope`);
+    expect(html).toContain(`<summary class="pantry-section-title">Skills`);
+
+    // …and the evidence does not. Everything from the gate-output fence to the end of the body sits
+    // outside every <details>, which is what makes "present rather than summarized" true here.
+    const afterLastFold = html.slice(html.lastIndexOf("</details>"));
+    expect(afterLastFold).toContain("300 pass, 0 fail");
+    for (const heading of ["Missing evidence", "Scope growth", ">Gates<", "Left dirty"]) {
+      const before = html.slice(0, html.indexOf(heading));
+      expect(before.split("<details").length).toBe(before.split("</details>").length);  // no open fold
+    }
+  });
 });
 
 describe("run artifacts (piece 11e sub-unit 1)", () => {
