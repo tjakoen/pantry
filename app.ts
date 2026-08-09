@@ -5,7 +5,7 @@
 // PANTRY. It reads the HOST project's content (plans + optional docs, via the host contract in
 // config.ts) and resolves its OWN bundled assets/docs via package resolution (never a relative path),
 // so it runs from anywhere and survives the repo split.
-import { join, dirname, basename, sep, resolve } from "node:path";
+import { join, dirname, basename, normalize, sep, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { bunRuntime } from "@tjakoen/batch/platform/bun-runtime.ts";
@@ -998,6 +998,11 @@ export function createPantryHandler(opts: PantryOptions) {
   const page = (title: string, body: string) => pantryPage(title, body, surfaces);
 
   const serveStyles = makeStatic(bunRuntime, join(grainRoot, "styles"));
+  // GRAIN's own variables.css has always asked for the Redaction grades at /fonts/…, and PANTRY has
+  // never mounted them, so the cockpit's display face has silently fallen back since the first page
+  // it rendered. Found while proving the preview proxy, where the same missing request stopped being
+  // invisible and started being aimed at the reviewed project's root instead.
+  const fontsRoot = resolve(join(grainRoot, "fonts"));
   const componentCss = createStyleBundle(bunRuntime, join(grainRoot, "components"));
 
   // Every MILL collection this install serves (framework docs + host docs); /standards is appended
@@ -1030,7 +1035,23 @@ export function createPantryHandler(opts: PantryOptions) {
   // has no app-wide teardown/close path today (it's `Bun.serve(createPantryHandler(...))`, no
   // handle returned) — so this watcher is left running for the process's lifetime, same as the
   // server itself. When a close path is added, wire `watcher.stop()` into it.
-  if (surfaces.plans) watchPlans({ plansDir: config.plansDir, channel: stream });
+  // PROOF rebuilds the board on a file change and BROADCASTS the fresh HTML, which the client
+  // assigns with innerHTML. That frame never passes through this server's response path, so the two
+  // repairs the board's markup needs have to be made here, before it leaves, or the first live
+  // update silently undoes both: the card-link fix below, and the prefix rebase while the preview
+  // proxy is on. This was found by a reviewer who noticed the response path and the push path are
+  // not the same path, which is exactly the kind of thing a second pair of eyes is for.
+  const boardChannel = {
+    broadcast(event: string, data: unknown) {
+      const op = data as { html?: unknown };
+      if (op && typeof op === "object" && typeof op.html === "string") {
+        stream.broadcast(event, { ...op, html: rebasePantryHtml(fixProofCardLinks(op.html), base) });
+        return;
+      }
+      stream.broadcast(event, data);
+    },
+  };
+  if (surfaces.plans) watchPlans({ plansDir: config.plansDir, channel: boardChannel });
 
   // The dev preview proxy (plans/pantry-review-layer.md P0). OFF unless the host configured a target,
   // and when it is on PANTRY's own routes move wholesale under the reserved prefix so the reviewed
@@ -1049,6 +1070,7 @@ export function createPantryHandler(opts: PantryOptions) {
   const pantryRoutes = async (path: string, url: URL): Promise<Response | null> => {
     // --- assets ---
     if (path.startsWith("/styles/")) return rebaseCssResponse(await serveStyles(path.slice("/styles".length)), base);
+    if (path.startsWith("/fonts/")) return serveFont(fontsRoot, path.slice("/fonts/".length));
     if (path === "/components.css")
       return new Response(rebasePantryCss(await componentCss.css(), base), { headers: { "Content-Type": "text/css" } });
     if (path === "/proof.css")
@@ -1180,7 +1202,7 @@ ${body}`));
       return html(await catalog.html());
 
     // --- mounted layers: PROOF board (/plans*), then MILL (docs + standards) ---
-    if (surfaces.plans) { const r = await proofRoutes(path); if (r) return r; }
+    if (surfaces.plans) { const r = await proofRoutes(path); if (r) return fixProofResponse(r); }
     const m = await millRoutes(path); if (m) return m;
     return null;   // not one of PANTRY's — the caller decides (404, or the preview target)
   };
@@ -1220,6 +1242,36 @@ async function rebasePantryResponse(res: Response, base: string, innerPath: stri
   return new Response(html, { status: res.status, statusText: res.statusText, headers });
 }
 
+// @tjakoen/proof's board.ts emits a plan card's link as the root-absolute `/plan/<id>` whatever
+// prefix it was actually mounted under, so the link only resolves in a host that mounts PROOF at the
+// root. PANTRY mounts it at /plans and has shipped the broken link since the board landed: a click on
+// a card has never opened a plan here. The portfolio carries the identical workaround in its own
+// server rather than editing the vendored package, and this is now the second copy of it, which is
+// the honest signal that PROOF should be taking the prefix instead of two hosts patching the output.
+// Found while moving the board under the preview prefix, which faithfully preserved the 404.
+function fixProofCardLinks(html: string): string {
+  return html.replaceAll('href="/plan/', 'href="/plans/plan/');
+}
+
+async function fixProofResponse(res: Response): Promise<Response> {
+  if (!(res.headers.get("content-type") ?? "").includes("text/html")) return res;  // /plans.json carries no such href
+  const headers = new Headers(res.headers);
+  headers.delete("content-length");
+  return new Response(fixProofCardLinks(await res.text()), { status: res.status, statusText: res.statusText, headers });
+}
+
+// A font is bytes, and BATCH's static handler reads text — it would mistype and corrupt a woff2. So
+// this serves them by hand with Bun.file, the same idiom and for the same reason as the portfolio's
+// own font route. The containment check is the load-bearing line: the path comes off the URL, so it
+// is resolved and confirmed to be under the fonts root before anything is opened.
+async function serveFont(root: string, rel: string): Promise<Response> {
+  const file = resolve(normalize(join(root, decodeURIComponent(rel))));
+  if (file !== root && !file.startsWith(root + sep)) return new Response("Forbidden", { status: 403 });
+  const f = Bun.file(file);
+  if (!(await f.exists())) return new Response("Not found", { status: 404 });
+  return new Response(f, { headers: { "Content-Type": "font/woff2", "Cache-Control": "public, max-age=31536000, immutable" } });
+}
+
 // GRAIN's stylesheets are served straight off disk by BATCH's static handler, so the rebase happens
 // to the Response rather than to a string. Only CSS is read; anything else this route serves streams
 // past untouched.
@@ -1238,7 +1290,9 @@ async function rebaseCssResponse(res: Response, base: string): Promise<Response>
 // simply never updates, which is the failure mode hardest to attribute back to here.
 function rebaseBoardLive(js: string, base: string): string {
   if (!base) return js;
-  const rebased = js.replace("`/stream?session=", `\`${base}/stream?session=`);
+  // Matched by shape rather than by one exact literal: the quote style is whatever PROOF happens to
+  // use, and pinning the backtick made this break on a reformat that changed nothing else.
+  const rebased = js.replace(/(["'`])\/stream\?session=/g, (_m, quote) => `${quote}${base}/stream?session=`);
   if (rebased === js) {
     console.warn(`[pantry] board-live.js: no /stream literal found to rebase onto ${base} — the live board will not update while the preview proxy is on`);
   }

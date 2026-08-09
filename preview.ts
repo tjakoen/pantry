@@ -102,7 +102,18 @@ export function injectBeforeBodyClose(html: string, tag: string): string {
  */
 export function rebasePantryHtml(html: string, base: string): string {
   if (!base) return html;
-  return html.replace(/\b(href|src|action)=(["'])\/(?!\/)/gi, (_m, attr, quote) => `${attr}=${quote}${base}/`);
+  const out = html.replace(/\b(href|src|action)=(["'])\/(?!\/)/gi, (_m, attr, quote) => `${attr}=${quote}${base}/`);
+  // srcset is a comma-separated list, so it cannot ride the attribute rule above and needs its own
+  // pass over the list's contents. Nothing PANTRY renders emits one today; it is here because the
+  // rule "PANTRY's own root-absolute URLs move" should not quietly have an exception nobody knows
+  // about, waiting for the first responsive image to land.
+  return out.replace(/\bsrcset=(["'])([^"']*)\1/gi, (_m, quote, value: string) => {
+    const moved = value
+      .split(",")
+      .map((candidate) => candidate.replace(/^(\s*)\/(?!\/)/, (_c, space) => `${space}${base}/`))
+      .join(",");
+    return `srcset=${quote}${moved}${quote}`;
+  });
 }
 
 /**
@@ -162,7 +173,11 @@ function buildResponseHeaders(upstream: Response, targetOrigin: string, pantryIs
 }
 
 function stripSecureAttribute(cookie: string): string {
-  return cookie.split(";").filter((part) => part.trim().toLowerCase() !== "secure").join(";");
+  return cookie
+    .split(";")
+    .filter((part, i) => part.trim() !== "" || i === 0)   // no dangling separator left behind
+    .filter((part) => part.trim().toLowerCase() !== "secure")
+    .join(";");
 }
 
 export interface PreviewProxyOptions {
@@ -210,7 +225,21 @@ export async function proxyToPreview(
     }
   }
 
-  const upstreamUrl = new URL(url.pathname + url.search, targetOrigin);
+  // A pathname is not a safe thing to concatenate onto an origin, and this is the one place where
+  // getting it wrong would turn a config-only target into an open relay. `//evil.com/x` is a valid
+  // pathname and resolves SCHEME-RELATIVE against the base, so `new URL("//evil.com/x", target)`
+  // is `http://evil.com/x` — the loopback check passed at boot and was then walked straight around
+  // by a request. Backslashes collapse into leading slashes during URL parsing, so they arrive here
+  // as the same shape. Two defences, because one of them is a regex:
+  //   1. collapse the leading run of slashes, which removes the scheme-relative reading entirely;
+  //   2. assert the result still points at the configured target, which holds whatever the parser
+  //      does next year.
+  const safePath = url.pathname.replace(/^\/+/, "/");
+  const upstreamUrl = new URL(safePath + url.search, targetOrigin);
+  if (upstreamUrl.origin !== targetOrigin) {
+    return new Response("Refused: that path does not resolve inside the configured preview target.", { status: 400 });
+  }
+
   let upstream: Response;
   try {
     upstream = await fetch(upstreamUrl, {
@@ -227,23 +256,63 @@ export async function proxyToPreview(
   const pantryIsSecure = url.protocol === "https:";
   const outHeaders = buildResponseHeaders(upstream, targetOrigin, pantryIsSecure);
   const contentType = upstream.headers.get("content-type") ?? "";
-  const declaredLength = Number(upstream.headers.get("content-length") ?? "0");
 
   // Only HTML is ever read into memory, and only to inject one tag. Everything else — scripts,
   // images, fonts, JSON — streams straight through untouched, which is both faster and the whole
   // reason this design can claim it does not rewrite the app.
-  const injectable =
-    !!opts.inject &&
-    contentType.includes("text/html") &&
-    upstream.body !== null &&
-    declaredLength <= MAX_HTML_BYTES;
-
-  if (!injectable) {
+  const wantsInject = !!opts.inject && contentType.includes("text/html") && upstream.body !== null;
+  if (!wantsInject) {
     return new Response(upstream.body, { status: upstream.status, statusText: upstream.statusText, headers: outHeaders });
   }
 
-  const html = injectBeforeBodyClose(await upstream.text(), opts.inject!);
+  // The cap is enforced on bytes actually read, never on a declared Content-Length. Streaming SSR
+  // is exactly the case that matters here and exactly the case that sends no length, so trusting the
+  // header would have meant either buffering without a bound or refusing to inject into the modern
+  // frameworks this has to work with. Over the cap, what was read is replayed and the rest passes
+  // through untouched: a page that big is not one anybody is reviewing.
+  const read = await readBodyCapped(upstream.body!, MAX_HTML_BYTES);
+  if (!read.complete) {
+    return new Response(read.body, { status: upstream.status, statusText: upstream.statusText, headers: outHeaders });
+  }
+  const html = injectBeforeBodyClose(new TextDecoder().decode(read.bytes), opts.inject!);
   return new Response(html, { status: upstream.status, statusText: upstream.statusText, headers: outHeaders });
+}
+
+type CappedRead =
+  | { complete: true; bytes: Uint8Array }
+  | { complete: false; body: ReadableStream<Uint8Array> };
+
+/** Read a body up to `cap` bytes. Under the cap it comes back whole; over it, the chunks already
+ *  held are replayed ahead of the untouched remainder, so nothing is lost and nothing is buffered
+ *  past the bound. */
+async function readBodyCapped(body: ReadableStream<Uint8Array>, cap: number): Promise<CappedRead> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    size += value.byteLength;
+    if (size > cap) {
+      return {
+        complete: false,
+        body: new ReadableStream<Uint8Array>({
+          start(controller) { for (const chunk of chunks) controller.enqueue(chunk); },
+          async pull(controller) {
+            const next = await reader.read();
+            if (next.done) controller.close();
+            else controller.enqueue(next.value);
+          },
+          cancel(reason) { return reader.cancel(reason); },
+        }),
+      };
+    }
+  }
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) { bytes.set(chunk, at); at += chunk.byteLength; }
+  return { complete: true, bytes };
 }
 
 /** The target being off is the normal failure here, so it gets a page a human can act on rather than

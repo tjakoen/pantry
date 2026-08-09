@@ -5,8 +5,10 @@
 // those are what make a URL-fetching route safe to ship at all.
 import { test, expect, describe, beforeAll, afterAll } from "bun:test";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import {
-  PANTRY_PREFIX, MAX_REQUEST_BYTES,
+  PANTRY_PREFIX, MAX_REQUEST_BYTES, MAX_HTML_BYTES,
   resolvePreviewTarget, proxyToPreview, injectBeforeBodyClose, rebasePantryHtml, rebasePantryCss, withPantryBase,
 } from "./preview.ts";
 import { createPantryHandler } from "./app.ts";
@@ -65,6 +67,13 @@ describe("the HTML transforms", () => {
     expect(out).toContain(`src="//cdn/x.png"`);         // protocol-relative, untouched
   });
 
+  test("srcset moves too, candidate by candidate, so the rule has no quiet exception", () => {
+    const out = rebasePantryHtml(`<img srcset="/a.png 400w, /b.png 800w, https://cdn/c.png 2x">`, PANTRY_PREFIX);
+    expect(out).toContain(`${PANTRY_PREFIX}/a.png 400w`);
+    expect(out).toContain(`${PANTRY_PREFIX}/b.png 800w`);
+    expect(out).toContain(`https://cdn/c.png 2x`);   // absolute, untouched
+  });
+
   test("a root-absolute url() in PANTRY's own CSS is rebased too, so a stylesheet never asks the reviewed app for anything", () => {
     const css = `@font-face { src: url("/fonts/x.woff2") format("woff2"); }\n.a { background: url(/img/y.png); }\n.b { background: url('//cdn/z.png'); }`;
     const out = rebasePantryCss(css, PANTRY_PREFIX);
@@ -111,6 +120,26 @@ beforeAll(() => {
       if (url.pathname === "/echo") return new Response(req.headers.get("cookie") ?? "no-cookie");
       if (url.pathname === "/post") return new Response(`got ${req.method} ${req.headers.get("content-type")}`, { status: 201 });
       if (url.pathname === "/away") return new Response(null, { status: 302, headers: { Location: "https://auth.example.com/x" } });
+      if (url.pathname === "/away-scheme-relative") return new Response(null, { status: 302, headers: { Location: "//auth.example.com/x" } });
+      // Streaming SSR: HTML with NO Content-Length. The framework case that made a header-based cap
+      // the wrong design, so it gets a route rather than a comment.
+      if (url.pathname === "/chunked" || url.pathname === "/huge") {
+        const huge = url.pathname === "/huge";
+        const filler = "x".repeat(64 * 1024);
+        const rounds = huge ? Math.ceil(MAX_HTML_BYTES / filler.length) + 2 : 1;
+        return new Response(
+          new ReadableStream({
+            start(c) {
+              const enc = new TextEncoder();
+              c.enqueue(enc.encode("<!DOCTYPE html><html><body>"));
+              for (let i = 0; i < rounds; i++) c.enqueue(enc.encode(filler));
+              c.enqueue(enc.encode("</body></html>"));
+              c.close();
+            },
+          }),
+          { headers: { "Content-Type": "text/html; charset=utf-8" } },   // deliberately no content-length
+        );
+      }
       return new Response("target 404", { status: 404 });
     },
   });
@@ -154,6 +183,10 @@ describe("proxyToPreview — the target is served under PANTRY's origin", () => 
     // PANTRY is http here, so a Secure cookie would be dropped by the browser and the reviewed app
     // would look logged out for a reason that has nothing to do with it.
     expect(cookies.find((c) => c.startsWith("session="))!.toLowerCase()).not.toContain("secure");
+    // and neither entry swallowed the other: a comma-joined pair would carry both names
+    for (const c of cookies) expect(c.split(",").length).toBe(1);
+    expect(cookies.find((c) => c.startsWith("session="))).not.toContain("csrf=");
+    expect(cookies.find((c) => c.startsWith("session="))!.endsWith(";")).toBe(false);   // no dangling separator
   });
 
   test("a cookie the browser sends is forwarded upstream", async () => {
@@ -171,6 +204,11 @@ describe("proxyToPreview — the target is served under PANTRY's origin", () => 
     expect((await via("/away")).headers.get("location")).toBe("https://auth.example.com/x");
   });
 
+  test("a protocol-relative Location is off-target and stays untouched, rather than being turned into a path", async () => {
+    const res = await via("/away-scheme-relative");
+    expect(res.headers.get("location")).toBe("//auth.example.com/x");
+  });
+
   test("methods and bodies pass through, and the target's status comes back", async () => {
     const res = await via("/post", { method: "POST", body: JSON.stringify({ a: 1 }), headers: { "Content-Type": "application/json" } });
     expect(res.status).toBe(201);
@@ -184,6 +222,37 @@ describe("proxyToPreview — the target is served under PANTRY's origin", () => 
   });
 });
 
+// Found by an independent reviewer, not by the person who wrote the proxy. A pathname is a string
+// that a URL constructor will happily read as scheme-relative, so `//evil.com/x` resolved against
+// the target origin becomes `http://evil.com/x`: the loopback check passed at boot and was walked
+// around by a request. These are the regression tests for that, and they are the most important
+// tests in this file.
+describe("proxyToPreview — a request cannot move the target", () => {
+  test("a scheme-relative pathname does NOT escape the configured origin", async () => {
+    for (const path of ["//example.com/x", "///example.com/x", "////example.com/"]) {
+      const url = new URL(`http://localhost:4400${path}`);
+      const res = await proxyToPreview(new Request(url), url, origin, { inject: TAG });
+      // it either reaches the real target (which 404s an unknown path) or is refused, and in NO case
+      // does it come back with something example.com served
+      expect([404, 400]).toContain(res.status);
+      expect(await res.text()).not.toContain("Example Domain");
+    }
+  });
+
+  test("a backslash path, which URL parsing turns into leading slashes, is the same story", async () => {
+    const url = new URL("http://localhost:4400/\\/example.com/x");
+    const res = await proxyToPreview(new Request(url), url, origin, { inject: TAG });
+    expect([404, 400]).toContain(res.status);
+  });
+
+  test("the escape really did work before the fix, so the test above is not testing nothing", () => {
+    // the exact construction that was live: pathname concatenated onto the origin, unnormalized
+    expect(new URL("//example.com/x", "http://localhost:5200").origin).toBe("http://example.com");
+    // and the fix, in one line
+    expect(new URL("//example.com/x".replace(/^\/+/, "/"), "http://localhost:5200").origin).toBe("http://localhost:5200");
+  });
+});
+
 describe("proxyToPreview — the bounds", () => {
   test("a websocket upgrade is refused loudly, and says what to review instead", async () => {
     const res = await via("/", { headers: { upgrade: "websocket", connection: "Upgrade" } });
@@ -194,6 +263,22 @@ describe("proxyToPreview — the bounds", () => {
   test("an oversize body is refused rather than forwarded", async () => {
     const res = await via("/post", { method: "POST", body: new Uint8Array(MAX_REQUEST_BYTES + 1) });
     expect(res.status).toBe(413);
+  });
+
+  test("streaming HTML with NO content-length is still injected, because that is what SSR sends", async () => {
+    const res = await via("/chunked");
+    const html = await res.text();
+    expect(res.headers.get("content-length")).toBeNull();   // the header the old cap trusted
+    expect(html).toContain(`${TAG}</body>`);
+  });
+
+  test("HTML past the buffer cap passes through WHOLE and uninjected, rather than being held in memory", async () => {
+    const res = await via("/huge");
+    const html = await res.text();
+    expect(html.length).toBeGreaterThan(MAX_HTML_BYTES);
+    expect(html.startsWith("<!DOCTYPE html>")).toBe(true);
+    expect(html.endsWith("</body></html>")).toBe(true);   // the replayed chunks joined the remainder
+    expect(html).not.toContain("pantry-review-client.js");
   });
 
   test("an unreachable target is a readable 502 that points back at PANTRY, not a stack trace", async () => {
@@ -210,7 +295,10 @@ describe("proxyToPreview — the bounds", () => {
 // The handler-level claim: with a target configured, PANTRY gives up the root entirely and answers
 // only under its prefix. That is the whole reason no URL rewriting is needed on the reviewed app.
 describe("createPantryHandler — the reserved prefix", () => {
-  const EXAMPLE = join(import.meta.dir, "plans");
+  // A real plans folder, because the board's markup is one of the things that had to move.
+  const PLANS = mkdtempSync(join(tmpdir(), "pantry-preview-plans-"));
+  writeFileSync(join(PLANS, "preview-fixture.md"), `---\nid: preview-fixture\nstatus: todo\n---\n\n# A plan for the board to render\n\nBody.\n`);
+  const EXAMPLE = PLANS;
   const configWith = (previewTarget: string | null): ResolvedPantryConfig => ({
     cwd: import.meta.dir, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [],
     graphPath: null, graphDir: join(import.meta.dir, "graphify-out"),
@@ -282,6 +370,61 @@ describe("createPantryHandler — the reserved prefix", () => {
     const css = await (await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/styles/variables.css`))).text();
     expect(css).toContain(`url("${PANTRY_PREFIX}/fonts/`);
     expect(css).not.toContain(`url("/fonts/`);
+  });
+
+  test("a plan card on the board links somewhere that answers, which it never did before", async () => {
+    // PROOF emits href="/plan/<id>" whatever prefix it is mounted under. With the proxy off that is
+    // a 404 in PANTRY; with it on the prefix rebase would faithfully preserve the 404.
+    const off = createPantryHandler({ plansDir: PLANS, config: configWith(null) });
+    const boardOff = await (await off(new Request("http://localhost:4400/plans"))).text();
+    expect(boardOff).not.toContain(`href="/plan/`);
+    expect(boardOff).toContain(`href="/plans/plan/`);
+    expect((await off(new Request("http://localhost:4400/plans/plan/preview-fixture"))).status).toBe(200);
+
+    const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    const boardOn = await (await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/plans`))).text();
+    expect(boardOn).toContain(`href="${PANTRY_PREFIX}/plans/plan/`);
+    expect((await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/plans/plan/preview-fixture`))).status).toBe(200);
+  });
+
+  // The response path and the PUSH path are not the same path, and only one of them was fixed at
+  // first. PROOF rebuilds the board on a file change and broadcasts the HTML over SSE, where the
+  // client assigns it with innerHTML — so a frame that skipped the repairs would silently undo them
+  // on the first save, on the surface a live board exists to keep correct.
+  test("a live board update carries the SAME repairs the served page does", async () => {
+    const handler = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    const res = await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/stream?session=push-test`));
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+
+    // a settled change on disk is what PROOF watches for
+    writeFileSync(join(PLANS, "preview-fixture.md"), `---\nid: preview-fixture\nstatus: doing\n---\n\n# A plan for the board to render\n\nEdited.\n`);
+
+    const decoder = new TextDecoder();
+    let seen = "";
+    const deadline = Bun.nanoseconds() + 5_000_000_000;
+    while (!seen.includes("proof-board") && Bun.nanoseconds() < deadline) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      seen += decoder.decode(value, { stream: true });
+    }
+    await reader.cancel();
+
+    expect(seen).toContain("proof-board");
+    expect(seen).toContain(`${PANTRY_PREFIX}/plans/plan/`);   // prefixed AND card-link repaired
+    expect(seen).not.toContain(`href=\\"/plan/`);              // the raw PROOF link never reaches a client
+  }, 10_000);
+
+  test("the font GRAIN's stylesheet asks for is actually served, and only from under the fonts root", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith(origin) });
+    const ok = await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/fonts/redaction-400.woff2`));
+    expect(ok.status).toBe(200);
+    expect(ok.headers.get("content-type")).toBe("font/woff2");
+    expect((await ok.arrayBuffer()).byteLength).toBeGreaterThan(1000);   // real bytes, not a text-mangled read
+    // the path comes off the URL, so traversal out of the fonts root is the check that matters
+    const out = await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/fonts/..%2F..%2Fpackage.json`));
+    expect(out.status).toBe(403);
+    expect((await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/fonts/nope.woff2`))).status).toBe(404);
   });
 
   test("an unknown path under the prefix is PANTRY's 404, never a pass to the app", async () => {
