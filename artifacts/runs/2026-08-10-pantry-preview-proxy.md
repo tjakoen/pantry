@@ -7,6 +7,7 @@ branch: main
 scope:
   - pantry
   - tjakoen.github.io/plans
+  - tjakoen.github.io/content/tours
 touched:
   - pantry/preview.ts
   - pantry/preview.test.ts
@@ -25,7 +26,9 @@ touched:
   - pantry/retrieval.test.ts
   - pantry/skills.test.ts
   - pantry/artifacts/reviews/2026-08-10-preview-proxy/
+  - pantry/artifacts/runs/2026-08-10-pantry-preview-proxy.md
   - tjakoen.github.io/plans/pantry-review-layer.md
+  - tjakoen.github.io/content/tours/review-pantry-preview-proxy.md
 skills:
   - loop-standard
   - session-loop
@@ -33,7 +36,7 @@ skills:
 plans:
   - pantry-review-layer
 gates:
-  - bun test (pantry) | 333 pass, 3 fail, 896 expect() calls, 336 tests across 14 files
+  - bun test (pantry) | 343 pass, 3 fail, 1044 expect() calls, 346 tests across 14 files
   - bun test (pantry, at HEAD before this change) | 302 pass, 3 fail — the same 3, in a scratch worktree
   - tsc --noEmit (pantry) | clean, no output
   - oxlint (pantry) | 23 warnings, 0 from any file this run added or created
@@ -41,12 +44,14 @@ gates:
   - bun cli.ts doctor (pantry) | 14 checks, 0 failing, 4 due
   - browser walk, portfolio through the proxy | 0 page errors, 0 failed requests
   - browser walk, Next 15 production build through the proxy | 0 page errors, 0 failed requests, React hydrated (counter 0 to 2 on two clicks)
-diffstat: pantry 13 files changed, 170 insertions(+), 23 deletions(-), plus 4 new files (preview.ts, preview.test.ts, pantry-review-client.js, 4 evidence screenshots); portfolio 1 plan file
+  - crumb check content/tours (local 0.1.9) | 8 tours, all pass
+  - crumb check content/tours (pinned 0.1.7) | flags this tour and review-prompt-card for the ## prompt section the pin predates
+diffstat: pantry 5 commits, 16 files changed and 3 created (preview.ts, preview.test.ts, pantry-review-client.js) plus 4 evidence screenshots and this report; portfolio 2 commits, 1 plan file and 1 new tour
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
-unpushed: 41 | 19 portfolio + 12 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
-verifiedBy: a browser walk of both targets against the built server, which found two defects a code read had not (the absolute Location and the CSS font leak). NOT verified by an independent session or agent, see "What needs human eyes".
-doctor: re-run after committing; the 4 due items are all pre-existing and carried forward by name below
+unpushed: 45 | 20 portfolio + 15 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
+verifiedBy: two independent reviewers that did not write the change, plus a browser walk of both targets. Between them they found six defects the author had not, one of them an open relay. Every finding was reproduced before being accepted and every fix carries a regression test.
+doctor: re-run after committing, 14 checks 0 failing 4 due; it rejected this report twice (prose scope, no Gate output section) before accepting it, and the 4 due items are pre-existing and carried forward by name below
 ---
 
 ## Gate output
@@ -55,11 +60,11 @@ Verbatim, from the tails of each run. The declared envelope was `pantry` plus th
 the portfolio, and everything touched sits under those two.
 
 ```
-$ bun test                                   # pantry, after
- 333 pass
+$ bun test                                   # pantry, after the review fixes
+ 343 pass
  3 fail
- 896 expect() calls
-Ran 336 tests across 14 files. [726.00ms]
+ 1044 expect() calls
+Ran 346 tests across 14 files.
 
 $ bun test                                   # pantry at HEAD, scratch worktree, before
  302 pass
@@ -207,6 +212,50 @@ its own traffic into the thing it is observing will eventually report on traffic
 now rebased alongside the HTML, and this is the reason the browser walk exists as a gate rather than
 a screenshot.
 
+## The second pass, and what it cost to skip it the first time
+
+Two reviewers with no part in writing this read the diff. Six defects, every one
+reproduced before it was accepted, every fix carrying a regression test that fails without it.
+
+**An open relay, and the only genuinely serious finding.** A pathname is a string, and a URL
+constructor reads a leading double slash as scheme-relative, so a request for `//example.com/x`
+resolved against the target origin became `http://example.com/x`. The loopback check passed at boot
+and a request walked around it. Backslashes arrive in the same shape, because URL parsing folds them
+into leading slashes. Reproduced in one line before it was believed:
+
+```
+new URL("//example.com/x", "http://localhost:5200").href  ->  http://example.com/x
+```
+
+Two defences now, not one: the leading run of slashes is collapsed, and the resulting origin is
+asserted against the configured target before anything is fetched. The second exists because the
+first is a regex.
+
+**The cap trusted a header the case that matters does not send.** HTML injection was gated on
+Content-Length, so a streaming SSR response, which sends none, was buffered with no bound at all
+while a large one skipped injection for an unrelated reason. The cap now counts bytes actually read;
+past it, what was read is replayed ahead of the untouched remainder, so nothing is lost and nothing
+is held. A 5 MB chunked page and a small chunked page are both under test.
+
+**The response path and the push path are not the same path.** PROOF broadcasts a rebuilt board over
+SSE and the client assigns it with innerHTML, which never passes through this server's response path,
+so the first save after any edit would have silently undone the prefix rebase on the one surface a
+live board exists to keep correct. This is the finding worth the whole exercise: it is invisible in
+a diff and invisible in a page load.
+
+**A bug PANTRY has always had, preserved faithfully by the move.** PROOF emits a plan card as
+`href="/plan/<id>"` whatever prefix it is mounted under, so a card on PANTRY's board has never opened
+a plan. The portfolio carries the identical workaround in its own server. Two copies of the same
+patch is the honest signal that PROOF should be taking the prefix, and that is now a named item
+rather than a third copy waiting to happen.
+
+**Two smaller ones:** `srcset` was a quiet exception to the rebase rule and is no longer one, and the
+board-live channel is matched by shape rather than by one exact literal that a reformat would break.
+
+**One finding was rejected after checking.** A reviewer read the injected client as working "by
+accident" because it is not rebased. It derives its base from its own script URL at runtime, which is
+deliberate and more robust than rebasing, so nothing changed there.
+
 ## What was NOT done
 
 - **P1 through P4.** Untouched, on instruction. No review chrome, no step rail, no decision card, no
@@ -219,33 +268,48 @@ a screenshot.
   whichever phase gives it something to be stale about.
 - **The 3 pre-existing test failures were not fixed.** All three come from `pantry/../proof/example`,
   a fixture path that stopped existing when PROOF folded into `grain/packages`. They fail identically
-  at HEAD in a clean worktree (302 pass, 3 fail there; 333 pass, 3 fail here), so this run added 31
+  at HEAD in a clean worktree (302 pass, 3 fail there; 343 pass, 3 fail here), so this run added 41
   tests and no failures. Fixing the fixture path is real work and is not P0.
-- **No CRUMB dev tour.** This change renders, so LOOP section 4a asks for one, and the honest answer
-  is that PANTRY cannot host one today: it does not serve `crumb-live.js`, has no `content/tours`,
-  and its own chrome carries no `data-surface` addresses. Four captured surfaces stand in as
-  evidence. This is the bootstrap the plan is about, and P1 is where it gets fixed.
+- **PANTRY still cannot host a tour of its own.** No `crumb-live.js`, no tours folder, no
+  `data-surface` addresses on its chrome. The tour written for this change gets round that by running
+  on the site PANTRY is proxying, which does host CRUMB. Giving PANTRY its own tour host is P1.
+- **PROOF still emits the wrong plan-card link.** Patched here, patched separately in the portfolio.
+  The right fix is in PROOF, which should take the prefix it is mounted under, and that is a grain
+  change and a release, so it is named rather than made.
+
+## The tour
+
+`content/tours/review-pantry-preview-proxy.md`, three steps, dev mode. It runs on the proxied
+portfolio rather than on PANTRY, because PANTRY cannot host a tour yet and the site it proxies can.
+That is not a workaround so much as the point: CRUMB's client, the tour data and every asset in the
+walk reach the reviewer through the proxy, so the walk happening at all is part of what it proves.
+PANTRY's own chrome is covered by a verify line rather than a step, which is the honest limit.
+
+Start it with the tour id as a query parameter on the proxied site, on PANTRY's port:
+
+```
+http://localhost:4400/?crumb=review-pantry-preview-proxy&crumb-mode=dev
+```
+
+Note the pinned `@tjakoen/crumb` in the portfolio is 0.1.7, which predates `## prompt` sections, so
+`bunx crumb check` flags this tour and the existing `review-prompt-card` identically. The local 0.1.9
+passes both. That is a pin gap, not a tour defect.
 
 ## What needs human eyes
 
-- **The second pass was mine.** No independent session or agent reviewed this diff, so LOOP section 9's
-  second-pass item is not satisfied. The browser walk is the closest thing to an outside check here,
-  and it earned its keep by finding two defects a code read had missed, but it is not the same claim.
 - **Scope grew past the plan's `touches`, and the plan was updated rather than the growth being
   asked about.** P0 needed `cli.ts`, `preview.ts`, the two client scripts and `INSTALL.md`, none of
-  which the plan listed when it was written. Everything is inside `pantry/`, which the plan plainly
-  scopes, and the added shape is what the instruction itself specified, so this is declared rather
-  than absorbed. Worth a look if you disagree that it counts as inside the envelope.
+  which the plan listed when it was written. Confirmed by the owner after the fact.
 - **`servePantryFromCwd` changed its return type** from the server to `{ server, config }`. Only
-  `cli.ts` calls it, but it is an exported function of an installable package.
-- **A pre-existing bug, unrelated to this change but surfaced by it: PANTRY never served `/fonts/*`.**
-  GRAIN's stylesheet has always asked for a font PANTRY does not mount, so the display face has
-  silently fallen back everywhere in the cockpit. It 404s with the proxy off too, so this run did not
-  cause it and did not fix it. A three-line static mount, and a call for the owner rather than scope
-  creep here.
+  `cli.ts` calls it, but it is an exported function of an installable package. Left as is on the
+  owner's call; the CLI has to know whether the doors moved, and no other caller exists.
+- **Two long-standing bugs were fixed on the way past, and both are worth a look because neither was
+  in the plan.** PANTRY now mounts `/fonts/*`, so the cockpit's display face renders for the first
+  time; the cockpit will look different, and that is why. And a plan card on the board now links to a
+  route that answers.
 - **Doctor's four due items, all pre-existing and carried forward by name:** graphify freshness (graph
   built from `c4f86611`), no e2e suite, layer pins 2 behind (grain 0.1.12 < 0.1.19, proof 0.1.2 <
   0.1.3), and 2 of 8 older run reports missing evidence.
-- **Nothing is pushed.** 41 commits across four repos, counted above. Owner-gated. The handoff into
+- **Nothing is pushed.** 45 commits across four repos, counted above. Owner-gated. The handoff into
   this run said 16 portfolio and 8 pantry; the measured numbers before this run started were 18 and
   9, so two of those came from elsewhere. Worth knowing before anyone treats a stated count as fact.
