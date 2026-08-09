@@ -1,5 +1,5 @@
 ---
-title: The dev preview proxy, and the chrome PANTRY draws around what it proxies
+title: The dev preview proxy, the chrome around it, and what using it changed
 date: 2026-08-10
 status: complete
 lane: gated
@@ -46,12 +46,14 @@ gates:
   - bun cli.ts doctor (pantry) | 14 checks, 0 failing, 4 due
   - browser walk, portfolio through the proxy | 0 page errors, 0 failed requests
   - browser walk, Next 15 production build through the proxy | 0 page errors, 0 failed requests, React hydrated (counter 0 to 2 on two clicks)
+  - bun test (pantry, final) | 346 pass, 3 fail, 349 tests across 14 files
+  - oxlint (pantry, final) | 23 warnings, warning set byte-identical to HEAD (verified by diffing against a stashed tree)
   - crumb check content/tours (local 0.1.9) | 8 tours, all pass
   - crumb check content/tours (pinned 0.1.7) | flags this tour and review-prompt-card for the ## prompt section the pin predates
 diffstat: pantry 5 commits, 16 files changed and 3 created (preview.ts, preview.test.ts, pantry-review-client.js) plus 4 evidence screenshots and this report; portfolio 2 commits, 1 plan file and 1 new tour
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
-unpushed: 50 | 20 portfolio + 15 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
+unpushed: 61 | 20 portfolio + 15 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
 verifiedBy: two independent reviewers that did not write the change, plus a browser walk of both targets. Between them they found six defects the author had not, one of them an open relay. Every finding was reproduced before being accepted and every fix carries a regression test.
 doctor: re-run after committing, 14 checks 0 failing 4 due; it rejected this report twice (prose scope, no Gate output section) before accepting it, and the 4 due items are pre-existing and carried forward by name below
 ---
@@ -321,6 +323,31 @@ Note the pinned `@tjakoen/crumb` in the portfolio is 0.1.7, which predates `## p
 `bunx crumb check` flags this tour and the existing `review-prompt-card` identically. The local 0.1.9
 passes both. That is a pin gap, not a tour defect.
 
+## What using it changed, after the owner opened it
+
+Everything below came from the owner using the thing rather than reading about it, which is the
+argument for the review layer stated by the review layer's own construction.
+
+- **The rail listed demo tours next to review tours.** Product walkthroughs are not dev work. Split,
+  demos folded away.
+- **Nothing said whether a review had been done.** Derived from step statuses now, since
+  TOUR-STANDARD already defines `verified` as a pass by someone who did not write it. First run of
+  it: six review tours in the portfolio, twenty-four steps, none ever signed off.
+- **The rail only filled on its own click**, so a tour started from a link or resumed from a previous
+  page left it blank. It reads CRUMB's own record out of the frame's sessionStorage now, which is
+  readable only because it is the same origin.
+- **The card carried too much text.** That was my writing, and a standard gap: nothing said how long
+  a step may be. TOUR-STANDARD gained a seventh rule and this tour was rewritten to obey it. The
+  other five review tours still fail it and were left alone.
+- **The card now folds to its header** so the app underneath can be seen.
+- **The cockpit had no theme control**, because PANTRY served GRAIN's styles and never its scripts.
+- **The rail printed the card's own words back.** Two copies of one paragraph is the failure the rail
+  was built to fix. It carries the walk now and never the prose, and the standard was corrected too:
+  it had named the rail as a home for long context, which building it proved wrong.
+
+Twice this session the thing I built disagreed with the thing I had written, both times because the
+standard was written from the design rather than from using it.
+
 ## What needs human eyes
 
 - **Scope grew past the plan's `touches`, and the plan was updated rather than the growth being
@@ -336,6 +363,6 @@ passes both. That is a pin gap, not a tour defect.
 - **Doctor's four due items, all pre-existing and carried forward by name:** graphify freshness (graph
   built from `c4f86611`), no e2e suite, layer pins 2 behind (grain 0.1.12 < 0.1.19, proof 0.1.2 <
   0.1.3), and 2 of 8 older run reports missing evidence.
-- **Nothing is pushed.** 50 commits across four repos, counted above. Owner-gated. The handoff into
+- **Nothing is pushed.** 61 commits across four repos, counted above. Owner-gated. The handoff into
   this run said 16 portfolio and 8 pantry; the measured numbers before this run started were 18 and
   9, so two of those came from elsewhere. Worth knowing before anyone treats a stated count as fact.
