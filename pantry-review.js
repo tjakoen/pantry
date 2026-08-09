@@ -125,16 +125,10 @@
     if (state.id !== shownTour) { shownTour = state.id; void showSteps(state.id); }
     markCurrentStep(state.step);
   }
-  // The step the reviewer is on opens itself and the others close. Opening every step at once is the
-  // wall of text this rail exists to avoid, and leaving them all shut means the context is present
-  // but never read.
+  // Where the reviewer is in the walk. The only thing the rail says about the current step, on
+  // purpose: what that step SAYS is in the card, three inches to the right.
   function markCurrentStep(index) {
-    const boxes = [...stepList.querySelectorAll(".pantry-review__stepbox")];
-    boxes.forEach((box, i) => {
-      const current = i === index;
-      box.parentElement.dataset.current = String(current);
-      if (current !== box.open) box.open = current;
-    });
+    [...stepList.children].forEach((li, i) => { li.dataset.current = String(i === index); });
   }
 
   // ── the reviewed project's tours ──────────────────────────────────────────
@@ -213,45 +207,32 @@
     try {
       const tour = await loadTour(id);
       if (!tour) return;
-      // The long text belongs HERE, not in the card. A step's card is read while looking at the
-      // thing it points at, so it has to be short enough to read standing up; the reasoning behind
-      // it is worth having but only for the reviewer who wants it. Collapsed by default for exactly
-      // that reason: a rail that dumps every step's prose is the same failure as the card, moved.
+      // The rail shows the WALK, never the words. The card already carries a step's prose, and a rail
+      // that repeats it is two copies of the same paragraph on one screen, which is the failure this
+      // rail was built to fix rather than a fix for it. What the card cannot show is the shape of the
+      // whole walk: how many steps, which one you are on, what each one is pointed at, and which are
+      // still waiting on a person. That is the rail's job and it needs no field the format lacks.
+      //
+      // It also means long prose has nowhere to hide. The fix for a step that will not fit its card
+      // is a shorter step (TOUR-STANDARD's length rule), not a second copy of it over here.
       stepList.replaceChildren(...(tour.steps || []).map((s, i) => {
         const li = document.createElement("li");
         li.className = "pantry-review__step";
         if (s.status) li.dataset.status = s.status;
 
-        const box = document.createElement("details");
-        box.className = "pantry-review__stepbox";
-        const head = document.createElement("summary");
         const n = document.createElement("b");
         n.className = "pantry-review__stepno";
         n.textContent = String(i + 1);
         const label = document.createElement("span");
+        label.className = "pantry-review__steplabel";
         label.textContent = s.surface || s.at || "step";
-        head.append(n, label);
+        li.append(n, label);
         if (s.status) {
           const badge = document.createElement("span");
           badge.className = "pantry-review__status";
           badge.textContent = s.status;
-          head.append(badge);
+          li.append(badge);
         }
-        box.append(head);
-
-        for (const [cls, prefix, text] of [
-          ["pantry-review__stepreview", "", s.review],
-          ["pantry-review__stepverify", "Try it: ", s.verify],
-          ["pantry-review__stepsay", "", s.say],
-        ]) {
-          if (!text) continue;
-          const para = document.createElement("p");
-          para.className = cls;
-          if (prefix) { const b = document.createElement("b"); b.textContent = prefix; para.append(b); }
-          para.append(document.createTextNode(text));
-          box.append(para);
-        }
-        li.append(box);
         return li;
       }));
       stepsGroup.hidden = false;

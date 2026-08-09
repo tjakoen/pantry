@@ -167,7 +167,7 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
     <section class="pantry-review__group" aria-labelledby="pantry-review-steps" data-steps-group hidden>
       <h2 class="pantry-review__grouptitle" id="pantry-review-steps">Steps</h2>
       <ol class="pantry-review__steps" data-steps></ol>
-      <p class="pantry-review__note">A step's full text lives here, where it can be skipped. The card in the frame is for the short instruction; this is for the context behind it.</p>
+      <p class="pantry-review__note">Where you are in the walk. What each step says is in the card, not repeated here.</p>
     </section>
     <section class="pantry-review__group" aria-labelledby="pantry-review-tours">
       <h2 class="pantry-review__grouptitle" id="pantry-review-tours">Reviews</h2>

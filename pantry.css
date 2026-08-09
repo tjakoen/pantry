@@ -435,23 +435,12 @@
 .pantry-review__tour[data-state="reviewed"] .pantry-review__tourmeta { color: var(--ink-faint); }
 .pantry-review__group summary { cursor: pointer; }
 
-/* A step's full text, collapsed. The rail is where long context belongs precisely because it can be
-   skipped; expanded by default it would be the card's problem moved three inches left. */
-.pantry-review__stepbox { margin: 0; }
-.pantry-review__stepbox summary {
-  display: flex; align-items: baseline; gap: var(--space-2, 0.5rem);
-  cursor: pointer; font-size: var(--text-sm); padding: 0.25rem 0;
-}
-.pantry-review__stepbox p {
-  font-size: var(--text-sm); line-height: 1.45; color: var(--ink-muted);
-  margin: var(--space-1, 0.35rem) 0 var(--space-2, 0.5rem) var(--space-4, 1rem);
-}
-.pantry-review__stepverify { color: var(--ink); }
-.pantry-review__stepsay { color: var(--ink-faint); font-style: italic; }
+/* A step is one line: its number, what it points at, its status. The words live in the card. */
+.pantry-review__steplabel { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The step the reviewer is on. Marked, not shouted: the rail is beside the work, not the work. */
 .pantry-review__step[data-current="true"] { border-left: 2px solid var(--ink); padding-left: var(--space-2, 0.5rem); margin-left: -2px; }
-.pantry-review__step[data-current="true"] > .pantry-review__stepbox > summary { color: var(--ink); }
+.pantry-review__step[data-current="true"] .pantry-review__steplabel { color: var(--ink); }
 
 /* The theming controls (GRAIN's behaviour, PANTRY's chrome). Quiet by default: a view preference is
    not a navigation item, so it sits at the end of the nav and reads at the same weight as one. */
