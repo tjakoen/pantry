@@ -15,6 +15,7 @@
   const urlLabel = shell.querySelector("[data-frame-url]");
   const openLink = shell.querySelector("[data-frame-open]");
   const toggle = shell.querySelector("[data-rail-toggle]");
+  const cardToggle = shell.querySelector("[data-card-toggle]");
   const tourList = shell.querySelector("[data-tours]");
   const demoList = shell.querySelector("[data-demos]");
   const demosGroup = shell.querySelector("[data-demos-group]");
@@ -52,6 +53,38 @@
   }
   frame.addEventListener("load", syncUrl);
   syncUrl();
+
+  // ── folding the card down to its header ───────────────────────────────────
+  // The control lives out here rather than in the card, because it is a property of the review
+  // workspace and not of how a tour presents itself standalone. The rule it triggers ships in the
+  // injected client (pantry-review-client.js); this only sets the class. The button stays hidden
+  // until there is actually a card to fold, since a control for something absent is noise.
+  let folded = false;
+  const frameDoc = () => { try { return frame.contentDocument; } catch { return null; } };
+  const applyFold = () => {
+    const doc = frameDoc();
+    if (!doc) return;
+    doc.documentElement.classList.toggle("pantry-card-min", folded);
+    cardToggle.setAttribute("aria-pressed", String(folded));
+    cardToggle.textContent = folded ? "Unfold card" : "Fold card";
+  };
+  cardToggle.addEventListener("click", () => { folded = !folded; applyFold(); });
+
+  // A card appears and disappears as a tour starts, steps and ends, so the control's visibility is
+  // watched rather than set once. Re-applying the fold on every mutation is what keeps a folded card
+  // folded across a step change, since CRUMB rebuilds the dialog each time.
+  const watchCard = () => {
+    const doc = frameDoc();
+    if (!doc || !doc.body) return;
+    const seen = () => {
+      const has = !!doc.querySelector(".crumb-pop");
+      cardToggle.hidden = !has;
+      if (has) applyFold();
+    };
+    new MutationObserver(seen).observe(doc.body, { childList: true, subtree: true });
+    seen();
+  };
+  frame.addEventListener("load", watchCard);
 
   // ── the reviewed project's tours ──────────────────────────────────────────
   const startTour = (id) => {
@@ -129,22 +162,45 @@
     try {
       const tour = await loadTour(id);
       if (!tour) return;
+      // The long text belongs HERE, not in the card. A step's card is read while looking at the
+      // thing it points at, so it has to be short enough to read standing up; the reasoning behind
+      // it is worth having but only for the reviewer who wants it. Collapsed by default for exactly
+      // that reason: a rail that dumps every step's prose is the same failure as the card, moved.
       stepList.replaceChildren(...(tour.steps || []).map((s, i) => {
         const li = document.createElement("li");
         li.className = "pantry-review__step";
         if (s.status) li.dataset.status = s.status;
+
+        const box = document.createElement("details");
+        box.className = "pantry-review__stepbox";
+        const head = document.createElement("summary");
         const n = document.createElement("b");
         n.className = "pantry-review__stepno";
         n.textContent = String(i + 1);
         const label = document.createElement("span");
         label.textContent = s.surface || s.at || "step";
-        li.append(n, label);
+        head.append(n, label);
         if (s.status) {
           const badge = document.createElement("span");
           badge.className = "pantry-review__status";
           badge.textContent = s.status;
-          li.append(badge);
+          head.append(badge);
         }
+        box.append(head);
+
+        for (const [cls, prefix, text] of [
+          ["pantry-review__stepreview", "", s.review],
+          ["pantry-review__stepverify", "Try it: ", s.verify],
+          ["pantry-review__stepsay", "", s.say],
+        ]) {
+          if (!text) continue;
+          const para = document.createElement("p");
+          para.className = cls;
+          if (prefix) { const b = document.createElement("b"); b.textContent = prefix; para.append(b); }
+          para.append(document.createTextNode(text));
+          box.append(para);
+        }
+        li.append(box);
         return li;
       }));
       stepsGroup.hidden = false;

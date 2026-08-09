@@ -182,7 +182,7 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
     <section class="pantry-review__group" aria-labelledby="pantry-review-steps" data-steps-group hidden>
       <h2 class="pantry-review__grouptitle" id="pantry-review-steps">Steps</h2>
       <ol class="pantry-review__steps" data-steps></ol>
-      <p class="pantry-review__note">The card and the lamp are drawn by the project itself, inside the frame. This rail says where you are; it does not drive the walk.</p>
+      <p class="pantry-review__note">A step's full text lives here, where it can be skipped. The card in the frame is for the short instruction; this is for the context behind it.</p>
     </section>
     <section class="pantry-review__group" aria-labelledby="pantry-review-cockpit">
       <h2 class="pantry-review__grouptitle" id="pantry-review-cockpit">Cockpit</h2>
@@ -194,6 +194,7 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
   <div class="pantry-review__pane">
     <div class="pantry-review__bar">
       <button class="pantry-review__toggle" type="button" data-rail-toggle aria-expanded="true">Hide rail</button>
+      <button class="pantry-review__toggle" type="button" data-card-toggle aria-pressed="false" hidden>Fold card</button>
       <span class="pantry-review__url" data-frame-url>/</span>
       <a class="pantry-review__open" target="_blank" rel="noopener" data-frame-open>Open full</a>
     </div>
