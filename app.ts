@@ -196,6 +196,11 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
       <button class="pantry-review__toggle" type="button" data-rail-toggle aria-expanded="true">Hide rail</button>
       <button class="pantry-review__toggle" type="button" data-card-toggle aria-pressed="false" hidden>Fold card</button>
       <span class="pantry-review__url" data-frame-url>/</span>
+      <!-- Same origin means PANTRY and the reviewed app share localStorage, and both read GRAIN's
+           theme keys, so forcing a scheme here reaches the app on its next load. That is useful and
+           it is also the sort of thing that makes a reviewer file a bug against a screen they
+           themselves restyled, so it is stated rather than left to be discovered. -->
+      <span class="pantry-review__themed" data-themed hidden></span>
       <a class="pantry-review__open" target="_blank" rel="noopener" data-frame-open>Open full</a>
     </div>
     <!-- The frame's target is carried in data-src and set by the client, NOT in src. Every
@@ -225,9 +230,17 @@ function nav(surfaces: PantrySurfaces, review: boolean): string {
     surfaces.standards && `<a href="/standards">Standards</a>`,
     `<a href="/about">About</a>`,
   ].filter(Boolean).join("\n  ");
+  // The theming controls are GRAIN's, driven by attributes rather than by any code here: theme.js
+  // binds anything carrying data-toggle-scheme or data-cycle-theme, and writes the current flavor
+  // name into data-theme-name. PANTRY declares the flavor list on <html> and provides the buttons;
+  // it owns none of the logic, which is the point (the cockpit consumes the stack, never forks it).
   return `<nav class="pantry-nav">
   <a class="pantry-nav__brand" href="/">PANTRY</a>
   ${links}
+  <span class="pantry-nav__theme">
+    <button type="button" class="pantry-nav__themebtn" data-cycle-theme title="Change flavor"><span data-theme-name>sourdough</span></button>
+    <button type="button" class="pantry-nav__themebtn" data-toggle-scheme title="Light or dark" aria-label="Toggle light and dark">◐</button>
+  </span>
 </nav>`;
 }
 
@@ -242,18 +255,25 @@ export interface PantryPageOptions {
 }
 
 export function pantryPage(title: string, body: string, surfaces: PantrySurfaces, opts: PantryPageOptions = {}): string {
+  // data-themes declares the flavor list theme.js cycles through; the flavors themselves are token
+  // blocks in GRAIN's variables.css, so this names them rather than defining them.
+  // theme-boot.js is render-BLOCKING and first on purpose: it puts the saved attributes on <html>
+  // before the stylesheets paint, and deferring it would flash the default theme on every
+  // navigation, which is the one bug a theme toggle is guaranteed to be blamed for.
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-themes="sourdough baguette brioche">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)} · PANTRY</title>
+  <script src="/scripts/theme-boot.js"></script>
   ${styleLinks}
 </head>
 <body class="pantry-body${opts.fullBleed ? " pantry-body--full" : ""}" data-grade="smooth">
   ${nav(surfaces, opts.review ?? false)}
   <main class="pantry-main${opts.fullBleed ? " pantry-main--full" : ""}">${body}</main>
   ${opts.fullBleed ? "" : madeWith()}
+  <script src="/scripts/theme.js" defer></script>
   <script src="/pantry-cmdk.js" defer></script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
 </body>
 </html>`;
@@ -1077,6 +1097,11 @@ export function createPantryHandler(opts: PantryOptions) {
   const page = (title: string, body: string) => pantryPage(title, body, surfaces, { review: !!config.previewTarget });
 
   const serveStyles = makeStatic(bunRuntime, join(grainRoot, "styles"));
+  // GRAIN's own client scripts, served from the package rather than copied. The cockpit only needs
+  // the theming pair today (theme-boot.js + theme.js), but mounting the folder rather than two files
+  // keeps PANTRY from growing a hand-maintained allowlist of grain's assets, which is the same
+  // reason /styles/ is mounted whole.
+  const serveScripts = makeStatic(bunRuntime, join(grainRoot, "scripts"));
   // GRAIN's own variables.css has always asked for the Redaction grades at /fonts/…, and PANTRY has
   // never mounted them, so the cockpit's display face has silently fallen back since the first page
   // it rendered. Found while proving the preview proxy, where the same missing request stopped being
@@ -1149,6 +1174,7 @@ export function createPantryHandler(opts: PantryOptions) {
   const pantryRoutes = async (path: string, url: URL): Promise<Response | null> => {
     // --- assets ---
     if (path.startsWith("/styles/")) return rebaseCssResponse(await serveStyles(path.slice("/styles".length)), base);
+    if (path.startsWith("/scripts/")) return serveScripts(path.slice("/scripts".length));
     if (path.startsWith("/fonts/")) return serveFont(fontsRoot, path.slice("/fonts/".length));
     if (path === "/components.css")
       return new Response(rebasePantryCss(await componentCss.css(), base), { headers: { "Content-Type": "text/css" } });

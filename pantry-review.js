@@ -54,6 +54,24 @@
   frame.addEventListener("load", syncUrl);
   syncUrl();
 
+  // ── say when PANTRY is theming the app too ────────────────────────────────
+  // Same origin means one localStorage, and PANTRY and a GRAIN host both read the same theme keys,
+  // so a scheme forced in the cockpit reaches the reviewed app on its next load. Worth having, and
+  // worth saying: a reviewer looking at a screen they themselves restyled will otherwise file a bug
+  // against it. Read from the frame rather than from PANTRY, because what the app ended up with is
+  // the only claim that is actually true.
+  const themedLabel = shell.querySelector("[data-themed]");
+  function syncThemed() {
+    const doc = frameDoc();
+    const scheme = doc && doc.documentElement.getAttribute("data-color-scheme");
+    const flavor = doc && doc.documentElement.getAttribute("data-theme");
+    const forced = [scheme, flavor].filter(Boolean).join(" · ");
+    themedLabel.hidden = !forced;
+    themedLabel.textContent = forced ? `app themed by PANTRY: ${forced}` : "";
+  }
+  frame.addEventListener("load", syncThemed);
+  new MutationObserver(syncThemed).observe(document.documentElement, { attributes: true, attributeFilter: ["data-color-scheme", "data-theme"] });
+
   // ── folding the card down to its header ───────────────────────────────────
   // The control lives out here rather than in the card, because it is a property of the review
   // workspace and not of how a tour presents itself standalone. The rule it triggers ships in the
