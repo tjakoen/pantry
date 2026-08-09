@@ -951,7 +951,8 @@ export function createPantryHandler(opts: PantryOptions) {
       let freshness: DoctorReport | null = null;
       try {
         freshness = await runDoctor({ cwd, config, now: new Date(), runDrift: true });
-      } catch {
+      } catch (err) {
+        console.warn("[pantry] heartbeat off:", err);
         freshness = null;
       }
       return html(page("Home", homeBody(config, surfaces, freshness)));

@@ -106,7 +106,7 @@ function surfacesOf(
     surfaces.reference && { route: "/reference", title: "Reference", description: "The generated GRAIN/AI vocabulary + token slots, read from the real registries." },
     surfaces.catalog && { route: "/catalog", title: "Catalog", description: "The GRAIN component catalog." },
     surfaces.standards && { route: "/standards", title: "Standards", description: "The cross-repo writing + presentation standards, rendered through MILL." },
-  ].filter(Boolean) as KnowledgeSurface[];
+  ].filter((s): s is KnowledgeSurface => Boolean(s));
 }
 
 /**

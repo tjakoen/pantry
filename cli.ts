@@ -135,4 +135,4 @@ async function main() {
   process.exit(1);
 }
 
-void main();
+main().catch((e) => { console.error(`pantry: ${e instanceof Error ? e.message : String(e)}`); process.exit(1); });

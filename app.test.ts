@@ -346,7 +346,7 @@ describe("the home heartbeat row (piece 11e sub-unit 2)", () => {
       // a non-heartbeat check that must NOT appear in the strip
       "claude-md": { label: "CLAUDE.md present", severity: "error", ok: true, detail: "found" },
     };
-    const checks = Object.entries(base).map(([id, c]) => ({ id, ...c, ...(overrides[id] ?? {}) }));
+    const checks = Object.entries(base).map(([id, c]) => ({ id, ...c, ...overrides[id] }));
     return { ok: true, checks };
   };
 

@@ -77,7 +77,7 @@
   function close() { overlay.hidden = true; }
 
   document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); overlay.hidden ? open() : close(); return; }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); if (overlay.hidden) open(); else close(); return; }
     if (overlay.hidden) return;
     if (e.key === "Escape") { e.preventDefault(); close(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); active++; const r = matches(input.value); if (active >= r.length) active = 0; paint(); }

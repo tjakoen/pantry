@@ -117,6 +117,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
 
   const plansDir = abs(cwd, raw.plansDir ?? "plans");
   const artifactsDir = abs(cwd, raw.artifactsDir ?? "artifacts");
+  const graphDir = abs(cwd, raw.graphDir ?? "graphify-out");
 
   // docsDirs: explicit list wins; otherwise auto-mount ./docs only when it actually exists.
   const docsDirs = (raw.docsDirs ?? ["docs"])
@@ -128,8 +129,8 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     projectName: raw.projectName ?? basename(cwd) ?? "project",
     plansDir,
     docsDirs,
-    graphPath: resolveGraphPath(abs(cwd, raw.graphDir ?? "graphify-out")),
-    graphDir: abs(cwd, raw.graphDir ?? "graphify-out"),
+    graphPath: resolveGraphPath(graphDir),
+    graphDir,
     // default under plansDir (not cwd) so it rides along with the board's own folder
     decisionsDir: raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions"),
     artifactsDir,

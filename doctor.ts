@@ -551,8 +551,9 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   // cognitive tier is what fixes it (LOOP.md §2). A repo with no runs dir at all gets an info — the
   // convention is opt-in per host and an unstarted ledger is not a failure. This check reads only the
   // host's own files, so it needs no package to resolve and cannot reach outside cwd.
+  const runsPayload = await buildRunsPayload(config, now.toISOString());
   try {
-    const r = await buildRunsPayload(config, now.toISOString());
+    const r = runsPayload;
     if (!r.available || r.count === 0) {
       checks.push({
         id: "run-report-evidence",
@@ -607,7 +608,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
       // THIS repo, and the merged estate graph relabels and cross-links them, so it silently reports
       // local files as "outside any blast radius" — which is exactly what it did on the first run here.
       const graph = await loadGraph(join(config.graphDir, "graph.json"));
-      const r = await buildRunsPayload(config, now.toISOString());
+      const r = runsPayload;
       const grew = r.available ? r.runs.filter((x) => x.outOfScope.length > 0) : [];
       if (!graph) {
         checks.push({ id: "scope-radius", severity: "info", ok: true, label: "scope growth vs the graph", detail: "no graph — run graphify update ." });
