@@ -59,6 +59,40 @@ is, and hides when you want the width. The rail reads the reviewed project's tou
 the proxy, so a project that mounts CRUMB gets its tours listed with no extra configuration, and one
 that does not gets a rail with just its navigation.
 
+## The answer log (the one thing PANTRY writes)
+
+Every other surface is a pure read. This one is not, and it is small enough to state completely.
+
+An agent that cannot decide something alone raises a question: a decision request under
+`plans/decisions/`, or a decision card at the end of a review tour. The answer comes back on **one
+append-only log**, whichever surface it was given on, and the next session reads it. The path is
+config, never a request:
+
+```json
+{ "answersLog": "plans/decisions/answers.jsonl" }
+```
+
+That is also the default, so most projects set nothing. Point it at an absolute path outside the repo
+to keep one log per machine instead of one per repo. Do not give it a `.log` extension: `*.log` sits
+in nearly every .gitignore, and a per-repo log the repo never commits is not one.
+
+From a session:
+
+```
+bunx pantry answers                  what has been answered, unread first — read this on WAKE
+bunx pantry answers wait <ref>       block until that question is answered (only while you are alive)
+bunx pantry answers ack <id>         record that you acted on one
+bunx pantry answers record --ref <id> --question "…" --choice "…"
+                                     write down an answer that arrived by paste, so one channel stays one
+```
+
+The bounds on the write, in full: it accepts a POST from this machine only (checked on the socket,
+not on a header), stops reading at the body cap rather than measuring afterwards, refuses an entry
+that does not carry its own question, appends a single line, and writes to the configured path and
+nowhere else. The configured path itself must end in `.jsonl` or `.ndjson` and must not be a symlink,
+so a mistyped key cannot turn this into a writer of plans, source or dotfiles. It never edits or
+deletes an entry. PANTRY still runs no model and still never touches `plans/*.md`, content, or code.
+
 ## AI path
 
 Paste the block below to your coding agent, in the root of the project you want PANTRY in.
