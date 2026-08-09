@@ -8,8 +8,10 @@ scope:
   - standards/
   - plans/
   - tools/
+  - package.json
   - doctor.ts
   - doctor.test.ts
+  - ~/.claude/tools/
 touched:
   - standards/DECISIONS.md
   - standards/README.md
