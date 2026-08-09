@@ -16,6 +16,8 @@
   const openLink = shell.querySelector("[data-frame-open]");
   const toggle = shell.querySelector("[data-rail-toggle]");
   const tourList = shell.querySelector("[data-tours]");
+  const demoList = shell.querySelector("[data-demos]");
+  const demosGroup = shell.querySelector("[data-demos-group]");
   const stepsGroup = shell.querySelector("[data-steps-group]");
   const stepList = shell.querySelector("[data-steps]");
 
@@ -58,19 +60,49 @@
     frame.src = `/?crumb=${encodeURIComponent(id)}&crumb-mode=dev`;
   };
 
-  function renderTours(tours) {
-    tourList.replaceChildren(...tours.map((t) => {
-      const li = document.createElement("li");
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "pantry-review__tour";
-      btn.textContent = t.title || t.id;
-      const meta = document.createElement("span");
-      meta.className = "pantry-review__tourmeta";
-      meta.textContent = `${t.steps} step${t.steps === 1 ? "" : "s"} · ${t.mode}`;
-      btn.append(meta);
-      btn.addEventListener("click", () => { showSteps(t.id); startTour(t.id); });
-      li.append(btn);
+  // Whether a review has actually been done, derived from the steps rather than tracked separately.
+  // TOUR-STANDARD already has the vocabulary: `verified` means someone who did not write it walked
+  // it, and the standard says marking your own work verified is almost always wrong. So a tour whose
+  // every step is verified has been reviewed, and anything else is still waiting on a person. A
+  // second place to record "is this reviewed" would immediately disagree with the first; this cannot,
+  // because there is only one source and it is the file the reviewer edits anyway.
+  function reviewState(steps) {
+    const statuses = (steps || []).map((s) => s.status).filter(Boolean);
+    if (statuses.length === 0) return null;                                   // not a review tour
+    if (statuses.some((s) => s === "known-issue")) return "known issue";
+    if (statuses.every((s) => s === "verified")) return "reviewed";
+    const waiting = statuses.filter((s) => s !== "verified").length;
+    return `${waiting} of ${statuses.length} awaiting you`;
+  }
+
+  function tourButton(t, onPick) {
+    const li = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pantry-review__tour";
+    btn.append(document.createTextNode(t.title || t.id));
+    const meta = document.createElement("span");
+    meta.className = "pantry-review__tourmeta";
+    meta.textContent = `${t.steps} step${t.steps === 1 ? "" : "s"}`;
+    btn.append(meta);
+    btn.addEventListener("click", () => onPick(t.id));
+    li.append(btn);
+    return { li, btn, meta };
+  }
+
+  function renderTours(list, tours, withState) {
+    list.replaceChildren(...tours.map((t) => {
+      const { li, btn, meta } = tourButton(t, (id) => { showSteps(id); startTour(id); });
+      if (!withState) return li;
+      // The state costs one fetch per tour and is worth it: a rail that lists reviews without
+      // saying which are outstanding is a list of files, not a queue.
+      loadTour(t.id).then((tour) => {
+        const state = tour && reviewState(tour.steps);
+        if (!state) return;
+        btn.dataset.state = state === "reviewed" ? "reviewed" : "pending";
+        meta.textContent = `${t.steps} step${t.steps === 1 ? "" : "s"} · ${state}`;
+        if (state !== "reviewed") li.dataset.pending = "true";
+      });
       return li;
     }));
   }
@@ -82,11 +114,20 @@
     tourList.replaceChildren(li);
   }
 
+  const tourCache = new Map();
+  async function loadTour(id) {
+    if (tourCache.has(id)) return tourCache.get(id);
+    const p = fetch(`/crumb/tours/${encodeURIComponent(id)}.json`)
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null);
+    tourCache.set(id, p);
+    return p;
+  }
+
   async function showSteps(id) {
     try {
-      const res = await fetch(`/crumb/tours/${encodeURIComponent(id)}.json`);
-      if (!res.ok) return;
-      const tour = await res.json();
+      const tour = await loadTour(id);
+      if (!tour) return;
       stepList.replaceChildren(...(tour.steps || []).map((s, i) => {
         const li = document.createElement("li");
         li.className = "pantry-review__step";
@@ -115,7 +156,14 @@
       if (!res.ok) return empty("This project does not serve tours. The frame is still live, and a step's verify line is something you perform.");
       const tours = await res.json();
       if (!Array.isArray(tours) || tours.length === 0) return empty("No tours in this project yet.");
-      renderTours(tours);
+      const reviews = tours.filter((t) => t.mode === "dev");
+      const demos = tours.filter((t) => t.mode !== "dev");
+      if (reviews.length === 0) empty("No review tours in this project. The demo tours below are product walkthroughs.");
+      else renderTours(tourList, reviews, true);
+      if (demos.length > 0) {
+        renderTours(demoList, demos, false);
+        demosGroup.hidden = false;
+      }
     } catch {
       empty("Could not reach the project's tour manifest. Is it still running?");
     }

@@ -165,11 +165,20 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
       <span class="pantry-review__target">${escapeHtml(previewTarget)}</span>
     </div>
     <section class="pantry-review__group" aria-labelledby="pantry-review-tours">
-      <h2 class="pantry-review__grouptitle" id="pantry-review-tours">Tours</h2>
+      <h2 class="pantry-review__grouptitle" id="pantry-review-tours">Reviews</h2>
       <ol class="pantry-review__tours" data-tours>
         <li class="pantry-review__empty">Looking for tours in the reviewed project…</li>
       </ol>
     </section>
+    <!-- A demo tour is product work: it shows someone round the app. A review tour is dev work: it
+         asks someone to check a change. They share a file format and nothing else, and mixing them
+         in one list makes the rail read as a menu rather than a queue. Demos are kept, because a
+         reviewer sometimes does want to walk the product, but they are second and folded away. -->
+    <details class="pantry-review__group" data-demos-group hidden>
+      <summary class="pantry-review__grouptitle">Demo tours</summary>
+      <ol class="pantry-review__tours" data-demos></ol>
+      <p class="pantry-review__note">Product walkthroughs, not review work. Here because they run in the same frame.</p>
+    </details>
     <section class="pantry-review__group" aria-labelledby="pantry-review-steps" data-steps-group hidden>
       <h2 class="pantry-review__grouptitle" id="pantry-review-steps">Steps</h2>
       <ol class="pantry-review__steps" data-steps></ol>
