@@ -96,13 +96,14 @@
       if (!withState) return li;
       // The state costs one fetch per tour and is worth it: a rail that lists reviews without
       // saying which are outstanding is a list of files, not a queue.
-      loadTour(t.id).then((tour) => {
+      void (async () => {
+        const tour = await loadTour(t.id);
         const state = tour && reviewState(tour.steps);
         if (!state) return;
         btn.dataset.state = state === "reviewed" ? "reviewed" : "pending";
         meta.textContent = `${t.steps} step${t.steps === 1 ? "" : "s"} · ${state}`;
         if (state !== "reviewed") li.dataset.pending = "true";
-      });
+      })();
       return li;
     }));
   }
