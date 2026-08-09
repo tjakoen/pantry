@@ -14,12 +14,13 @@
 //   - info   an optional piece is simply absent (no graphify-out, no AUDIT runbook) → never fails.
 import { lstat, readlink, stat, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, basename, resolve, dirname } from "node:path";
+import { join, basename, resolve, dirname, relative } from "node:path";
+import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
 import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
 import { checkPantryDrift, checkPantrySymbolDrift, usesMergedGraph } from "./drift.ts";
 import { checkPantryDeps } from "./deps.ts";
 import { listSkills } from "./skills.ts";
-import { buildRunsPayload } from "./runs.ts";
+import { buildRunsPayload, type RunsPayload } from "./runs.ts";
 import { affectedBy, loadGraph } from "./graph.ts";
 import type { GitRunner } from "./timeline.ts";
 
@@ -49,6 +50,20 @@ export interface DoctorOptions {
   auditMaxAgeDays?: number;
   /** graphify-out older than this reads as stale (warn); default 30 */
   graphMaxAgeDays?: number;
+  /**
+   * Activity-due thresholds for the audit-freshness check: how much churn since the last DATED audit
+   * report reads as "look again" even when the calendar age is still inside `auditMaxAgeDays`. The
+   * whole point is that ACTIVITY creates drift, not time — sixty commits landing in a week make the
+   * picture stale faster than sixty commits landing over six months, and a pure age check cannot tell
+   * the two apart. The two defaults below are NOT measured; they are the owner's own illustration of
+   * "a lot has happened" ("sixty commits and four closed plans have landed since anyone last looked at
+   * this repo as a whole") turned into a number doctor can act on consistently instead of asking a
+   * session to eyeball "a lot". Treat them as a first guess to retune once a repo's real audit cadence
+   * is observed, not as a measured law — the same posture `auditMaxAgeDays` already takes.
+   */
+  auditActivityCommits?: number;
+  /** see `auditActivityCommits`; default 4, the owner's own "four closed plans" */
+  auditActivityPlansClosed?: number;
   /** inject a resolved config (tests); default loadPantryConfig(cwd) */
   config?: ResolvedPantryConfig;
   /** fold the doc-drift lint in as a check; default true (set false when packages aren't resolvable) */
@@ -183,6 +198,68 @@ async function newestAuditReport(cwd: string): Promise<{ path: string; mtime: Da
   return best;
 }
 
+/** How much moved since a dated audit report — the activity half of `audit-freshness`. One bounded git
+ *  call (`log --since <report mtime> --name-only`), the same "cheap enough for every session start"
+ *  posture every other check in this file follows; never a full-history walk.
+ *
+ *  `plansClosed` is a PROXY, not an exact count: a plan file counts when it (a) was touched by a commit
+ *  since the audit and (b) currently reads `status: done`. That slightly over-counts a plan that was
+ *  ALREADY done and got a trivial edit afterwards (a typo fix, say) — timeline.ts's per-file history
+ *  walk (`deriveFileHistory`) would get the transition date exactly right, but doing that here would add
+ *  a git call per plan file to every doctor run, which is the full-tree-walk cost this module refuses to
+ *  pay (see the module header). Cheap and approximate, on purpose, and said so in the check's detail.
+ *
+ *  Returns null when git can't answer (not a repo, git absent, spawn failure) — the caller reads an
+ *  unmeasurable signal as "not due", never as a guess dressed up as a number. */
+async function auditActivitySince(
+  cwd: string,
+  since: Date,
+  git: GitRunner,
+  plansDir: string,
+): Promise<{ commits: number; filesTouched: number; plansClosed: number } | null> {
+  const out = await git(["log", "--since", since.toISOString(), "--name-only", "--format=%H"], cwd);
+  if (out === null) return null;
+
+  // `--name-only --format=%H` interleaves bare commit-hash lines with the files each commit touched, no
+  // other delimiter. A line that is exactly 40 hex chars is read as a commit boundary; everything else
+  // in between is a touched path. (The same class of judgment call `gitHead`'s hash regex makes above.)
+  const lines = out.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  let commits = 0;
+  const files = new Set<string>();
+  for (const line of lines) {
+    if (/^[0-9a-f]{40}$/i.test(line)) commits++;
+    else files.add(line);
+  }
+
+  // Only touched paths under the plans dir, normalised to forward slashes so this reads the same on
+  // every platform git log can run on.
+  const plansRel = relative(cwd, plansDir).replace(/\\/g, "/");
+  const plansPrefix = plansRel === "" ? "" : `${plansRel}/`;
+  let plansClosed = 0;
+  for (const f of files) {
+    const norm = f.replace(/\\/g, "/");
+    if (plansPrefix && !norm.startsWith(plansPrefix)) continue;
+    if (!norm.endsWith(".md")) continue;
+    try {
+      const { data } = parseFrontmatter(await Bun.file(join(cwd, f)).text());
+      if (typeof data.status === "string" && data.status.trim().toLowerCase() === "done") plansClosed++;
+    } catch {
+      continue; // deleted since, unreadable, or malformed — a plan we can't verify doesn't count
+    }
+  }
+  return { commits, filesTouched: files.size, plansClosed };
+}
+
+// Run reports written since a dated audit report — read from the SAME payload the run-ledger evidence
+// check below builds (hoisted to the top of runDoctor), so the two checks never disagree about what
+// counts as a run report. Undated reports are skipped, not guessed into either bucket: LOOP.md §9 wants
+// a date on every report, and a report missing one is already flagged by that other check.
+function runsWrittenSince(runsPayload: RunsPayload, since: Date): number {
+  if (!runsPayload.available) return 0;
+  const sinceDay = since.toISOString().slice(0, 10);
+  return runsPayload.runs.filter((r) => !!r.date && r.date > sinceDay).length;
+}
+
 // Any e2e suite present? A repo with none can't run the mechanical tier's full gate (LOOP.md §2).
 // Checked cheaply: an `e2e/` dir, or a `*.e2e.*` file at the root or in test(s)/.
 async function hasE2eSuite(cwd: string): Promise<boolean> {
@@ -209,6 +286,8 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   const now = opts.now ?? new Date();
   const auditMaxAgeDays = opts.auditMaxAgeDays ?? 30;
   const graphMaxAgeDays = opts.graphMaxAgeDays ?? 30;
+  const auditActivityCommits = opts.auditActivityCommits ?? 60;
+  const auditActivityPlansClosed = opts.auditActivityPlansClosed ?? 4;
   const config = opts.config ?? (await loadPantryConfig(cwd));
   const runDrift = opts.runDrift ?? true;
   const runDeps = opts.runDeps ?? true;
@@ -217,6 +296,11 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   const git = opts.gitRunner ?? defaultGitRunner;
 
   const checks: DoctorCheck[] = [];
+
+  // Built once, up front, and read by two checks below (audit-freshness's activity signal, and the
+  // run-ledger evidence check further down) — a run report is either "written since the audit" or it
+  // isn't, and both consumers should read the same list rather than each re-parsing the runs dir.
+  const runsPayload = await buildRunsPayload(config, now.toISOString());
 
   // ── Kit compliance ────────────────────────────────────────────────────────
   const claudeMd = existsSync(join(cwd, "CLAUDE.md"));
@@ -320,12 +404,24 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   });
 
   // ── Staleness (the heartbeat's whole point: what's due) ───────────────────
+  //
+  // audit-freshness asks two questions, not two checks: is the last dated audit report old on the
+  // CALENDAR, and has enough happened SINCE it that the picture is stale regardless of the calendar.
+  // The second question is the one that actually matters — a repo that hasn't moved in six weeks is not
+  // more overdue than one that landed sixty commits and closed four plans in six days, and a pure age
+  // check cannot tell those two apart (that gap is the whole reason this got extended rather than left
+  // alone). See `auditActivitySince`'s doc comment above for exactly what "since" measures and why the
+  // plans-closed count is a proxy, not an exact one.
   const auditRunbook = existsSync(join(cwd, "AUDIT.md"));
   if (!auditRunbook) {
     checks.push({ id: "audit-freshness", severity: "info", ok: true, label: "audit freshness", detail: "no AUDIT.md runbook in this repo" });
   } else {
     const report = await newestAuditReport(cwd);
     if (!report) {
+      // Nothing dated to measure FROM. A repo that has never closed an audit has no baseline, and
+      // computing a delta against zero would report a dramatic, meaningless number — every commit the
+      // repo has ever had, dressed up as "activity since". Say the honest thing instead: no audit yet.
+      // The remedy is the same either way (run AUDIT.md), so this stays exactly as it was.
       checks.push({
         id: "audit-freshness",
         severity: "warn",
@@ -335,13 +431,35 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
       });
     } else {
       const age = daysBetween(now, report.mtime);
-      const fresh = age <= auditMaxAgeDays;
+      const ageFresh = age <= auditMaxAgeDays;
+      const activity = await auditActivitySince(cwd, report.mtime, git, config.plansDir);
+      const runsSince = runsWrittenSince(runsPayload, report.mtime);
+      // Due by EITHER signal: a calendar-stale audit is due regardless of how quiet the repo has been,
+      // and a calendar-fresh one is now also due when activity alone crosses a threshold — that second
+      // case is the one a pure age check used to miss entirely.
+      const activityDue =
+        activity !== null && (activity.commits >= auditActivityCommits || activity.plansClosed >= auditActivityPlansClosed);
+      const ok = ageFresh && !activityDue;
+
+      const ageText = ageFresh
+        ? `last audit ${age} days old (${basename(report.path)})`
+        : `last audit ${age} days old — over ${auditMaxAgeDays}d, run AUDIT.md`;
+      const plural = (n: number) => (n === 1 ? "" : "s");
+      const activityText =
+        activity === null
+          ? `activity since unmeasurable (no git history) — ${runsSince} run report${plural(runsSince)} since`
+          : `${activity.commits} commit${plural(activity.commits)}, ${activity.filesTouched} file${plural(activity.filesTouched)} touched, ` +
+            `${activity.plansClosed} plan${plural(activity.plansClosed)} closed, ${runsSince} run report${plural(runsSince)} since` +
+            (activityDue && ageFresh
+              ? ` — due by activity (>=${auditActivityCommits} commits or >=${auditActivityPlansClosed} plans closed is a guess, see doctor.ts) even though the calendar age is fine`
+              : "");
+
       checks.push({
         id: "audit-freshness",
         severity: "warn",
-        ok: fresh,
+        ok,
         label: "audit freshness",
-        detail: fresh ? `last audit ${age} days old (${basename(report.path)})` : `last audit ${age} days old — over ${auditMaxAgeDays}d, run AUDIT.md`,
+        detail: `${ageText}; ${activityText}`,
       });
     }
   }
@@ -551,7 +669,6 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   // cognitive tier is what fixes it (LOOP.md §2). A repo with no runs dir at all gets an info — the
   // convention is opt-in per host and an unstarted ledger is not a failure. This check reads only the
   // host's own files, so it needs no package to resolve and cannot reach outside cwd.
-  const runsPayload = await buildRunsPayload(config, now.toISOString());
   try {
     const r = runsPayload;
     if (!r.available || r.count === 0) {

@@ -203,7 +203,95 @@ describe("pantry doctor — staleness (warn tier, surfaces but never fails CI)",
     expect(c.ok).toBe(true);
     expect(c.detail).toContain("3 days old");
   });
+});
 
+// audit-freshness's activity signal: how much has happened since the last DATED audit report, read
+// through a fake gitRunner so these stay hermetic (the temp host is never a real git repo). The fake
+// answers only the `git log --since ... --name-only --format=%H` call the check makes — real git output
+// shape, interleaving a bare 40-hex commit hash with the file paths it touched.
+describe("pantry doctor — audit activity (the ask: activity creates drift, not time)", () => {
+  const fakeActivityGit = (out: string | null): GitRunner => async (args) => (args[0] === "log" ? out : null);
+
+  // A fresh (setAge 3d) dated audit report, always at artifacts/audit-latest.md, mtime NOW-3d
+  // (2026-07-23T00:00:00.000Z) — the fixture every test below layers a git double onto.
+  async function freshDatedAudit() {
+    await compliantKit();
+    await writeFile(join(dir, "AUDIT.md"), "# runbook");
+    const report = join(dir, "artifacts", "audit-latest.md");
+    await mkdir(join(dir, "artifacts"));
+    await writeFile(report, "# recent");
+    await setAge(report, 3);
+    return report;
+  }
+
+  test("activity under both thresholds → still ok, detail carries the real counts", async () => {
+    await freshDatedAudit();
+    const gitLog = `${"a".repeat(40)}\ndoctor.ts\nruns.ts\n`;
+    const r = await run({}, { auditMaxAgeDays: 30, gitRunner: fakeActivityGit(gitLog) });
+    const c = byId(r, "audit-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("3 days old");
+    expect(c.detail).toContain("1 commit,");
+    expect(c.detail).toContain("2 files touched");
+    expect(c.detail).toContain("0 plans closed");
+    expect(c.detail).not.toContain("due by activity");
+  });
+
+  test("commits since the audit cross the threshold → due, even though the report itself is calendar-fresh", async () => {
+    await freshDatedAudit();
+    const gitLog = [0, 1, 2].map((i) => `${String(i).repeat(40)}\nfile${i}.ts\n`).join("\n");
+    const r = await run({}, { auditMaxAgeDays: 30, auditActivityCommits: 3, gitRunner: fakeActivityGit(gitLog) });
+    const c = byId(r, "audit-freshness");
+    expect(c.ok).toBe(false); // the calendar age alone would have passed this
+    expect(c.detail).toContain("3 days old (audit-latest.md)"); // still calendar-fresh
+    expect(c.detail).toContain("3 commits,");
+    expect(c.detail).toContain("due by activity");
+    expect(r.ok).toBe(true); // a warn, never a failing gate (LOOP.md §2)
+  });
+
+  test("plans closed since the audit cross their OWN threshold, independent of the commit count", async () => {
+    await freshDatedAudit();
+    await writeFile(join(dir, "plans", "skills-runtime.md"), "---\nstatus: done\n---\nBody.\n");
+    const gitLog = `${"a".repeat(40)}\nplans/skills-runtime.md\n`;
+    const r = await run({}, { auditMaxAgeDays: 30, auditActivityCommits: 60, auditActivityPlansClosed: 1, gitRunner: fakeActivityGit(gitLog) });
+    const c = byId(r, "audit-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("1 plan closed");
+    expect(c.detail).toContain("due by activity");
+  });
+
+  test("a plan touched since the audit but NOT currently done does not count as closed", async () => {
+    await freshDatedAudit();
+    await writeFile(join(dir, "plans", "skills-runtime.md"), "---\nstatus: in-progress\n---\nBody.\n");
+    const gitLog = `${"a".repeat(40)}\nplans/skills-runtime.md\n`;
+    const r = await run({}, { auditMaxAgeDays: 30, auditActivityPlansClosed: 1, gitRunner: fakeActivityGit(gitLog) });
+    const c = byId(r, "audit-freshness");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("0 plans closed");
+  });
+
+  test("git unmeasurable (not a repo, or git absent) → says so plainly, falls back to the age check alone", async () => {
+    await freshDatedAudit();
+    const r = await run({}, { auditMaxAgeDays: 30, gitRunner: fakeActivityGit(null) });
+    const c = byId(r, "audit-freshness");
+    expect(c.ok).toBe(true); // age alone is fresh; an unmeasurable activity signal never invents a failure
+    expect(c.detail).toContain("activity since unmeasurable (no git history)");
+  });
+
+  test("run reports written since the audit are read from the same ledger run-report-evidence reads, undated ones excluded", async () => {
+    const report = await freshDatedAudit(); // dated 2026-07-23 (NOW - 3d)
+    await mkdir(join(dir, "artifacts", "runs"), { recursive: true });
+    await writeFile(join(dir, "artifacts", "runs", "2026-07-24-after.md"), "---\ndate: 2026-07-24\n---\nAfter the audit.\n");
+    await writeFile(join(dir, "artifacts", "runs", "2026-07-20-before.md"), "---\ndate: 2026-07-20\n---\nBefore the audit.\n");
+    await writeFile(join(dir, "artifacts", "runs", "undated.md"), "---\ntitle: no date\n---\nUndated.\n");
+    void report;
+    const r = await run({}, { auditMaxAgeDays: 30 }); // no gitRunner: real git in a non-repo temp dir degrades to null
+    const c = byId(r, "audit-freshness");
+    expect(c.detail).toContain("1 run report since");
+  });
+});
+
+describe("pantry doctor — staleness (graph, e2e)", () => {
   test("no graphify-out → info; a stale graph → warn", async () => {
     await compliantKit();
     const info = await run();
