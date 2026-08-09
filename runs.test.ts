@@ -119,6 +119,31 @@ describe("buildRunsPayload — parsing", () => {
     expect(st("c")).toBe("blocked");
     expect(st("d")).toBe("complete");
   });
+
+  // The lane is LOOP §4b's classification of the CHANGE, recorded rather than computed here. Unlike
+  // status it has no safe default: reading a typo as "high" would widen the lane the standard is
+  // there to narrow, so anything unrecognised reads as no lane at all.
+  test("lane reads the three §4b values in any case, and anything else is no lane", async () => {
+    await write("a.md", `---\nlane: high\n---\n`);
+    await write("b.md", `---\nlane: Gated\n---\n`);
+    await write("c.md", `---\nlane: HUMAN\n---\n`);
+    await write("d.md", `---\nlane: mostly-fine\n---\n`);
+    await write("e.md", `---\nstatus: complete\n---\n`);
+    const p = await build();
+    const lane = (id: string) => p.runs.find((r) => r.id === id)!.lane;
+    expect(lane("a")).toBe("high");
+    expect(lane("b")).toBe("gated");
+    expect(lane("c")).toBe("human");
+    expect(lane("d")).toBeUndefined();
+    expect(lane("e")).toBeUndefined();
+  });
+
+  test("a missing lane is not a §9 gap — the nine items are the nine items", async () => {
+    await write("r.md", COMPLETE);
+    const p = await build();
+    expect(p.runs[0].lane).toBeUndefined();
+    expect(p.runs[0].gaps).toEqual([]);
+  });
 });
 
 describe("buildRunsPayload — LOOP §9 gaps", () => {

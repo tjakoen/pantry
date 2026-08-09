@@ -16,6 +16,7 @@
 //   title: Pin the run-ledger schema
 //   date: 2026-08-07
 //   status: complete                    # complete | partial | blocked (default complete)
+//   lane: gated                         # LOOP §4b: high | gated | human (optional, unknown = absent)
 //   branch: main
 //   scope:                              # the declared envelope (LOOP §4b scope cap)
 //     - runs.ts
@@ -53,6 +54,20 @@ import type { ResolvedPantryConfig } from "./config.ts";
 
 export type RunStatus = "complete" | "partial" | "blocked";
 
+/**
+ * LOOP §4b's three lanes, recorded rather than computed. The lane is a property of the CHANGE (does
+ * it touch an irreversible path, does a gate exist that would catch it going wrong), so it is decided
+ * before the work and written into the report afterwards — which is what makes it evidence instead of
+ * a claim made in chat and forgotten.
+ *
+ * PANTRY does not classify: it reads the word the run wrote, the same read-only posture as every other
+ * field here. Computing a lane suggestion from the ledger is deliberately a later question, because a
+ * number produced before the classification is settled is a number nobody trusts.
+ */
+export type RunLane = "high" | "gated" | "human";
+
+const LANES: readonly string[] = ["high", "gated", "human"];
+
 /** A "label | detail" frontmatter entry: a gate + its result, a dirty file + why, a plan + its href. */
 export interface RunPair {
   label: string;
@@ -70,6 +85,12 @@ export interface RunReport {
   id: string;
   title: string;
   status: RunStatus;
+  /**
+   * the LOOP §4b lane this change was run in, absent when the report does not declare one. A value
+   * that is not one of the three reads as absent: there is no safe default here, and picking "high"
+   * for a typo is exactly the widening §4b forbids.
+   */
+  lane?: RunLane;
   /** the run's close date, verbatim from frontmatter (YYYY-MM-DD); absent when the file omits it */
   date?: string;
   branch?: string;
@@ -322,12 +343,15 @@ function parseRun(id: string, file: string, raw: string): RunReport {
   const { data, body } = parseFrontmatter(raw);
   const rawStatus = String(data.status ?? "").toLowerCase();
   const status: RunStatus = rawStatus === "partial" || rawStatus === "blocked" ? rawStatus : "complete";
+  const rawLane = (str(data.lane) ?? "").toLowerCase();
+  const lane = LANES.includes(rawLane) ? (rawLane as RunLane) : undefined;
   const scope = asArray(data.scope);
   const touched = asArray(data.touched);
   const partial: Omit<RunReport, "gaps"> = {
     id,
     title: str(data.title) || firstHeading(body) || id,
     status,
+    lane,
     date: str(data.date),
     branch: str(data.branch),
     scope,

@@ -610,8 +610,10 @@ function runDetailBody(r: RunReport): string {
       : "";
 
   // The one-line answer to "do I need to read this", before anything else on the page: how it ended,
-  // when, how big, how much of §9 it carries, whether it stayed inside its envelope. Every fact here
-  // is also below in full — this shortens the DECISION to read on, never the evidence.
+  // when, how big, which LOOP §4b lane it ran in, how much of §9 it carries, whether it stayed inside
+  // its envelope. Every fact here is also below in full — this shortens the DECISION to read on,
+  // never the evidence. The lane is the one that can be missing: it is optional in the schema, and a
+  // report that never declared one says nothing rather than guessing on its behalf.
   // Label above value, the same way round as the meta list right below it — the two blocks are the
   // same kind of thing and reading them in opposite orders is what made the first cut hard to scan.
   const summaryItem = (value: string, label: string, tone?: string) =>
@@ -620,6 +622,7 @@ function runDetailBody(r: RunReport): string {
   ${summaryItem(r.status, "outcome", r.status === "blocked" ? "due" : undefined)}
   ${summaryItem(r.date ?? "no date", "closed", r.date ? undefined : "due")}
   ${summaryItem(r.diffstat ?? "no diffstat", "diffstat", r.diffstat ? undefined : "due")}
+  ${r.lane ? summaryItem(r.lane, "lane", r.lane === "human" ? "due" : undefined) : ""}
   ${summaryItem(`${9 - r.gaps.length} of 9`, "evidence carried", r.gaps.length ? "due" : undefined)}
   ${summaryItem(r.outOfScope.length ? `grew by ${r.outOfScope.length}` : "held", "scope", r.outOfScope.length ? "due" : undefined)}
 </div>`;

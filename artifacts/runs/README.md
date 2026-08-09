@@ -22,6 +22,7 @@ an entry needing two fields uses the `label | detail` pipe convention the decisi
 title: Pin the run-ledger schema
 date: 2026-08-07
 status: complete                # complete | partial | blocked (default: complete)
+lane: gated                     # LOOP §4b lane: high | gated | human (optional)
 branch: main
 scope:                          # the envelope this run declared before it started (§4b)
   - runs.ts
@@ -77,6 +78,13 @@ One gap per §9 item, each one absent-or-present, never a judgement call:
 `scope-growth` is the one that computes rather than looks up: a `touched:` path outside every `scope:`
 entry is growth past the declared envelope, which LOOP.md §4b calls an ask-trigger. Until now that cap
 was a promise with nothing measuring it.
+
+`lane:` is not one of the nine and is not checked. It records which of LOOP §4b's three lanes the
+change was run in — `high` when a gate would catch it going wrong, `gated` when the blast radius is
+real but walkable-back, `human` when it touches an irreversible path. The lane is decided before the
+work and written down after it, so it is evidence rather than a claim made in chat. A value that is
+not one of the three reads as absent: there is no safe default, and reading a typo as `high` is the
+widening §4b exists to prevent.
 
 ## Two rules the schema carries
 

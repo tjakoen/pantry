@@ -374,6 +374,7 @@ The wording on the empty state.
 title: A run with a long middle
 date: 2026-08-10
 status: partial
+lane: gated
 branch: main
 scope:
   - app.ts
@@ -406,6 +407,8 @@ The fold's default state.
     expect(html).toContain("evidence carried");
     expect(html).toContain("3 files changed, 210 insertions(+), 3 deletions(-)");
     expect(html).toContain("grew by 1");             // pantry.css was touched outside the envelope
+    expect(html).toContain(">lane<");                // the §4b lane the run declared…
+    expect(html).toContain(">gated</b>");            // …and which one it was
     expect(html.indexOf("pantry-run-summary-block")).toBeLessThan(html.indexOf("Missing evidence"));
 
     // the inventory folds, and says how much it is hiding
