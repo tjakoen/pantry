@@ -164,6 +164,11 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
       <b class="pantry-review__title">Review</b>
       <span class="pantry-review__target">${escapeHtml(previewTarget)}</span>
     </div>
+    <section class="pantry-review__group" aria-labelledby="pantry-review-steps" data-steps-group hidden>
+      <h2 class="pantry-review__grouptitle" id="pantry-review-steps">Steps</h2>
+      <ol class="pantry-review__steps" data-steps></ol>
+      <p class="pantry-review__note">A step's full text lives here, where it can be skipped. The card in the frame is for the short instruction; this is for the context behind it.</p>
+    </section>
     <section class="pantry-review__group" aria-labelledby="pantry-review-tours">
       <h2 class="pantry-review__grouptitle" id="pantry-review-tours">Reviews</h2>
       <ol class="pantry-review__tours" data-tours>
@@ -179,11 +184,6 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
       <ol class="pantry-review__tours" data-demos></ol>
       <p class="pantry-review__note">Product walkthroughs, not review work. Here because they run in the same frame.</p>
     </details>
-    <section class="pantry-review__group" aria-labelledby="pantry-review-steps" data-steps-group hidden>
-      <h2 class="pantry-review__grouptitle" id="pantry-review-steps">Steps</h2>
-      <ol class="pantry-review__steps" data-steps></ol>
-      <p class="pantry-review__note">A step's full text lives here, where it can be skipped. The card in the frame is for the short instruction; this is for the context behind it.</p>
-    </section>
     <section class="pantry-review__group" aria-labelledby="pantry-review-cockpit">
       <h2 class="pantry-review__grouptitle" id="pantry-review-cockpit">Cockpit</h2>
       <ul class="pantry-review__links">

@@ -77,14 +77,47 @@
     const doc = frameDoc();
     if (!doc || !doc.body) return;
     const seen = () => {
-      const has = !!doc.querySelector(".crumb-pop");
+      const has = !!doc.querySelector(".crumb-pop, .crumb-frame");
       cardToggle.hidden = !has;
       if (has) applyFold();
+      syncActiveTour();
     };
     new MutationObserver(seen).observe(doc.body, { childList: true, subtree: true });
     seen();
   };
   frame.addEventListener("load", watchCard);
+
+  // ── which tour is actually running ────────────────────────────────────────
+  // Read from CRUMB's own record rather than inferred from the rail's last click. The rail is not
+  // the only way a walk starts: a tour can be launched from a link, from the site's own navigation,
+  // or resumed from a previous page, and in every one of those cases a rail that only fills itself
+  // on its own click shows nothing. Same origin, so the frame's sessionStorage is simply readable,
+  // which is one more thing the proxy buys that a cross-origin embed would not.
+  const CRUMB_KEY = "crumb:active";
+  let shownTour = null;
+  function activeTour() {
+    try {
+      const raw = frame.contentWindow.sessionStorage.getItem(CRUMB_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+  function syncActiveTour() {
+    const state = activeTour();
+    if (!state || !state.id) { stepsGroup.hidden = true; shownTour = null; return; }
+    if (state.id !== shownTour) { shownTour = state.id; void showSteps(state.id); }
+    markCurrentStep(state.step);
+  }
+  // The step the reviewer is on opens itself and the others close. Opening every step at once is the
+  // wall of text this rail exists to avoid, and leaving them all shut means the context is present
+  // but never read.
+  function markCurrentStep(index) {
+    const boxes = [...stepList.querySelectorAll(".pantry-review__stepbox")];
+    boxes.forEach((box, i) => {
+      const current = i === index;
+      box.parentElement.dataset.current = String(current);
+      if (current !== box.open) box.open = current;
+    });
+  }
 
   // ── the reviewed project's tours ──────────────────────────────────────────
   const startTour = (id) => {
@@ -204,6 +237,8 @@
         return li;
       }));
       stepsGroup.hidden = false;
+      const state = activeTour();
+      if (state && state.id === id) markCurrentStep(state.step);
     } catch { /* the rail is a convenience; the walk itself lives in the frame */ }
   }
 

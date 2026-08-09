@@ -448,3 +448,7 @@
 }
 .pantry-review__stepverify { color: var(--ink); }
 .pantry-review__stepsay { color: var(--ink-faint); font-style: italic; }
+
+/* The step the reviewer is on. Marked, not shouted: the rail is beside the work, not the work. */
+.pantry-review__step[data-current="true"] { border-left: 2px solid var(--ink); padding-left: var(--space-2, 0.5rem); margin-left: -2px; }
+.pantry-review__step[data-current="true"] > .pantry-review__stepbox > summary { color: var(--ink); }
