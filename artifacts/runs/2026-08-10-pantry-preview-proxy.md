@@ -1,0 +1,198 @@
+---
+title: The dev preview proxy, so PANTRY can serve a project under its own origin
+date: 2026-08-10
+status: complete
+lane: gated
+branch: main
+scope:
+  - pantry/ (P0 of plans/pantry-review-layer.md, and only P0)
+  - tjakoen.github.io/plans/pantry-review-layer.md
+touched:
+  - pantry/preview.ts
+  - pantry/preview.test.ts
+  - pantry/pantry-review-client.js
+  - pantry/app.ts
+  - pantry/cli.ts
+  - pantry/config.ts
+  - pantry/pantry-cmdk.js
+  - pantry/pantry-map.js
+  - pantry/INSTALL.md
+  - pantry/package.json
+  - pantry/app.test.ts
+  - pantry/doctor.test.ts
+  - pantry/drift.test.ts
+  - pantry/init.test.ts
+  - pantry/retrieval.test.ts
+  - pantry/skills.test.ts
+  - pantry/artifacts/reviews/2026-08-10-preview-proxy/
+  - tjakoen.github.io/plans/pantry-review-layer.md
+skills:
+  - loop-standard
+  - session-loop
+  - tour-standard
+plans:
+  - pantry-review-layer
+gates:
+  - bun test (pantry) | 333 pass, 3 fail, 896 expect() calls, 336 tests across 14 files
+  - bun test (pantry, at HEAD before this change) | 302 pass, 3 fail — the same 3, in a scratch worktree
+  - tsc --noEmit (pantry) | clean, no output
+  - oxlint (pantry) | 23 warnings, 0 from any file this run added or created
+  - bunx proof verify plans (portfolio) | 18 plans, 1 changed file(s) vs HEAD, 2 problems, OK
+  - bun cli.ts doctor (pantry) | 14 checks, 0 failing, 4 due
+  - browser walk, portfolio through the proxy | 0 page errors, 0 failed requests
+  - browser walk, Next 15 production build through the proxy | 0 page errors, 0 failed requests, React hydrated (counter 0 to 2 on two clicks)
+diffstat: pantry 13 files changed, 170 insertions(+), 23 deletions(-), plus 4 new files (preview.ts, preview.test.ts, pantry-review-client.js, 4 evidence screenshots); portfolio 1 plan file
+dirty:
+  - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
+unpushed: 37 | 18 portfolio + 9 pantry + 4 grain + 6 claude-config, all measured this run; pushing is owner-gated
+verifiedBy: a browser walk of both targets against the built server, which found two defects a code read had not (the absolute Location and the CSS font leak). NOT verified by an independent session or agent, see "What needs human eyes".
+doctor: re-run after committing; the 4 due items are all pre-existing and carried forward by name below
+---
+
+## What this run did
+
+P0 of the review-layer plan, and only P0. PANTRY can now serve another local project **at its own
+root**, under its own origin, with one script tag injected into HTML responses and nothing else about
+that project touched.
+
+The shape was settled before any code was written, so this is a report on whether it held rather than
+on what to build.
+
+**PANTRY's own routes move; the reviewed project owns the root.** With `previewTarget` set in the
+host config, every PANTRY surface answers under `/__pantry` and everything else is passed straight
+through. That is the whole reason no URL rewriting is needed: the app's root-relative URLs resolve
+because the root really is the app. The cost lands on PANTRY instead, which now rebases its own
+output, and that trade is the right way round because PANTRY is the thing that moved.
+
+**The bounds are in the build.** The target is read from config and never from a request, so there
+is no open-relay shape available here even by accident. It must be an origin, loopback, with no path
+and no credentials; a target that fails any of those is refused with a reason and the proxy stays
+off, which is also what an absent key does. Websocket upgrades are refused with a 501 that says to
+review a production build, rather than half-handled. Request bodies are capped at 8 MB and HTML is
+only buffered up to 4 MB, above which it streams uninjected.
+
+**One byte changes on a proxied page.** `pantry-review-client.js`, injected before the closing body
+tag. It exposes `window.__pantryReview` and does nothing else on purpose: the tour client, the
+spotlight and the decision card are P1 and P2, and building them here would make the proxy hard to
+tell apart from the thing it carries.
+
+## The proof, in the order the handoff asked for it
+
+**The portfolio first, as the easy target.** A direct fetch of `/` and a fetch through PANTRY differ
+on exactly one line and by exactly 63 bytes, which is the injected tag:
+
+```
+direct bytes:    39866  proxied bytes:    39929
+539c539
+< …<script type="module" src="/crumb-live.js"></script></body>
+> …<script type="module" src="/crumb-live.js"></script><script src="/__pantry/pantry-review-client.js" defer></script></body>
+```
+
+`/notes`, `/grain`, `/standards/voice` and the stylesheets all answered 200 through the proxy, and a
+browser walk reported no page errors and no failed requests.
+
+**Then a Next.js 15.5.4 production build, as the target that decides whether this generalises.**
+There was no Next project on this machine, so one was scaffolded in `/tmp/next-proof` with an app
+router page, a client component, a static asset, a cookie-setting API route and a dynamic page that
+reads that cookie. It was built with `next build` and served with `next start`, a production build
+and not a dev server, as the plan requires.
+
+```
+/_next/static/chunks/255-4efeec91c7871d79.js        200 application/javascript 171822b
+/_next/static/chunks/4bd1b696-c023c6e3521b1417.js   200 application/javascript 173019b
+/_next/static/chunks/app/page-4e83c50ed5d8b044.js   200 application/javascript 376b
+/_next/static/chunks/main-app-95070c53b2d212e2.js   200 application/javascript 557b
+/_next/static/chunks/polyfills-42372ed130431b0a.js  200 application/javascript 112594b
+/_next/static/chunks/webpack-078f6dfb37dff419.js    200 application/javascript 3310b
+/logo.svg                                           200 image/svg+xml
+/whoami (RSC: 1)                                    200 text/x-component
+direct 4901b -> proxied 4964b
+```
+
+Again 63 bytes, again one line. The RSC flight stream passes through as a stream, because only HTML
+is ever read into memory. React hydrated: the browser walk clicked the client component twice and
+the label went from `clicked 0` to `clicked 2`, which is the claim that actually matters, since a
+page that renders but does not hydrate would look fine in a screenshot.
+
+Evidence: `artifacts/reviews/2026-08-10-preview-proxy/` (four screenshots, both targets through the
+proxy plus PANTRY's own home and board under the prefix).
+
+## The cookie warning, and what actually happened
+
+The plan and the handoff both flagged auth cookies as the thing most likely to make the first
+attempt look broken for an unrelated reason. It was worth flagging and it did not bite, for a reason
+worth writing down: **cookies ignore port.** A target on `localhost:5200` and PANTRY on
+`localhost:4402` are the same cookie host, so a session set through one is sent to the other. The
+login round trip works end to end:
+
+```
+status:     HTTP/1.1 303 See Other
+location:   /whoami
+set-cookie: np_session=abc123; Path=/; HttpOnly
+then GET /whoami through PANTRY -> <p id="who">session=abc123</p>
+(no cookie)                     -> <p id="who">anonymous</p>
+```
+
+Two caveats stay live. A target on `127.0.0.1` with PANTRY on `localhost` **are** different cookie
+hosts and would break, so keep both on the same name. And a target serving https locally would set
+`Secure` cookies that an http PANTRY cannot carry, so `Secure` is stripped when PANTRY itself is not
+on https; that is deliberate, dev-only, and stated in the code rather than left as a surprise.
+
+## Two defects the browser walk found that reading the code did not
+
+Both are the same shape, PANTRY addressing the root it has just given away.
+
+**An absolute redirect throws the browser out of the review.** Next builds its redirect Location from
+the upstream request, so `POST /api/login` answered `http://localhost:5200/whoami`. Followed as-is,
+that leaves PANTRY's origin entirely and lands on the raw target, where the review layer does not
+exist and would not know it had lost the page. A Location on the target's own origin is now rewritten
+to a path; a Location anywhere else is left alone, because PANTRY has no business in an external
+auth hop.
+
+**PANTRY's own stylesheet fired a request at the reviewed app.** GRAIN's `variables.css` loads its
+display font from `url("/fonts/…")`. With only the HTML rebased, that request went to the root, which
+is now the reviewed project. The class of bug is worse than the one font: a review layer that leaks
+its own traffic into the thing it is observing will eventually report on traffic it caused. CSS is
+now rebased alongside the HTML, and this is the reason the browser walk exists as a gate rather than
+a screenshot.
+
+## What was NOT done
+
+- **P1 through P4.** Untouched, on instruction. No review chrome, no step rail, no decision card, no
+  write-back, no Tier 1 attributes. `pantry-review-client.js` is a stub with a marker and a log line,
+  and the plan's three open questions are still open and were not answered by building this.
+- **Websocket passthrough.** Refused with a 501 rather than half-implemented. `next dev` will not
+  work through this and is not meant to; the plan calls this a later upgrade.
+- **No doctor check for the preview config.** The plan lists `doctor.ts` in its touches, but a
+  freshness check over a dev-only key would fire in every repo that has never set it. Left for
+  whichever phase gives it something to be stale about.
+- **The 3 pre-existing test failures were not fixed.** All three come from `pantry/../proof/example`,
+  a fixture path that stopped existing when PROOF folded into `grain/packages`. They fail identically
+  at HEAD in a clean worktree (302 pass, 3 fail there; 333 pass, 3 fail here), so this run added 31
+  tests and no failures. Fixing the fixture path is real work and is not P0.
+- **No CRUMB dev tour.** This change renders, so LOOP section 4a asks for one, and the honest answer
+  is that PANTRY cannot host one today: it does not serve `crumb-live.js`, has no `content/tours`,
+  and its own chrome carries no `data-surface` addresses. Four captured surfaces stand in as
+  evidence. This is the bootstrap the plan is about, and P1 is where it gets fixed.
+
+## What needs human eyes
+
+- **The second pass was mine.** No independent session or agent reviewed this diff, so LOOP section 9's
+  second-pass item is not satisfied. The browser walk is the closest thing to an outside check here,
+  and it earned its keep by finding two defects a code read had missed, but it is not the same claim.
+- **Scope grew past the plan's `touches`, and the plan was updated rather than the growth being
+  asked about.** P0 needed `cli.ts`, `preview.ts`, the two client scripts and `INSTALL.md`, none of
+  which the plan listed when it was written. Everything is inside `pantry/`, which the plan plainly
+  scopes, and the added shape is what the instruction itself specified, so this is declared rather
+  than absorbed. Worth a look if you disagree that it counts as inside the envelope.
+- **`servePantryFromCwd` changed its return type** from the server to `{ server, config }`. Only
+  `cli.ts` calls it, but it is an exported function of an installable package.
+- **A pre-existing bug, unrelated to this change but surfaced by it: PANTRY never served `/fonts/*`.**
+  GRAIN's stylesheet has always asked for a font PANTRY does not mount, so the display face has
+  silently fallen back everywhere in the cockpit. It 404s with the proxy off too, so this run did not
+  cause it and did not fix it. A three-line static mount, and a call for the owner rather than scope
+  creep here.
+- **Doctor's four due items, all pre-existing and carried forward by name:** graphify freshness (graph
+  built from `c4f86611`), no e2e suite, layer pins 2 behind (grain 0.1.12 < 0.1.19, proof 0.1.2 <
+  0.1.3), and 2 of 8 older run reports missing evidence.
+- **Nothing is pushed.** 37 commits across four repos, counted above. Owner-gated.
