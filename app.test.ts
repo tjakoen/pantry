@@ -21,6 +21,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   decisionsDir: join(EXAMPLE, "decisions"),
   artifactsDir: join(EXAMPLE, "artifacts"),
   runsDir: join(EXAMPLE, "artifacts", "runs"),
+  previewTarget: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
 });
 

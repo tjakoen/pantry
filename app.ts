@@ -21,6 +21,7 @@ import { watchPlans } from "@tjakoen/proof/live.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
+import { PANTRY_PREFIX, proxyToPreview, rebasePantryCss, rebasePantryHtml, withPantryBase } from "./preview.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
@@ -974,6 +975,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   decisionsDir: join(plansDir, "decisions"),
   artifactsDir: join(dirname(plansDir), "artifacts"),
   runsDir: join(dirname(plansDir), "artifacts", "runs"),
+  previewTarget: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 
@@ -1030,20 +1032,33 @@ export function createPantryHandler(opts: PantryOptions) {
   // server itself. When a close path is added, wire `watcher.stop()` into it.
   if (surfaces.plans) watchPlans({ plansDir: config.plansDir, channel: stream });
 
-  return async (req: Request): Promise<Response> => {
-    const url = new URL(req.url);
-    const path = url.pathname;
+  // The dev preview proxy (plans/pantry-review-layer.md P0). OFF unless the host configured a target,
+  // and when it is on PANTRY's own routes move wholesale under the reserved prefix so the reviewed
+  // project owns the root. `base` is the empty string in the ordinary case, which makes every rebase
+  // below a no-op and leaves the no-preview path byte-identical to what it always served.
+  const previewTarget = config.previewTarget;
+  const base = previewTarget ? PANTRY_PREFIX : "";
+  if (previewTarget) {
+    console.log(`[pantry] preview proxy ON: ${previewTarget} served at / · PANTRY's own surfaces at ${PANTRY_PREFIX}/`);
+  }
+  const reviewClientTag = `<script src="${PANTRY_PREFIX}/pantry-review-client.js" defer></script>`;
 
+  // PANTRY's own routing, taking the path with any reserved prefix ALREADY stripped. Returns null for
+  // "not one of mine" so the caller decides what that means: a 404 with the proxy off, and a pass to
+  // the target with it on.
+  const pantryRoutes = async (path: string, url: URL): Promise<Response | null> => {
     // --- assets ---
-    if (path.startsWith("/styles/")) return serveStyles(path.slice("/styles".length));
+    if (path.startsWith("/styles/")) return rebaseCssResponse(await serveStyles(path.slice("/styles".length)), base);
     if (path === "/components.css")
-      return new Response(await componentCss.css(), { headers: { "Content-Type": "text/css" } });
+      return new Response(rebasePantryCss(await componentCss.css(), base), { headers: { "Content-Type": "text/css" } });
     if (path === "/proof.css")
-      return new Response(await bunRuntime.readFile(PROOF_CSS), { headers: { "Content-Type": "text/css" } });
+      return new Response(rebasePantryCss(await bunRuntime.readFile(PROOF_CSS), base), { headers: { "Content-Type": "text/css" } });
     if (path === "/pantry.css")
-      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry.css")), { headers: { "Content-Type": "text/css" } });
+      return new Response(rebasePantryCss(await bunRuntime.readFile(join(MODULE_DIR, "pantry.css")), base), { headers: { "Content-Type": "text/css" } });
     if (path === "/board-live.js")
-      return new Response(await bunRuntime.readFile(BOARD_LIVE_JS), { headers: { "Content-Type": "text/javascript" } });
+      return new Response(rebaseBoardLive(await bunRuntime.readFile(BOARD_LIVE_JS), base), { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/pantry-review-client.js")  // the one tag injected into a proxied page (preview.ts)
+      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-review-client.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-cmdk.js")   // ⌘K palette (piece 9b) — reads its index from /knowledge.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-cmdk.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-map.js")     // mindmap viz (piece 10) — reads its graph from /map.json
@@ -1167,8 +1182,67 @@ ${body}`));
     // --- mounted layers: PROOF board (/plans*), then MILL (docs + standards) ---
     if (surfaces.plans) { const r = await proofRoutes(path); if (r) return r; }
     const m = await millRoutes(path); if (m) return m;
-    return new Response("Not found", { status: 404 });
+    return null;   // not one of PANTRY's — the caller decides (404, or the preview target)
   };
+
+  return async (req: Request): Promise<Response> => {
+    const url = new URL(req.url);
+    const path = url.pathname;
+
+    // The ordinary case: no preview target, PANTRY owns the root, nothing is rewritten.
+    if (!previewTarget) {
+      return (await pantryRoutes(path, url)) ?? new Response("Not found", { status: 404 });
+    }
+
+    // The proxy is on. PANTRY answers only under its reserved prefix; the root belongs to the target,
+    // whole, so the reviewed app's root-relative URLs resolve exactly as they always did.
+    if (path === PANTRY_PREFIX || path.startsWith(`${PANTRY_PREFIX}/`)) {
+      const inner = path.slice(PANTRY_PREFIX.length) || "/";
+      const res = await pantryRoutes(inner, url);
+      if (!res) return new Response("Not found", { status: 404 });
+      return rebasePantryResponse(res, base, inner);
+    }
+
+    return proxyToPreview(req, url, previewTarget, { inject: reviewClientTag });
+  };
+}
+
+// PANTRY's own HTML, moved onto the reserved prefix. This rewrites OUR output, never the target's —
+// the reviewed app owns the root and is served byte-for-byte. An artifact's raw bytes are excluded
+// because those are evidence a run deposited: rewriting a captured page would quietly falsify it.
+async function rebasePantryResponse(res: Response, base: string, innerPath: string): Promise<Response> {
+  if (!base) return res;
+  if (!(res.headers.get("content-type") ?? "").includes("text/html")) return res;
+  if (innerPath.startsWith("/artifacts/raw/")) return res;
+  const html = withPantryBase(rebasePantryHtml(await res.text(), base), base);
+  const headers = new Headers(res.headers);
+  headers.delete("content-length");
+  return new Response(html, { status: res.status, statusText: res.statusText, headers });
+}
+
+// GRAIN's stylesheets are served straight off disk by BATCH's static handler, so the rebase happens
+// to the Response rather than to a string. Only CSS is read; anything else this route serves streams
+// past untouched.
+async function rebaseCssResponse(res: Response, base: string): Promise<Response> {
+  if (!base) return res;
+  if (!(res.headers.get("content-type") ?? "").includes("css")) return res;
+  const headers = new Headers(res.headers);
+  headers.delete("content-length");
+  return new Response(rebasePantryCss(await res.text(), base), { status: res.status, statusText: res.statusText, headers });
+}
+
+// PROOF's board-live.js opens its SSE channel at a hardcoded `/stream`, and it lives in the grain
+// package rather than here — so under the reserved prefix it is rebased on the way out instead of
+// edited upstream, which would cost a grain release to reach PANTRY at all. The miss is warned about
+// rather than swallowed: a silently un-rebased literal would show up much later as a live board that
+// simply never updates, which is the failure mode hardest to attribute back to here.
+function rebaseBoardLive(js: string, base: string): string {
+  if (!base) return js;
+  const rebased = js.replace("`/stream?session=", `\`${base}/stream?session=`);
+  if (rebased === js) {
+    console.warn(`[pantry] board-live.js: no /stream literal found to rebase onto ${base} — the live board will not update while the preview proxy is on`);
+  }
+  return rebased;
 }
 
 // A dirSource-equivalent over a plain folder the host owns. (MILL's dirSource is for package docs;
@@ -1197,9 +1271,12 @@ export function servePantry(opts: PantryOptions & { port?: number }) {
   return Bun.serve({ port: opts.port ?? 4400, fetch: createPantryHandler(opts) });
 }
 
-/** Boot from a host cwd: load the pantry.config there, then serve. The CLI's entry point. */
+/** Boot from a host cwd: load the pantry.config there, then serve. The CLI's entry point. The
+ *  resolved config comes back with the server because the CLI has to print the right doors, and with
+ *  the preview proxy on those doors move — a boot banner naming routes the server no longer answers
+ *  is the first thing that would make this feel broken. */
 export async function servePantryFromCwd(opts: { cwd?: string; port?: number } = {}) {
   const cwd = opts.cwd ?? process.cwd();
   const config = await loadPantryConfig(cwd);
-  return servePantry({ plansDir: config.plansDir, config, cwd, port: opts.port });
+  return { server: servePantry({ plansDir: config.plansDir, config, cwd, port: opts.port }), config };
 }

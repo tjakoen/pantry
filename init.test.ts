@@ -31,6 +31,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   decisionsDir: join(dir, "plans", "decisions"),
   artifactsDir: join(dir, "artifacts"),
   runsDir: join(dir, "artifacts", "runs"),
+  previewTarget: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

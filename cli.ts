@@ -20,6 +20,7 @@
 // relative to the pantry module, so `bunx pantry` works from any project. See INSTALL.md.
 import { isAbsolute, join } from "node:path";
 import { servePantryFromCwd } from "./app.ts";
+import { PANTRY_PREFIX } from "./preview.ts";
 import { checkPantryDrift, formatDriftReport } from "./drift.ts";
 import { runDoctor, formatDoctorReport } from "./doctor.ts";
 import { checkPantryDeps, formatDepsReport } from "./deps.ts";
@@ -55,14 +56,23 @@ async function main() {
   const dir = rest[0] ?? null;
 
   if (cmd === "serve") {
-    const server = await servePantryFromCwd({ port });
+    const { server, config } = await servePantryFromCwd({ port });
+    // With a preview target configured the reviewed project owns the root and PANTRY answers only
+    // under its reserved prefix, so every door below moves. Printing the old list would send the
+    // owner to the app's 404 and make a working proxy look broken.
+    const at = config.previewTarget ? PANTRY_PREFIX : "";
     console.log(`PANTRY cockpit on ${server.url}`);
-    console.log(`  /          the stack, composed`);
-    console.log(`  /plans     this project's plan board`);
-    console.log(`  /decisions the AI's decision inbox (resolve via a generated prompt)`);
-    console.log(`  /docs      the framework docs + this project's`);
-    console.log(`  /reference the generated AI vocabulary + token slots`);
-    console.log(`  /catalog   the GRAIN component catalog`);
+    if (config.previewTarget) {
+      console.log(`  /          the PREVIEW target, proxied: ${config.previewTarget}`);
+      console.log(`  ${at}/  PANTRY itself (its own routes all moved under this prefix)`);
+    } else {
+      console.log(`  /          the stack, composed`);
+    }
+    console.log(`  ${at}/plans     this project's plan board`);
+    console.log(`  ${at}/decisions the AI's decision inbox (resolve via a generated prompt)`);
+    console.log(`  ${at}/docs      the framework docs + this project's`);
+    console.log(`  ${at}/reference the generated AI vocabulary + token slots`);
+    console.log(`  ${at}/catalog   the GRAIN component catalog`);
     console.log("Ctrl-C to stop.");
     return;
   }

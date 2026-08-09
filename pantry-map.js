@@ -34,7 +34,11 @@
 
   const state = { nodes: [], links: [], repoOrder: [], scale: 1, ox: 0, oy: 0, hover: null, ready: false };
 
-  fetch("/map.json").then((r) => r.json()).then((data) => {
+  // Empty in the ordinary case; "/__pantry" while the dev preview proxy has given the root to the
+  // project being reviewed (preview.ts). The page stamps it into a meta tag.
+  const BASE = document.querySelector('meta[name="pantry-base"]')?.content || "";
+
+  fetch(BASE + "/map.json").then((r) => r.json()).then((data) => {
     if (!data || !data.available) return;
     layout(data);
     state.ready = true;

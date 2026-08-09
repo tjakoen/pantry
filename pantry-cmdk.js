@@ -5,6 +5,11 @@
 // framework; styling is tokens-only via the .pantry-cmdk-* classes in pantry.css. Progressive: if the
 // fetch fails the palette just shows nothing — the rest of the page is untouched.
 (() => {
+  // Where PANTRY's own routes live. Empty in the ordinary case; "/__pantry" while the dev preview
+  // proxy is on, because then the root belongs to the project being reviewed (preview.ts). The page
+  // stamps it into a meta tag, so the prefix stays a fact of one module rather than a string here.
+  const BASE = document.querySelector('meta[name="pantry-base"]')?.content || "";
+
   let entries = null;      // flattened [{ title, route, kind }] — loaded once, lazily
   let active = 0;
 
@@ -24,7 +29,7 @@
   async function ensureIndex() {
     if (entries) return entries;
     try {
-      const res = await fetch("/knowledge.json");
+      const res = await fetch(BASE + "/knowledge.json");
       entries = flatten(await res.json());
     } catch { entries = []; }
     return entries;
@@ -65,7 +70,9 @@
   function paint() {
     [...list.children].forEach((li, i) => li.classList.toggle("is-active", i === active));
   }
-  function go(route) { if (route) window.location.href = route; }
+  // Routes come from knowledge.json root-absolute ("/plans"), which is correct for PANTRY's own
+  // origin — but under the preview proxy the root is the reviewed project, so they need the prefix.
+  function go(route) { if (route) window.location.href = BASE + route; }
 
   async function open() {
     await ensureIndex();

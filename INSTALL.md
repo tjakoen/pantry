@@ -22,6 +22,30 @@ it never runs a code analyzer of its own (and no model, it's AI-legible, not AI-
 whole-stack map); PANTRY reads the resulting `graphify-out/` and draws it. No `graphify-out/`
 yet? `/map` shows you the command instead of an error: the surface auto-disables, like any other.
 
+## The dev preview proxy (off unless you ask for it)
+
+One optional key changes the shape of the server, so it is worth reading before you set it.
+`previewTarget` points PANTRY at a project you are already running locally, and PANTRY then serves
+that project **at its own root** so it can be reviewed from inside PANTRY's origin:
+
+```json
+{ "previewTarget": "http://localhost:3000" }
+```
+
+Three things follow from it, and the first surprises people:
+
+- **PANTRY's own routes move under `/__pantry`.** The root belongs to the reviewed project, whole.
+  That is deliberate: it is what lets the project's own root-relative URLs keep resolving with
+  nothing rewritten. The boot banner prints the moved doors.
+- **The target must be loopback and an origin.** No path, no credentials, nothing read off the
+  request. A target that fails those checks is refused with a reason and the proxy stays off, which
+  is also what happens when the key is absent.
+- **Point it at a production build, not a dev server.** There is no websocket passthrough, so
+  hot-reload has nothing to travel on. `bun run build` then start, and review what actually ships.
+
+The single change PANTRY makes to a proxied page is one script tag before the closing body tag.
+Nothing else about the reviewed project is rewritten, and the project installs nothing.
+
 ## AI path
 
 Paste the block below to your coding agent, in the root of the project you want PANTRY in.

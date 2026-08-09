@@ -8,6 +8,7 @@
 //   - surfaces  per-surface on/off toggles (default: all on)
 import { isAbsolute, join, basename } from "node:path";
 import { existsSync } from "node:fs";
+import { resolvePreviewTarget } from "./preview.ts";
 
 export interface PantrySurfaces {
   plans: boolean;
@@ -57,6 +58,14 @@ export interface PantryConfig {
    *  PANTRY parses these read-only and reports which §9 items each report is missing; it never
    *  writes one. */
   runsDir?: string;
+  /** the dev preview target PANTRY proxies AT THE ROOT, so a project is served under PANTRY's own
+   *  origin and can be reviewed from inside it (plans/pantry-review-layer.md P0). Origin only, and
+   *  LOOPBACK only: "http://localhost:3000". Point it at a local PRODUCTION build, not a dev server
+   *  — there is no websocket passthrough, by design.
+   *  Absent (the default) → the proxy is OFF and PANTRY serves its own routes at the root exactly as
+   *  it always has. Present → PANTRY's own routes move under /__pantry and the target owns the root,
+   *  which is what lets the app's root-relative URLs keep resolving untouched. */
+  previewTarget?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
@@ -88,6 +97,9 @@ export interface ResolvedPantryConfig {
   artifactsDir: string;
   /** the run-report folder (absolute); default <artifactsDir>/runs */
   runsDir: string;
+  /** the validated preview-proxy origin, or null when the proxy is off (the default, and the result
+   *  of a target that failed validation — a bad value degrades the surface, it never boots a relay) */
+  previewTarget: string | null;
   surfaces: PantrySurfaces;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
@@ -124,6 +136,12 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     .map((d) => abs(cwd, d))
     .filter((d) => existsSync(d));
 
+  // A configured-but-rejected target says why and stays off. Silence here would look identical to
+  // "no target configured", which is the one thing an owner debugging a blank root must be able to
+  // tell apart.
+  const preview = resolvePreviewTarget(raw.previewTarget);
+  if (preview.problem) console.warn(`[pantry] preview proxy off: ${preview.problem}`);
+
   return {
     cwd,
     projectName: raw.projectName ?? basename(cwd) ?? "project",
@@ -136,6 +154,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     artifactsDir,
     // default under artifactsDir (not cwd) so the ledger rides along with the evidence it cites
     runsDir: raw.runsDir ? abs(cwd, raw.runsDir) : join(artifactsDir, "runs"),
+    previewTarget: preview.origin,
     surfaces: { ...ALL_ON, ...raw.surfaces },
     standardsSource: raw.standardsSource,
   };
