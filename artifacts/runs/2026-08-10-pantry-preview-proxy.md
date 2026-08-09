@@ -53,7 +53,7 @@ gates:
 diffstat: pantry 5 commits, 16 files changed and 3 created (preview.ts, preview.test.ts, pantry-review-client.js) plus 4 evidence screenshots and this report; portfolio 2 commits, 1 plan file and 1 new tour
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
-unpushed: 61 | 20 portfolio + 15 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
+unpushed: 63 | 26 portfolio + 24 pantry + 6 grain + 7 claude-config, measured after this run's own commits; pushing is owner-gated
 verifiedBy: two independent reviewers that did not write the change, plus a browser walk of both targets. Between them they found six defects the author had not, one of them an open relay. Every finding was reproduced before being accepted and every fix carries a regression test.
 doctor: re-run after committing, 14 checks 0 failing 4 due; it rejected this report twice (prose scope, no Gate output section) before accepting it, and the 4 due items are pre-existing and carried forward by name below
 ---
@@ -363,6 +363,6 @@ standard was written from the design rather than from using it.
 - **Doctor's four due items, all pre-existing and carried forward by name:** graphify freshness (graph
   built from `c4f86611`), no e2e suite, layer pins 2 behind (grain 0.1.12 < 0.1.19, proof 0.1.2 <
   0.1.3), and 2 of 8 older run reports missing evidence.
-- **Nothing is pushed.** 61 commits across four repos, counted above. Owner-gated. The handoff into
+- **Nothing is pushed.** 63 commits across four repos, counted above. Owner-gated. The handoff into
   this run said 16 portfolio and 8 pantry; the measured numbers before this run started were 18 and
   9, so two of those came from elsewhere. Worth knowing before anyone treats a stated count as fact.
