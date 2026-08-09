@@ -72,6 +72,14 @@ existing debt and muted within a week.
 
 **Audit due by activity rather than calendar**, in doctor, because activity is what creates drift.
 
+**The typecheck joined the same gate**, after the owner asked whether code was linted at all and the
+honest answer exposed a worse gap: the gate ran oxlint's preferences every turn while tsc, the only
+check there that catches broken code, ran nowhere automatically. It is gated on a typed file having
+changed, which is what makes it affordable. Measured at 0.68s on a prose turn with tsc skipped and
+2.2s when it runs, and all three paths were watched rather than assumed. LOOP section 2 now records
+both rules that keep this tier alive: gate an expensive check on the thing that makes it necessary,
+and grade a noisy one against a baseline rather than zero.
+
 ## Gate output
 
 ```
@@ -115,6 +123,14 @@ but neither mill nor crumb has been bumped and published, so the list fix and th
 invisible on the live site. Publishing is outward-facing and was not authorised this run.
 
 **The standards cleanup and the subagent-effectiveness audit are parked**, at the owner's word.
+
+**Three things about the gate were left open on purpose.** It lives in the portfolio only, so grain
+and pantry each define a lint script that nothing runs automatically. oxlint emits only warnings
+here, so linting code currently means commenting on it. And a lint regression prints without
+consequence: the detector was built and not the consequence, and the proposed shape is an ask-trigger
+in LOOP section 4b's vocabulary rather than a block, because blocking on a count that includes 292
+unsettled backticks is how a gate gets disabled. All three are recorded in agent memory and none of
+them belongs to the spawned session, which is fenced to the proxy.
 
 ## What needs human eyes
 
