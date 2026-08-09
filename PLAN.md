@@ -373,12 +373,30 @@ rather than after — which is the whole point of feeding it back. Proven live r
 first report written under the schema flagged its own author's scope growth, and that warn is now the
 first thing `/llms.txt` says.
 
-Deliberately NOT built: a human `/runs` page. Whether adherence earns its own surface or a row on the
-home freshness strip is an open owner question, and a JSON twin serves the agent either way. On the
-default layout the report source is fetchable through the existing `/artifacts/raw/` route; point
-`runsDir` outside `artifactsDir` and you get the parsed twin and no raw route, which is a limit worth
-stating rather than a promise to keep. The `runs` surface toggle disables all of it — route, count,
-callout, surface entry.
+**The human surface (DONE 2026-08-09).** The open owner question this piece left — whether adherence
+earns its own surface or a row on the home freshness strip — was answered in favour of a dedicated
+one, because the ask it serves is that a session hands the owner a LINK instead of a chat summary and
+a link needs somewhere to point that cannot flatter the run. `/runs` is the index (newest first, a
+badge, the date and diffstat, the gap COUNT and a scope-growth line) and `/runs/<id>` is the report:
+what is MISSING first, then the growth with its paths, then the meta, then the report's own prose
+last, because the body is where a run is most able to sound finished. Static server-rendered like
+`/artifacts`, no client script; `buildRunsPayload` backs all three routes so the views and the twin
+cannot drift. `renderDecisionBody` became `renderAgentBody`, shared by both surfaces that render prose
+an agent wrote.
+
+Two duplications were designed out after seeing it live rather than in review: the index card carried
+every gap label, which made the scope-growth gap say the same thing twice, so the card carries the
+count and the detail carries the labels; and the detail's checklist repeated all six grown paths that
+its own growth section lists, so that one line shortens to "listed below" while still being counted.
+
+On the default layout the report source stays fetchable through the existing `/artifacts/raw/` route;
+point `runsDir` outside `artifactsDir` and you get the parsed views and no raw route, which is a limit
+worth stating rather than a promise to keep. The `runs` surface toggle disables all of it — both
+routes, the twin, the count, the callout, the nav link and the home teaser.
+
+Files: `app.ts` (the two views + routes + nav + teaser) + `pantry.css` + `app.test.ts` (2) +
+the `config.ts` comment. 293/296 green (the same 3 pre-existing fixtures), tsc clean, verified live
+against this repo's own four reports at `/runs`.
 
 **Still open from 11c's original list, and deliberately:** stale claims (plan item claimed, no
 checkpoint in N days) and branches with no ledger entry both need an age threshold, and every threshold

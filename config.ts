@@ -25,9 +25,9 @@ export interface PantrySurfaces {
    *  dates, depends arrows, commit density, dated audit markers. Reads git + plans/ + report mtimes;
    *  no new tracking, no model. Default on. */
   timeline: boolean;
-  /** the run ledger (/runs.json) — run reports parsed against LOOP §9, and which items each is
-   *  missing. Machine twin only for now; whether adherence earns a human surface of its own is still
-   *  an open owner question. Model-free, read-only. Default on. */
+  /** the run ledger (/runs, /runs/<id>, /runs.json) — run reports parsed against LOOP §9, and which items each is
+   *  missing. Human index + detail alongside the machine twin, all three off together when this is
+   *  false. Model-free, read-only. Default on. */
   runs: boolean;
 }
 

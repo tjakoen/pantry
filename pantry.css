@@ -255,6 +255,46 @@
 .pantry-decision-generate:hover, .pantry-decision-copy:hover { border-color: var(--ink-muted); }
 .pantry-decision-output[hidden] { display: none; }
 
+/* ── the run ledger (piece 11c, human half) ─────────────────────────────── */
+/* The badge reuses the decision-badge pill shape. Only `blocked` picks up a tint: a partial run is a
+   normal outcome and should not shout, a blocked one is the whole reason to open the page. */
+.pantry-run-badge {
+  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: 0.04em; padding: 0.1em 0.5em; border-radius: var(--radius, 0.5rem);
+  border: var(--hairline, 1px) solid var(--rule); color: var(--ink-muted); vertical-align: middle;
+}
+.pantry-run-badge[data-status="blocked"] {
+  color: var(--ink); border-color: color-mix(in srgb, var(--pantry-map-repo-6, var(--ink)) 55%, transparent);
+  background: color-mix(in srgb, var(--pantry-map-repo-6, var(--ink)) 12%, transparent);
+}
+.pantry-run-card .card__title { display: flex; align-items: baseline; gap: var(--space-2, 0.5rem); flex-wrap: wrap; }
+/* Missing evidence and scope growth are the two lines that must survive a skim, so they sit at the
+   card's foot in the same tint the heartbeat uses for an overdue chore rather than a bespoke hue. */
+.pantry-run-gaps, .pantry-run-growth {
+  font-size: var(--text-sm); color: var(--ink);
+  border-left: 2px solid color-mix(in srgb, var(--pantry-map-repo-3, var(--ink)) 55%, transparent);
+  padding-left: var(--space-2, 0.5rem); margin-top: var(--space-2, 0.5rem);
+}
+.pantry-run-summary { font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-run-summary[data-tone="due"] { color: var(--ink); }
+.pantry-run-section { margin-top: var(--space-6, 1.5rem); }
+.pantry-run-gap-list, .pantry-run-pairs { margin: 0; padding-left: var(--space-5, 1.25rem); }
+.pantry-run-gap-list li, .pantry-run-pairs li { font-size: var(--text-sm); margin: 0.2em 0; }
+.pantry-run-gap-list li { color: var(--ink); }
+/* The meta block is a definition list read as a row of small facts, tabular so diffstats line up. */
+.pantry-run-meta {
+  display: flex; flex-wrap: wrap; gap: var(--space-4, 1rem);
+  margin-top: var(--space-6, 1.5rem); font-size: var(--text-sm);
+}
+.pantry-run-meta dt {
+  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-faint);
+}
+.pantry-run-meta dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
+/* Gate output is pasted verbatim into a fence, so it must scroll rather than reflow — a wrapped log
+   line is a changed log line to anyone comparing it against a terminal. */
+.pantry-run-body pre { overflow-x: auto; }
+
 /* ── run artifacts (piece 11e) ──────────────────────────────────────────── */
 /* the kind badge reuses the decision-badge shape (mono, uppercase pill); only image/html pick up a
    little colour so a screenshot or a served page reads at a glance — everything else stays neutral */

@@ -197,6 +197,15 @@ describe("surface toggles gate their routes", () => {
     const home = await (await get(handler, "/")).text();
     expect(home).not.toContain(`href="/artifacts"`);
   });
+
+  test("runs off → all three run routes 404, the nav + home teaser drop the link", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ runs: false }) });
+    expect((await get(handler, "/runs")).status).toBe(404);
+    expect((await get(handler, "/runs/anything")).status).toBe(404);
+    expect((await get(handler, "/runs.json")).status).toBe(404);
+    const home = await (await get(handler, "/")).text();
+    expect(home).not.toContain(`href="/runs"`);
+  });
 });
 
 describe("the decision inbox (piece 11d)", () => {
@@ -251,6 +260,109 @@ The context to decide.`);
 
     // a missing id is a 404, not a crash
     expect((await get(handler, "/decisions/nope")).status).toBe(404);
+  });
+});
+
+describe("the run ledger surface (piece 11c, human half)", () => {
+  test("with no runs dir, /runs renders the empty-state guidance (still 200, nav link present)", async () => {
+    const handler = createPantryHandler({
+      plansDir: EXAMPLE,
+      config: { ...configWith(), runsDir: join(EXAMPLE, "no-such-runs-dir") },
+    });
+    const res = await get(handler, "/runs");
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain("No run ledger yet");
+    expect(html).toContain(`href="/runs"`);            // the nav link is present when the surface is on
+    const j = await (await get(handler, "/runs.json")).json();
+    expect(j.available).toBe(false);
+  });
+
+  // The load-bearing test: a report that is MISSING evidence must say so on both views. A ledger the
+  // page could flatter is a ledger with no reason to exist, which is the whole argument for linking
+  // the owner here rather than summarising the run in chat.
+  test("a thin report names its gaps and its scope growth; a complete one says so; the twin agrees", async () => {
+    const runsDir = await mkdtemp(join(tmpdir(), "pantry-app-runs-"));
+    await Bun.write(join(runsDir, "2026-08-09-thin.md"), `---
+title: A run that hid its homework
+date: 2026-08-09
+status: partial
+branch: main
+scope:
+  - runs.ts
+touched:
+  - runs.ts
+  - doctor.ts
+gates:
+  - bun test | 227 pass, 0 fail
+plans:
+  - skills-runtime | /plans/skills-runtime
+---
+## Gate output
+Everything passed.
+## What was not done
+Nothing.
+`);
+    await Bun.write(join(runsDir, "2026-08-08-complete.md"), `---
+title: A run that carried its evidence
+date: 2026-08-08
+status: complete
+scope:
+  - app.ts
+touched:
+  - app.ts
+diffstat: 1 file changed, 4 insertions(+)
+unpushed: 0
+verifiedBy: a reviewer that did not write the change
+doctor: 0 failing, 0 carried
+---
+## Gate output
+\`\`\`
+227 pass, 0 fail
+\`\`\`
+## What was not done
+The CSS pass.
+## What needs human eyes
+The wording on the empty state.
+`);
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), runsDir } });
+
+    // index: newest first, and the summary counts the incomplete ones rather than hiding them
+    const index = await (await get(handler, "/runs")).text();
+    expect(index).toContain("A run that hid its homework");
+    expect(index).toContain("A run that carried its evidence");
+    expect(index).toContain("2 runs, 1 missing evidence.");
+    expect(index).toContain("Carries its evidence.");
+    expect(index).toContain("7 of 9 evidence items missing");
+    expect(index).toContain("Scope grew: 1 path outside the declared envelope");
+
+    const j = await (await get(handler, "/runs.json")).json();
+    expect(j.available).toBe(true);
+    expect(j.count).toBe(2);
+    expect(j.incompleteCount).toBe(1);
+    expect(j.runs[0].id).toBe("2026-08-09-thin");      // newest date first
+
+    // detail of the thin one: the gaps, the growth, and the gate pair all render
+    const thin = await (await get(handler, "/runs/2026-08-09-thin")).text();
+    expect(thin).toContain("Missing evidence");
+    expect(thin).toContain("no diffstat");
+    expect(thin).toContain("'What needs human eyes' missing or empty");
+    expect(thin).toContain("gate output is not a verbatim fenced block");
+    expect(thin).toContain("Scope growth");
+    expect(thin).toContain("doctor.ts");              // the path that grew past the envelope
+    expect(thin).toContain("bun test");               // the gate label
+    expect(thin).toContain(`href="/plans/skills-runtime"`);  // the claimed plan links out
+    expect(thin).toContain(`href="/runs"`);           // back to the index
+
+    // detail of the complete one: no gap list, and the gate output survives as a fenced block
+    const complete = await (await get(handler, "/runs/2026-08-08-complete")).text();
+    expect(complete).toContain("Evidence complete");
+    expect(complete).not.toContain("Missing evidence");
+    expect(complete).toContain("227 pass, 0 fail");
+    expect(complete).toContain("a reviewer that did not write the change");
+
+    // a missing id is a 404, not a crash
+    expect((await get(handler, "/runs/nope")).status).toBe(404);
   });
 });
 

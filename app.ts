@@ -25,7 +25,7 @@ import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
 import { buildArtifactsPayload, classifyArtifact, type ArtifactsPayload, type ArtifactEntry } from "./artifacts.ts";
-import { buildRunsPayload } from "./runs.ts";
+import { buildRunsPayload, type RunsPayload, type RunReport, type RunPair, type EvidenceGap } from "./runs.ts";
 import { runDoctor, type DoctorReport, type DoctorCheck } from "./doctor.ts";
 import { buildTimelinePayload, type TimelinePayload, type TimelinePlan } from "./timeline.ts";
 
@@ -147,6 +147,7 @@ function nav(surfaces: PantrySurfaces): string {
   const links = [
     surfaces.plans && `<a href="/plans">Plans</a>`,
     surfaces.decisions && `<a href="/decisions">Decisions</a>`,
+    surfaces.runs && `<a href="/runs">Runs</a>`,
     surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
     surfaces.timeline && `<a href="/timeline">Timeline</a>`,
     surfaces.standards && `<a href="/standards">Standards</a>`,
@@ -193,6 +194,9 @@ const AI_SURFACES: { title: string; role: string; href?: string; status: string 
 function aiSurfaceTeasers(surfaces: PantrySurfaces): { title: string; role: string; href?: string; status: string }[] {
   return [
     ...AI_SURFACES,
+    ...(surfaces.runs
+      ? [{ title: "Runs", role: "The run ledger — what each closed run did, its gate output verbatim, and which of LOOP §9's evidence items it is missing. Machine twin at /runs.json.", href: "/runs", status: "live" }]
+      : []),
     ...(surfaces.artifacts
       ? [{ title: "Artifacts", role: "Run evidence — screenshots, audit reports, diffs — served read-only. Machine twin at /artifacts.json.", href: "/artifacts", status: "live" }]
       : []),
@@ -392,10 +396,11 @@ function decisionsIndexBody(payload: DecisionsPayload): string {
   return `${header}\n${openSection}\n${resolvedSection}`;
 }
 
-// Render a decision file's markdown body to a clean HTML fragment (body only, no masthead) via the same
-// GRAIN adapter every other doc uses. Falls back to escaped plain text if the render ever throws, so a
-// single odd file can't 500 the surface.
-function renderDecisionBody(md: string): string {
+// Render an agent-written markdown body (a decision request, a run report) to a clean HTML fragment
+// (body only, no masthead) via the same GRAIN adapter every other doc uses. Falls back to escaped
+// plain text if the render ever throws, so a single odd file can't 500 the surface. Shared by
+// /decisions and /runs — both render prose the agent wrote and PANTRY only reads.
+function renderAgentBody(md: string): string {
   if (!md.trim()) return "";
   try {
     return renderGrainDocument(md, { defaultLayout: ({ body }: { body: string }) => body }).html;
@@ -440,7 +445,7 @@ function decisionDetailBody(d: DecisionRequest): string {
   <p class="proof-lede"><a href="/decisions">← All decisions</a></p>
 </header>
 ${resolvedBanner}
-<article class="note pantry-decision-body" data-grade="smooth">${renderDecisionBody(d.body)}</article>
+<article class="note pantry-decision-body" data-grade="smooth">${renderAgentBody(d.body)}</article>
 <div class="pantry-decision"
      data-decision-id="${escapeHtml(d.id)}"
      data-decision-title="${escapeHtml(d.title)}"
@@ -462,6 +467,136 @@ ${resolvedBanner}
   </div>
 </div>
 <script src="/pantry-decisions.js" defer></script>`;
+}
+
+// /runs (piece 11c, the human half) — the RUN LEDGER surface. The INDEX lists closed runs newest
+// first; the DETAIL renders one report against LOOP §9. Static server-rendered like /artifacts (no
+// client script), model-free and read-only like every surface: runs.ts already did every judgement
+// (it is key lookups and prefix compares), so this file only ever renders what it was handed.
+//
+// The one thing this view must not do is soften the ledger. A report missing its diffstat says so on
+// the card, and scope growth is named rather than folded into a count, because the whole reason a
+// session hands the owner this link instead of a chat summary is that the page cannot flatter the run
+// the way a summary can. Machine twin at /runs.json — same payload, so the two never drift.
+function runPairList(pairs: RunPair[]): string {
+  return `<ul class="pantry-run-pairs">${pairs.map((p) => {
+    const label = escapeHtml(p.label);
+    return `<li><b>${label}</b>${p.detail ? ` <span class="pantry-member__role">${escapeHtml(p.detail)}</span>` : ""}</li>`;
+  }).join("")}</ul>`;
+}
+
+// Plans carry an optional href that decisions.ts's safeHref already vetted in the data layer, so the
+// view renders it without re-deciding — the guard sits below this file on purpose.
+function runPlanList(pairs: RunPair[]): string {
+  return `<ul class="pantry-run-pairs">${pairs.map((p) =>
+    p.detail
+      ? `<li><a href="${escapeHtml(p.detail)}">${escapeHtml(p.label)}</a></li>`
+      : `<li><b>${escapeHtml(p.label)}</b></li>`,
+  ).join("")}</ul>`;
+}
+
+function runCard(r: RunReport): string {
+  // The card carries the COUNT and lets the detail carry the labels. Spelling every gap out here made
+  // the scope-growth gap say the same thing twice, once as a label and once as the growth line below.
+  const evidence = r.gaps.length
+    ? `<p class="pantry-run-gaps">${r.gaps.length} of 9 evidence items missing</p>`
+    : `<p class="pantry-member__role">Carries its evidence.</p>`;
+  const growth = r.outOfScope.length
+    ? `<p class="pantry-run-growth">Scope grew: ${r.outOfScope.length} path${r.outOfScope.length === 1 ? "" : "s"} outside the declared envelope</p>`
+    : "";
+  return `<a class="card pantry-member pantry-run-card" data-pad="sm" href="/runs/${encodeURIComponent(r.id)}">
+    <h3 class="card__title">${escapeHtml(r.title)} <span class="pantry-run-badge" data-status="${r.status}">${r.status}</span></h3>
+    <p class="pantry-member__role">${escapeHtml(r.date ?? "no date")}${r.branch ? ` · ${escapeHtml(r.branch)}` : ""}${r.diffstat ? ` · ${escapeHtml(r.diffstat)}` : ""}</p>
+    ${evidence}
+    ${growth}
+  </a>`;
+}
+
+function runsIndexBody(payload: RunsPayload): string {
+  const header = `<header>
+  <h1 class="proof-masthead">Runs</h1>
+  <p class="proof-lede">The run ledger for ${escapeHtml(payload.project)} — what each closed run did, the gate output it pasted verbatim, and which of LOOP §9's nine evidence items it is missing. Written by the agent, only read here. Machine twin at <a href="/runs.json">/runs.json</a>.</p>
+</header>`;
+  if (!payload.available) {
+    return `${header}
+<div class="card pantry-map-empty" data-pad="md">
+  <h2 class="card__title">No run ledger yet</h2>
+  <p class="pantry-member__role">A run closes with one markdown report here and it shows up as a card:</p>
+  <pre class="pantry-map-cmd"><code>${escapeHtml(payload.dir)}/&lt;date&gt;-&lt;slug&gt;.md</code></pre>
+  <p class="pantry-member__role">Frontmatter carries the declared scope, what was touched, the gates and their results, the diffstat, and who did the second pass. The body carries three headings: Gate output, What was not done, What needs human eyes.</p>
+</div>`;
+  }
+  if (!payload.runs.length) {
+    return `${header}
+<div class="card pantry-map-empty" data-pad="md">
+  <h2 class="card__title">The ledger is empty</h2>
+  <p class="pantry-member__role">The folder exists and no run has closed with a report yet. The next one writes here:</p>
+  <pre class="pantry-map-cmd"><code>${escapeHtml(payload.dir)}/&lt;date&gt;-&lt;slug&gt;.md</code></pre>
+</div>`;
+  }
+  const summary = payload.incompleteCount
+    ? `<p class="pantry-run-summary" data-tone="due">${payload.count} run${payload.count === 1 ? "" : "s"}, ${payload.incompleteCount} missing evidence.</p>`
+    : `<p class="pantry-run-summary" data-tone="ok">${payload.count} run${payload.count === 1 ? "" : "s"}, all carrying their evidence.</p>`;
+  return `${header}
+${summary}
+<div class="card-grid pantry-members">${payload.runs.map(runCard).join("\n")}</div>`;
+}
+
+// The DETAIL view. Order is deliberate and is the reviewer's reading order, not the file's: what is
+// MISSING first (the reason to open the page at all), then scope growth, then the meta, then the
+// report's own prose last — because the body is where a run is most able to sound finished.
+function runDetailBody(r: RunReport): string {
+  // The scope-growth gap's label spells out every path that grew, and the section below lists them
+  // again as bullets. Shorten the checklist line rather than dropping it: the count stays honest and
+  // the six paths get named once.
+  const gapLabel = (g: EvidenceGap) =>
+    g.id === "scope-growth" ? "touched outside the declared scope (listed below)" : g.label;
+  const gaps = r.gaps.length
+    ? `<section class="pantry-run-section">
+  <h2 class="pantry-section-title">Missing evidence — ${r.gaps.length} of 9</h2>
+  <ul class="pantry-run-gap-list">${r.gaps.map((g) => `<li data-gap="${escapeHtml(g.id)}">${escapeHtml(gapLabel(g))}</li>`).join("")}</ul>
+</section>`
+    : `<section class="pantry-run-section">
+  <h2 class="pantry-section-title">Evidence complete</h2>
+  <p class="pantry-member__role">This report carries all nine of LOOP §9's items. That is the report being complete, which is not the same as the change being right.</p>
+</section>`;
+
+  const growth = r.outOfScope.length
+    ? `<section class="pantry-run-section">
+  <h2 class="pantry-section-title">Scope growth — ${r.outOfScope.length}</h2>
+  <p class="pantry-member__role">Touched, and outside every path the run declared before it started. LOOP §4b makes growth an ask-trigger rather than a judgement the run makes alone.</p>
+  <ul class="pantry-run-gap-list">${r.outOfScope.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>
+</section>`
+    : "";
+
+  const meta: string[] = [];
+  if (r.date) meta.push(`<div><dt>Closed</dt><dd>${escapeHtml(r.date)}</dd></div>`);
+  if (r.branch) meta.push(`<div><dt>Branch</dt><dd>${escapeHtml(r.branch)}</dd></div>`);
+  if (r.diffstat) meta.push(`<div><dt>Diffstat</dt><dd>${escapeHtml(r.diffstat)}</dd></div>`);
+  if (r.unpushed) meta.push(`<div><dt>Unpushed</dt><dd>${escapeHtml(r.unpushed.label)}${r.unpushed.detail ? ` — ${escapeHtml(r.unpushed.detail)}` : ""}</dd></div>`);
+  if (r.verifiedBy) meta.push(`<div><dt>Verified by</dt><dd>${escapeHtml(r.verifiedBy)}</dd></div>`);
+  if (r.doctor) meta.push(`<div><dt>Doctor</dt><dd>${escapeHtml(r.doctor)}</dd></div>`);
+  const metaBlock = meta.length
+    ? `<dl class="pantry-run-meta">${meta.join("")}</dl>`
+    : "";
+
+  const block = (title: string, inner: string) =>
+    inner ? `<section class="pantry-run-section"><h2 class="pantry-section-title">${title}</h2>${inner}</section>` : "";
+
+  return `<header>
+  <h1 class="proof-masthead">${escapeHtml(r.title)} <span class="pantry-run-badge" data-status="${r.status}">${r.status}</span></h1>
+  <p class="proof-lede"><a href="/runs">← All runs</a></p>
+</header>
+${gaps}
+${growth}
+${metaBlock}
+${block("Gates", r.gates.length ? runPairList(r.gates) : "")}
+${block("Plans claimed", r.plans.length ? runPlanList(r.plans) : "")}
+${block("Left dirty", r.dirty.length ? runPairList(r.dirty) : "")}
+${block("Declared scope", r.scope.length ? `<ul class="pantry-run-pairs">${r.scope.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "")}
+${block("Touched", r.touched.length ? `<ul class="pantry-run-pairs">${r.touched.map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "")}
+${block("Skills", r.skills.length ? `<p class="pantry-member__role">${r.skills.map((s) => escapeHtml(s)).join(" · ")}</p>` : "")}
+<article class="note pantry-run-body" data-grade="smooth">${renderAgentBody(r.body)}</article>`;
 }
 
 // /artifacts (piece 11e sub-unit 1) — run evidence: screenshots, audit reports, diffs a run
@@ -908,16 +1043,26 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response("Not found", { status: 404 });
     }
 
-    // --- the run ledger (piece 11c): machine twin ONLY for now. Each closed run report parsed against
-    // LOOP.md §9, with the items it is missing. There is deliberately no human page yet: whether
-    // adherence earns its own surface or a row on the home freshness strip is an open owner question,
-    // and a JSON twin serves the agent that reads /llms.txt at orientation either way. On the DEFAULT
-    // layout the report source is already fetchable too — reports live under artifacts/, so
-    // /artifacts/raw/runs/<file>.md serves the bytes with the containment that route enforces. That
+    // --- the run ledger (piece 11c): human /runs + /runs/<id>, machine twin /runs.json. Each closed
+    // run report parsed against LOOP.md §9, with the items it is missing. The human page was the open
+    // owner question this piece deliberately left unbuilt; it was answered 2026-08-09 in favour of a
+    // dedicated surface, because a session that hands the owner a link instead of a chat summary needs
+    // somewhere to point that cannot flatter the run. Same payload backs both views, so they never
+    // drift. On the DEFAULT layout the report source is fetchable too — reports live under artifacts/,
+    // so /artifacts/raw/runs/<file>.md serves the bytes with the containment that route enforces. That
     // only holds while runsDir sits under artifactsDir; a host that points runsDir elsewhere gets the
-    // parsed twin here and no raw route, which is a deliberate limit rather than a promise to keep. ---
+    // parsed views here and no raw route, which is a deliberate limit rather than a promise to keep. ---
     if (surfaces.runs && path === "/runs.json")
       return Response.json(await buildRunsPayload(config, new Date().toISOString()));
+    if (surfaces.runs && path === "/runs")
+      return html(page("Runs", runsIndexBody(await buildRunsPayload(config, new Date().toISOString()))));
+    if (surfaces.runs && path.startsWith("/runs/")) {
+      const id = decodeURIComponent(path.slice("/runs/".length));
+      const payload = await buildRunsPayload(config, new Date().toISOString());
+      const r = payload.runs.find((x) => x.id === id);
+      if (r) return html(page(r.title, runDetailBody(r)));
+      return new Response("Not found", { status: 404 });
+    }
 
     // --- run artifacts (piece 11e sub-unit 1): human /artifacts, machine twin /artifacts.json, raw
     // bytes at /artifacts/raw/<relPath>. Same model (buildArtifactsPayload over the host's artifacts
