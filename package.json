@@ -37,6 +37,7 @@
     "pantry-cmdk.js",
     "pantry-decisions.js",
     "pantry-map.js",
+    "pantry-review.js",
     "pantry-review-client.js",
     "PLAN.md",
     "INSTALL.md",

@@ -43,8 +43,21 @@ Three things follow from it, and the first surprises people:
 - **Point it at a production build, not a dev server.** There is no websocket passthrough, so
   hot-reload has nothing to travel on. `bun run build` then start, and review what actually ships.
 
+A target is also a per-session choice, so it can come from the command line instead of the config,
+which is usually what you want in a repo whose own config is already good:
+
+```
+bunx pantry serve --preview http://localhost:3000
+```
+
 The single change PANTRY makes to a proxied page is one script tag before the closing body tag.
 Nothing else about the reviewed project is rewritten, and the project installs nothing.
+
+With a target set, `/__pantry/review` draws PANTRY's chrome around the project: the project itself in
+a same-origin frame, and a rail beside it that lists the project's own tours, shows where the frame
+is, and hides when you want the width. The rail reads the reviewed project's tour manifest through
+the proxy, so a project that mounts CRUMB gets its tours listed with no extra configuration, and one
+that does not gets a rail with just its navigation.
 
 ## AI path
 

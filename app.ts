@@ -21,7 +21,7 @@ import { watchPlans } from "@tjakoen/proof/live.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
-import { PANTRY_PREFIX, proxyToPreview, rebasePantryCss, rebasePantryHtml, withPantryBase } from "./preview.ts";
+import { PANTRY_PREFIX, proxyToPreview, rebasePantryCss, rebasePantryHtml, resolvePreviewTarget, withPantryBase } from "./preview.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
@@ -139,13 +139,74 @@ export function buildDocCollections(config: ResolvedPantryConfig): MillCollectio
   ];
 }
 
+// The review shell (P1): PANTRY's chrome drawn AROUND the project it is proxying. The project sits
+// in a same-origin frame at the root, so it is the real running app rather than a picture of one,
+// and PANTRY keeps the rail beside it.
+//
+// The rail reads the reviewed project's OWN tour manifest, fetched through the proxy at
+// /crumb/tours.json. That is the whole reason this needs no new config key: a host that mounts CRUMB
+// answers it, a host that does not returns a 404 and the rail quietly carries only its navigation.
+// PANTRY never parses a tour here; CRUMB keeps drawing the card and the lamp inside the frame, which
+// is the call the plan left open and the owner settled on 2026-08-10 — the standalone path for a
+// GRAIN host with no PANTRY alongside stays intact.
+function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
+  const railLinks = [
+    surfaces.plans && [`${PANTRY_PREFIX}/plans`, "Plans"],
+    surfaces.runs && [`${PANTRY_PREFIX}/runs`, "Runs"],
+    surfaces.decisions && [`${PANTRY_PREFIX}/decisions`, "Decisions"],
+    surfaces.artifacts && [`${PANTRY_PREFIX}/artifacts`, "Artifacts"],
+    surfaces.timeline && [`${PANTRY_PREFIX}/timeline`, "Timeline"],
+  ].filter(Boolean) as [string, string][];
+
+  return `<div class="pantry-review" data-rail="open">
+  <aside class="pantry-review__rail" aria-label="Review rail">
+    <div class="pantry-review__railhead">
+      <b class="pantry-review__title">Review</b>
+      <span class="pantry-review__target">${escapeHtml(previewTarget)}</span>
+    </div>
+    <section class="pantry-review__group" aria-labelledby="pantry-review-tours">
+      <h2 class="pantry-review__grouptitle" id="pantry-review-tours">Tours</h2>
+      <ol class="pantry-review__tours" data-tours>
+        <li class="pantry-review__empty">Looking for tours in the reviewed project…</li>
+      </ol>
+    </section>
+    <section class="pantry-review__group" aria-labelledby="pantry-review-steps" data-steps-group hidden>
+      <h2 class="pantry-review__grouptitle" id="pantry-review-steps">Steps</h2>
+      <ol class="pantry-review__steps" data-steps></ol>
+      <p class="pantry-review__note">The card and the lamp are drawn by the project itself, inside the frame. This rail says where you are; it does not drive the walk.</p>
+    </section>
+    <section class="pantry-review__group" aria-labelledby="pantry-review-cockpit">
+      <h2 class="pantry-review__grouptitle" id="pantry-review-cockpit">Cockpit</h2>
+      <ul class="pantry-review__links">
+        ${railLinks.map(([href, label]) => `<li><a href="${href}">${label}</a></li>`).join("\n        ")}
+      </ul>
+    </section>
+  </aside>
+  <div class="pantry-review__pane">
+    <div class="pantry-review__bar">
+      <button class="pantry-review__toggle" type="button" data-rail-toggle aria-expanded="true">Hide rail</button>
+      <span class="pantry-review__url" data-frame-url>/</span>
+      <a class="pantry-review__open" target="_blank" rel="noopener" data-frame-open>Open full</a>
+    </div>
+    <!-- The frame's target is carried in data-src and set by the client, NOT in src. Every
+         root-absolute URL on a PANTRY page is rebased onto the reserved prefix on the way out, which
+         is right for every link here and exactly wrong for this one: rebasing it would frame PANTRY
+         inside PANTRY instead of the project. Caught by walking the shell, not by reading it. -->
+    <iframe class="pantry-review__frame" data-src="/" title="The project being reviewed, served under PANTRY's origin" data-frame></iframe>
+  </div>
+</div>`;
+}
+
 // The nav — surfaces gate the links (config.surfaces). Brand stays PANTRY (the app); the host
 // project's name shows in the home lede. The reshape (piece 8): the front nav carries the project's
 // own front door (Plans) + Standards + About; /docs·/reference·/catalog are DEMOTED out of the human
 // nav (they stay mounted + AI-retrievable, reached from the home "Reference surfaces" row) — cutting
 // them would undo PANTRY's founding pivot (see PLAN §The reshape).
-function nav(surfaces: PantrySurfaces): string {
+function nav(surfaces: PantrySurfaces, review: boolean): string {
   const links = [
+    // Only when the proxy is on, because it is the only time there is anything to review. A nav
+    // entry that leads to an empty frame is worse than no entry.
+    review && `<a href="/review">Review</a>`,
     surfaces.plans && `<a href="/plans">Plans</a>`,
     surfaces.decisions && `<a href="/decisions">Decisions</a>`,
     surfaces.runs && `<a href="/runs">Runs</a>`,
@@ -162,7 +223,15 @@ function nav(surfaces: PantrySurfaces): string {
 
 // The one page shell every PANTRY-owned surface shares. The mounted layers (PROOF, MILL) get this
 // same wrapper injected as their `chrome`, so the host owns the head + asset links everywhere.
-export function pantryPage(title: string, body: string, surfaces: PantrySurfaces): string {
+export interface PantryPageOptions {
+  /** show the Review entry in the nav (only meaningful while the preview proxy is on) */
+  review?: boolean;
+  /** the review shell fills the viewport and draws its own footer-free layout, so it opts out of
+   *  the centred column and the made-with footer that every reading surface wants */
+  fullBleed?: boolean;
+}
+
+export function pantryPage(title: string, body: string, surfaces: PantrySurfaces, opts: PantryPageOptions = {}): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -171,11 +240,11 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
   <title>${escapeHtml(title)} · PANTRY</title>
   ${styleLinks}
 </head>
-<body class="pantry-body" data-grade="smooth">
-  ${nav(surfaces)}
-  <main class="pantry-main">${body}</main>
-  ${madeWith()}
-  <script src="/pantry-cmdk.js" defer></script>
+<body class="pantry-body${opts.fullBleed ? " pantry-body--full" : ""}" data-grade="smooth">
+  ${nav(surfaces, opts.review ?? false)}
+  <main class="pantry-main${opts.fullBleed ? " pantry-main--full" : ""}">${body}</main>
+  ${opts.fullBleed ? "" : madeWith()}
+  <script src="/pantry-cmdk.js" defer></script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
 </body>
 </html>`;
 }
@@ -995,7 +1064,7 @@ export function createPantryHandler(opts: PantryOptions) {
   // explicit opts.cwd still wins for a caller that overrides.
   const cwd = opts.cwd ?? config.cwd;
   const grainRoot = opts.grainRoot ?? GRAIN_ROOT;
-  const page = (title: string, body: string) => pantryPage(title, body, surfaces);
+  const page = (title: string, body: string) => pantryPage(title, body, surfaces, { review: !!config.previewTarget });
 
   const serveStyles = makeStatic(bunRuntime, join(grainRoot, "styles"));
   // GRAIN's own variables.css has always asked for the Redaction grades at /fonts/…, and PANTRY has
@@ -1083,6 +1152,8 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-review-client.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-cmdk.js")   // ⌘K palette (piece 9b) — reads its index from /knowledge.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-cmdk.js")), { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/pantry-review.js")  // the review shell's rail (P1) — reads the project's own tours
+      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-review.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-map.js")     // mindmap viz (piece 10) — reads its graph from /map.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-map.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-decisions.js")   // decision inbox (piece 11d) — the client generate-prompt flow
@@ -1184,6 +1255,11 @@ export function createPantryHandler(opts: PantryOptions) {
       }
       return html(page("Home", homeBody(config, surfaces, freshness)));
     }
+    // The review shell (P1). It exists only while the proxy does, because the frame it draws has
+    // nothing to point at otherwise.
+    if (previewTarget && path === "/review")
+      return html(pantryPage("Review", reviewBody(previewTarget, surfaces), surfaces, { review: true, fullBleed: true }));
+
     if (path === "/about") return html(page("About", aboutBody()));
     if (surfaces.docs && path === "/docs") return html(page("Docs", docsBody(docCollections)));
 
@@ -1329,8 +1405,16 @@ export function servePantry(opts: PantryOptions & { port?: number }) {
  *  resolved config comes back with the server because the CLI has to print the right doors, and with
  *  the preview proxy on those doors move — a boot banner naming routes the server no longer answers
  *  is the first thing that would make this feel broken. */
-export async function servePantryFromCwd(opts: { cwd?: string; port?: number } = {}) {
+export async function servePantryFromCwd(opts: { cwd?: string; port?: number; previewTarget?: string | null } = {}) {
   const cwd = opts.cwd ?? process.cwd();
   const config = await loadPantryConfig(cwd);
+  // A target passed on the command line wins over the config, and goes through the SAME validation —
+  // a flag is still a place a caller types a string, and the loopback rule does not get to be
+  // optional because the string arrived by a different route.
+  if (opts.previewTarget) {
+    const flag = resolvePreviewTarget(opts.previewTarget);
+    if (flag.problem) console.warn(`[pantry] --preview ignored: ${flag.problem}`);
+    else config.previewTarget = flag.origin;
+  }
   return { server: servePantry({ plansDir: config.plansDir, config, cwd, port: opts.port }), config };
 }

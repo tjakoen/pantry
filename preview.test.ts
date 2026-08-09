@@ -67,6 +67,16 @@ describe("the HTML transforms", () => {
     expect(out).toContain(`src="//cdn/x.png"`);         // protocol-relative, untouched
   });
 
+  test("a data attribute is NOT a URL the browser fetches, so it is left alone", () => {
+    // \b sees a boundary between the hyphen and the s in data-src, so the obvious rule rewrote these
+    // too. That framed PANTRY inside PANTRY in the review shell, which is the kind of break that
+    // looks like a layout bug rather than a rewriting one.
+    const out = rebasePantryHtml(`<iframe data-src="/"></iframe><b data-srcset="/a.png 1x">x</b><img src="/real.png">`, PANTRY_PREFIX);
+    expect(out).toContain(`data-src="/"`);
+    expect(out).toContain(`data-srcset="/a.png 1x"`);
+    expect(out).toContain(`src="${PANTRY_PREFIX}/real.png"`);   // the real one still moves
+  });
+
   test("srcset moves too, candidate by candidate, so the rule has no quiet exception", () => {
     const out = rebasePantryHtml(`<img srcset="/a.png 400w, /b.png 800w, https://cdn/c.png 2x">`, PANTRY_PREFIX);
     expect(out).toContain(`${PANTRY_PREFIX}/a.png 400w`);
@@ -425,6 +435,35 @@ describe("createPantryHandler — the reserved prefix", () => {
     const out = await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/fonts/..%2F..%2Fpackage.json`));
     expect(out.status).toBe(403);
     expect((await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/fonts/nope.woff2`))).status).toBe(404);
+  });
+
+  test("the review shell frames the project at the root, and only exists while there is one to frame", async () => {
+    const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    const res = await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/review`));
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    // The frame's target must NOT be a rebased src: every root-absolute URL on a PANTRY page moves
+    // onto the prefix, and a rebased frame src would frame PANTRY inside PANTRY instead of the app.
+    expect(html).toContain(`data-src="/" title="The project being reviewed`);
+    expect(html).not.toContain(`<iframe class="pantry-review__frame" src=`);
+    expect(html).toContain("pantry-review__rail");
+    expect(html).toContain("data-rail-toggle");
+    expect(html).toContain(`src="${PANTRY_PREFIX}/pantry-review.js"`);
+    expect(html).toContain(origin);                       // the rail names what it is pointed at
+    expect(html).toContain(`href="${PANTRY_PREFIX}/plans"`);
+    // full bleed: no centred reading column, no made-with footer competing with the frame
+    expect(html).toContain("pantry-main--full");
+
+    const off = createPantryHandler({ plansDir: PLANS, config: configWith(null) });
+    expect((await off(new Request("http://localhost:4400/review"))).status).toBe(404);
+  });
+
+  test("the Review entry is in the nav only when the proxy is on", async () => {
+    const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    expect(await (await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/`))).text())
+      .toContain(`href="${PANTRY_PREFIX}/review"`);
+    const off = createPantryHandler({ plansDir: PLANS, config: configWith(null) });
+    expect(await (await off(new Request("http://localhost:4400/"))).text()).not.toContain(`href="/review"`);
   });
 
   test("an unknown path under the prefix is PANTRY's 404, never a pass to the app", async () => {

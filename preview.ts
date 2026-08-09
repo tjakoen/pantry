@@ -102,12 +102,16 @@ export function injectBeforeBodyClose(html: string, tag: string): string {
  */
 export function rebasePantryHtml(html: string, base: string): string {
   if (!base) return html;
-  const out = html.replace(/\b(href|src|action)=(["'])\/(?!\/)/gi, (_m, attr, quote) => `${attr}=${quote}${base}/`);
+  // The lookbehind is load-bearing, not defensive. `\b` sees a word boundary between the hyphen and
+  // the `s` in `data-src`, so the plain rule rewrote data attributes too — which broke the review
+  // shell in the least obvious way available, by framing PANTRY inside PANTRY. A data attribute is
+  // the app's own state, never a URL the browser will fetch, so it must be left alone.
+  const out = html.replace(/(?<![\w-])(href|src|action)=(["'])\/(?!\/)/gi, (_m, attr, quote) => `${attr}=${quote}${base}/`);
   // srcset is a comma-separated list, so it cannot ride the attribute rule above and needs its own
   // pass over the list's contents. Nothing PANTRY renders emits one today; it is here because the
   // rule "PANTRY's own root-absolute URLs move" should not quietly have an exception nobody knows
   // about, waiting for the first responsive image to land.
-  return out.replace(/\bsrcset=(["'])([^"']*)\1/gi, (_m, quote, value: string) => {
+  return out.replace(/(?<![\w-])srcset=(["'])([^"']*)\1/gi, (_m, quote, value: string) => {
     const moved = value
       .split(",")
       .map((candidate) => candidate.replace(/^(\s*)\/(?!\/)/, (_c, space) => `${space}${base}/`))

@@ -359,3 +359,71 @@
 .pantry-timeline-audit-list { list-style: none; margin: var(--space-2, 0.5rem) 0; padding: 0; }
 .pantry-timeline-audit-list li { margin: 0.3em 0; font-size: var(--text-sm); }
 .pantry-timeline-audit-list code { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink); }
+
+/* ── the review shell (P1) ──────────────────────────────────────────────────
+   PANTRY's chrome drawn AROUND the project it is proxying: the project in a same-origin frame that
+   fills the pane, the rail beside it. Full-bleed, so the page owns the viewport rather than sitting
+   in the centred reading column every other surface wants — a review is a workspace, not a document.
+   Tokens only, like the rest of this file. */
+.pantry-body--full { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+.pantry-main--full { max-width: none; margin: 0; padding: 0; flex: 1 1 auto; min-height: 0; }
+
+.pantry-review { display: flex; height: 100%; min-height: 0; }
+
+/* The rail collapses to nothing rather than to a sliver: a half-shown rail steals width and reads as
+   a rendering fault. The toggle that brings it back lives in the pane's bar, which never moves. */
+.pantry-review__rail {
+  flex: 0 0 17rem; width: 17rem; overflow-y: auto;
+  border-right: var(--hairline, 1px) solid var(--rule);
+  padding: var(--space-4, 1rem);
+  transition: width 120ms ease, flex-basis 120ms ease;
+}
+.pantry-review[data-rail="closed"] .pantry-review__rail { flex-basis: 0; width: 0; padding: 0; overflow: hidden; border-right: 0; }
+
+.pantry-review__railhead { margin-bottom: var(--space-4, 1rem); }
+.pantry-review__title { font-family: var(--display, var(--font-base)); font-size: var(--text-lg); display: block; }
+.pantry-review__target { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-faint); word-break: break-all; }
+
+.pantry-review__group { margin-bottom: var(--space-5, 1.25rem); }
+.pantry-review__grouptitle {
+  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--ink-faint); margin: 0 0 var(--space-2, 0.5rem); font-weight: normal;
+}
+.pantry-review__tours, .pantry-review__steps, .pantry-review__links { list-style: none; margin: 0; padding: 0; }
+.pantry-review__links li { margin: 0.25rem 0; }
+.pantry-review__links a { color: var(--ink-muted); text-decoration: none; font-size: var(--text-sm); }
+.pantry-review__links a:hover { color: var(--ink); }
+
+.pantry-review__tour {
+  display: block; width: 100%; text-align: left; cursor: pointer;
+  background: transparent; color: var(--ink); font: inherit; font-size: var(--text-sm);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+  padding: var(--space-2, 0.5rem); margin-bottom: var(--space-2, 0.5rem);
+}
+.pantry-review__tour:hover { border-color: var(--ink-muted); }
+.pantry-review__tourmeta { display: block; color: var(--ink-faint); font-size: var(--text-sm); }
+.pantry-review__empty, .pantry-review__note { color: var(--ink-faint); font-size: var(--text-sm); line-height: 1.4; }
+
+.pantry-review__step { display: flex; align-items: baseline; gap: var(--space-2, 0.5rem); font-size: var(--text-sm); margin: 0.3rem 0; }
+.pantry-review__stepno { color: var(--ink-faint); font-family: var(--font-mono); font-weight: normal; }
+.pantry-review__status { margin-left: auto; color: var(--ink-faint); font-size: var(--text-sm); }
+/* needs-verification is the status that most needs to be seen, so it is the one that gets weight */
+.pantry-review__step[data-status="needs-verification"] .pantry-review__status { color: var(--ink); }
+
+.pantry-review__pane { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.pantry-review__bar {
+  display: flex; align-items: center; gap: var(--space-3, 0.75rem);
+  padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+  border-bottom: var(--hairline, 1px) solid var(--rule);
+}
+.pantry-review__toggle {
+  cursor: pointer; background: transparent; color: var(--ink-muted); font: inherit; font-size: var(--text-sm);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem); padding: 0.2rem 0.6rem;
+}
+.pantry-review__toggle:hover { color: var(--ink); border-color: var(--ink-muted); }
+.pantry-review__url { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pantry-review__open { margin-left: auto; color: var(--ink-muted); text-decoration: none; font-size: var(--text-sm); }
+.pantry-review__open:hover { color: var(--ink); }
+
+/* The frame is the point: it is the real app, same origin, not a screenshot of one. */
+.pantry-review__frame { flex: 1 1 auto; width: 100%; border: 0; min-height: 0; background: var(--paper); }

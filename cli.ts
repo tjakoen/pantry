@@ -34,29 +34,36 @@ const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
 // Positionals are collected in order rather than folded into a single `dir`, because `skills` (and now
 // `graph`) take a subcommand before their optional dir (`pantry skills sync ../grain`, `pantry graph
 // merge ../bread`). For every other command the first positional IS the dir, exactly as before.
-function parseArgs(argv: string[]): { cmd: string; rest: string[]; port: number; force: boolean; kit: boolean } {
+function parseArgs(argv: string[]): { cmd: string; rest: string[]; port: number; force: boolean; kit: boolean; preview: string | null } {
   const [cmd = "serve", ...args] = argv;
   const rest: string[] = [];
   let port = 4400;
   let force = false;
   let kit = false;
+  // The preview target is a DEV-SESSION choice, not a property of the repo, so it belongs on the
+  // command line as much as in the config. Committing `previewTarget` into a repo's pantry.config
+  // turns the proxy on for everyone and every boot, including the boots where the reviewed project
+  // is not running; a flag lets a repo that already has a good config just add a target for one run.
+  let preview: string | null = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === "--port" || a === "-p") { port = Number(args[++i]); continue; }
     if (a.startsWith("--port=")) { port = Number(a.slice("--port=".length)); continue; }
     if (a === "--force" || a === "-f") { force = true; continue; }
     if (a === "--kit") { kit = true; continue; }
+    if (a === "--preview") { preview = args[++i] ?? null; continue; }
+    if (a.startsWith("--preview=")) { preview = a.slice("--preview=".length); continue; }
     if (!a.startsWith("-")) rest.push(a);
   }
-  return { cmd, rest, port, force, kit };
+  return { cmd, rest, port, force, kit, preview };
 }
 
 async function main() {
-  const { cmd, rest, port, force, kit } = parseArgs(Bun.argv.slice(2));
+  const { cmd, rest, port, force, kit, preview } = parseArgs(Bun.argv.slice(2));
   const dir = rest[0] ?? null;
 
   if (cmd === "serve") {
-    const { server, config } = await servePantryFromCwd({ port });
+    const { server, config } = await servePantryFromCwd({ port, previewTarget: preview });
     // With a preview target configured the reviewed project owns the root and PANTRY answers only
     // under its reserved prefix, so every door below moves. Printing the old list would send the
     // owner to the app's 404 and make a working proxy look broken.
