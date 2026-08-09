@@ -30,9 +30,14 @@ Paste the block below to your coding agent, in the root of the project you want 
 Implement PANTRY in this project. Do the following, in order, and stop to report after each
 numbered step:
 
-1. Add the @tjakoen/pantry dependency to this project.
-2. Run `bunx pantry init`. This scaffolds a plans/ folder (with a starter plan and a
-   plans/README.md contract) and a pantry.config.json file, both at the project root.
+1. Add the @tjakoen/pantry dependency to this project. PANTRY is not published to a registry: add
+   it as a Bun git dependency pinned to a commit, with
+   `bun add -d @tjakoen/pantry@github:tjakoen/pantry#main`.
+2. Run `bunx pantry init --kit`. This scaffolds a plans/ folder (with a starter plan and a
+   plans/README.md contract), a pantry.config.json file, a CLAUDE.md seeded from the published
+   starter, and an AGENTS.md symlink to it, all at the project root. The `--kit` flag matters:
+   `bunx pantry doctor` (step 7) checks for the CLAUDE.md and the AGENTS.md symlink, and a plain
+   `init` without `--kit` leaves both missing, so doctor fails two of its checks.
 3. Edit pantry.config.json. Set docsDirs to the folders where this project's OWN docs already
    live (for example ["./docs"] or ["./documentation"]). Do not move or copy those docs
    anywhere else, and do not create a new docs folder just to satisfy this step. Point the
@@ -46,6 +51,9 @@ numbered step:
    the standards change. Then run `bunx pantry skills list` and confirm every skill reads ok. A
    skill that is written to disk but missing from your agent's skill listing has hit a name
    collision with a built-in; the fix is a `skill:` key in the standard, not a rename here.
+7. Run `bunx pantry doctor`. Confirm it reports 0 failing. This is the mechanical, CI-able check
+   that the kit scaffolded in step 2 is intact (CLAUDE.md present, AGENTS.md a real symlink to it,
+   plus staleness checks). If anything fails, fix what it names rather than re-running init.
 
 Hard rules, non-negotiable:
 
@@ -67,21 +75,25 @@ Run these from the root of the project you want PANTRY in, one command at a time
 1. Add the dependency.
 
    ```
-   bun add -d @tjakoen/pantry
+   bun add -d @tjakoen/pantry@github:tjakoen/pantry#main
    ```
 
-   PANTRY is tooling, not something your app imports at runtime, so it installs as a dev
+   PANTRY is not published to a registry: it is an app, installed as a Bun git dependency pinned
+   to a commit. It is tooling, not something your app imports at runtime, so it installs as a dev
    dependency. You should see it added to package.json's `devDependencies` and to node_modules
    (or the workspace equivalent).
 
-2. Scaffold plans and config.
+2. Scaffold plans, config, and the loop kit.
 
    ```
-   bunx pantry init
+   bunx pantry init --kit
    ```
 
-   You should see a new `plans/` folder (a starter plan `000-welcome.md` and `plans/README.md`)
-   and a new `pantry.config.json` at the project root, plus a printed list of next steps.
+   You should see a new `plans/` folder (a starter plan `000-welcome.md` and `plans/README.md`),
+   a new `pantry.config.json`, a CLAUDE.md seeded from the published starter, and an AGENTS.md
+   symlink to it, all at the project root, plus a printed list of next steps. `--kit` matters:
+   `bunx pantry doctor` (step 4b) checks for the CLAUDE.md and the AGENTS.md symlink, and a plain
+   `init` without `--kit` leaves both missing, so doctor fails two of its checks.
 
 2b. Mount the standards as agent skills.
 
@@ -112,6 +124,16 @@ Run these from the root of the project you want PANTRY in, one command at a time
 
    You should see a clean report, or a short list of schema problems to fix in the plan files
    themselves.
+
+4b. Verify kit compliance.
+
+   ```
+   bunx pantry doctor
+   ```
+
+   You should see 0 failing. This is the mechanical, CI-able check that the kit scaffolded in
+   step 2 is intact (CLAUDE.md present, AGENTS.md a real symlink to it, plus staleness checks).
+   If anything fails, fix what it names rather than re-running init.
 
 5. Serve the cockpit.
 

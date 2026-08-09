@@ -11,7 +11,7 @@ of machine-readable endpoints an AI agent can read to get oriented fast, all in 
 
 It's an **app, not a layer**: nothing imports PANTRY, it imports BATCH, GRAIN, MILL, and PROOF and
 composes them for you. Think of it as the neutral, project-agnostic sibling of
-[the personal site](../tjakoen.github.io/): the same layers, wired into a second, unbranded app.
+[the personal site](https://github.com/tjakoen/tjakoen.github.io): the same layers, wired into a second, unbranded app.
 
 For the plain-language walkthrough (what each surface is for, why it exists), see the docs:
 **[Getting started](https://tjakoen.github.io/pantry/docs/getting-started)** ·
@@ -21,8 +21,8 @@ at **[tjakoen.github.io/pantry](https://tjakoen.github.io/pantry/)**.
 ## Quickstart
 
 ```sh
-bun add -d @tjakoen/pantry   # install as a dev dependency (pins the version with your project)
-bunx pantry init             # scaffolds plans/ + pantry.config.json (--kit also mounts the standards)
+bun add -d @tjakoen/pantry@github:tjakoen/pantry#main   # install as a dev dependency, pinned to a commit
+bunx pantry init --kit       # scaffolds plans/ + pantry.config.json + CLAUDE.md + AGENTS.md symlink
 bunx proof check             # lints the scaffolded plans
 bunx pantry skills sync      # mounts the standards as agent skills (generated, gitignored)
 bunx pantry doctor           # kit compliance + staleness, the loop's mechanical tier (CI-able)
@@ -58,8 +58,9 @@ it addressable, to you and to the AI working in it.
 
 ## Two ways to use it
 
-- **Add it, then run it, no code.** `bun add -d @tjakoen/pantry`, then `bunx pantry` reads your
-  `./plans/` (and your `./docs/`, if you have one) and serves the whole cockpit.
+- **Add it, then run it, no code.** `bun add -d @tjakoen/pantry@github:tjakoen/pantry#main`, then
+  `bunx pantry` reads your `./plans/` (and your `./docs/`, if you have one) and serves the whole
+  cockpit.
 - **Compose the layers yourself.** Building your own app instead? Import `createProofRoutes` and
   `createMillRoutes` straight into your own server. PANTRY is the reference implementation of doing
   exactly that; importing PANTRY itself isn't offered, it's an app, not a layer.
@@ -75,7 +76,7 @@ live: the AI-retrieval endpoints (`/llms.txt`, `/knowledge.json`) and the whole-
 ## Non-goals
 
 Not a new layer, nothing imports PANTRY, it imports the layers. Not the personal site, no branding,
-no notes, no résumé, those stay in [tjakoen.github.io](../tjakoen.github.io/). Not a fork of anyone's
+no notes, no résumé, those stay in [tjakoen.github.io](https://github.com/tjakoen/tjakoen.github.io). Not a fork of anyone's
 docs, it renders the canonical markdown, never a copy.
 
 ---
