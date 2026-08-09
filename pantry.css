@@ -246,14 +246,36 @@
 }
 .pantry-decision-prompt { font-family: var(--font-mono); background: color-mix(in srgb, var(--ink) 4%, transparent); }
 
-.pantry-decision-generate, .pantry-decision-copy {
+.pantry-decision-generate, .pantry-decision-copy, .pantry-decision-record {
   margin-top: var(--space-3, 0.75rem); font-family: var(--font-base); font-size: var(--text-sm);
   color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent);
   border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
   padding: var(--space-2, 0.5rem) var(--space-6, 1.5rem); cursor: pointer;
 }
-.pantry-decision-generate:hover, .pantry-decision-copy:hover { border-color: var(--ink-muted); }
+.pantry-decision-generate:hover, .pantry-decision-copy:hover, .pantry-decision-record:hover { border-color: var(--ink-muted); }
 .pantry-decision-output[hidden] { display: none; }
+
+/* ── the answer channel (P2) ────────────────────────────────────────────── */
+/* Recording is the durable path and pasting is the immediate one, so recording carries the weight.
+   Not a colour: the two are both correct moves and a red/green split would read as right/wrong. */
+.pantry-decision-actions { display: flex; gap: var(--space-3, 0.75rem); flex-wrap: wrap; }
+.pantry-decision-record { font-weight: 600; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+.pantry-decision-record:disabled { opacity: 0.5; cursor: progress; }
+.pantry-decision-hint { margin: var(--space-2, 0.5rem) 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-decision-status { margin: var(--space-2, 0.5rem) 0 0; font-size: var(--text-sm); }
+.pantry-decision-status[data-kind="ok"] { color: var(--ink); }
+.pantry-decision-status[data-kind="error"] { color: var(--ink); font-weight: 600; }
+.pantry-decision-status[hidden] { display: none; }
+
+/* The log itself. An unread answer is the only thing on this page that needs doing, so it is the only
+   thing marked; everything else is history and reads as history. */
+.pantry-answer { display: block; margin-bottom: var(--space-3, 0.75rem); }
+.pantry-answer[data-unread="true"] { border-left: 3px solid var(--ink); }
+.pantry-answer__head { margin: 0 0 var(--space-2, 0.5rem); font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-answer__q { margin: 0 0 var(--space-1, 0.25rem); font-weight: 600; }
+.pantry-answer__a { margin: var(--space-2, 0.5rem) 0 0; }
+.pantry-answer__meta, .pantry-answer__notes { margin: var(--space-1, 0.25rem) 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-answer__path { font-size: var(--text-sm); color: var(--ink-muted); }
 
 /* ── the run ledger (piece 11c, human half) ─────────────────────────────── */
 /* The badge reuses the decision-badge pill shape. Only `blocked` picks up a tint: a partial run is a
@@ -453,3 +475,17 @@
 }
 .pantry-nav__themebtn:hover { color: var(--ink); border-color: var(--ink-muted); }
 .pantry-review__themed { font-size: var(--text-sm); color: var(--ink-faint); white-space: nowrap; }
+
+/* The record button sits in the bar and is hidden until the walk reaches a decision card, so it reads
+   as "there is something to do here now" rather than as another permanent control. */
+.pantry-review__record {
+  font-family: var(--font-base); font-size: var(--text-sm); font-weight: 600; color: var(--ink);
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
+  padding: var(--space-1, 0.25rem) var(--space-4, 1rem); cursor: pointer; white-space: nowrap;
+}
+.pantry-review__record:hover { border-color: var(--ink-muted); }
+.pantry-review__record:disabled { opacity: 0.5; cursor: progress; }
+.pantry-review__record[hidden] { display: none; }
+.pantry-review__recordstatus { font-size: var(--text-sm); color: var(--ink-muted); white-space: nowrap; }
+.pantry-review__recordstatus[hidden] { display: none; }

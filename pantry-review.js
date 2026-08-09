@@ -21,6 +21,8 @@
   const demosGroup = shell.querySelector("[data-demos-group]");
   const stepsGroup = shell.querySelector("[data-steps-group]");
   const stepList = shell.querySelector("[data-steps]");
+  const recordBtn = shell.querySelector("[data-record]");
+  const recordStatus = shell.querySelector("[data-record-status]");
 
   // The frame's target is set here rather than in the markup. PANTRY rebases every root-absolute URL
   // in its own HTML onto the reserved prefix, which is correct for every link on this page and
@@ -95,15 +97,126 @@
     const doc = frameDoc();
     if (!doc || !doc.body) return;
     const seen = () => {
-      const has = !!doc.querySelector(".crumb-pop, .crumb-frame");
+      // Whether a card is LIVE, not whether one exists. CRUMB's popover is a <dialog> and ending a
+      // tour closes it rather than removing it, so a plain selector keeps matching a card nobody can
+      // see and both these controls would linger past the end of the walk.
+      const has = !!(client() && client().liveCard && client().liveCard());
       cardToggle.hidden = !has;
       if (has) applyFold();
       syncActiveTour();
+      syncRecord();
     };
-    new MutationObserver(seen).observe(doc.body, { childList: true, subtree: true });
+    // `open` is an ATTRIBUTE, so a childList-only observer never sees a dialog close. That is exactly
+    // the mutation that has to be noticed here, and watching for it costs one filtered attribute.
+    new MutationObserver(seen).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
     seen();
   };
   frame.addEventListener("load", watchCard);
+
+  // ── recording the answer (P2) ─────────────────────────────────────────────
+  // The rail asks the injected client for the card as data rather than reading the frame's DOM here.
+  // That keeps CRUMB's attribute names a dependency of exactly one file, and it means the same
+  // reading works for a walk with no rail around it.
+  const client = () => {
+    try { return frame.contentWindow.__pantryReview || null; } catch { return null; }
+  };
+  const readCard = () => {
+    const api = client();
+    try { return api && api.readPromptCard ? api.readPromptCard() : null; } catch { return null; }
+  };
+  function syncRecord() {
+    if (!recordBtn) return;
+    recordBtn.hidden = !readCard();
+  }
+  function sayRecord(message, kind) {
+    if (!recordStatus) return;
+    recordStatus.hidden = !message;
+    recordStatus.textContent = message;
+    recordStatus.dataset.kind = kind || "";
+  }
+
+  // The question and its options come from the TOUR FILE, the answers from the card on screen. A
+  // label scraped off the card would be the same words most of the time and a stale guess the once it
+  // matters, and this log is read by a session that cannot check either.
+  // Which asks have already landed, so pressing Record twice does not write them twice. The log is
+  // append-only and has no way to retract a duplicate, so a retry after a PARTIAL failure — one ask
+  // through, one refused — would otherwise leave the next session reading the same decision answered
+  // twice with no way to tell which was the retry.
+  const recorded = new Set();
+
+  async function recordAnswer() {
+    const card = readCard();
+    if (!card) return sayRecord("No decision card on screen.", "error");
+    if (!card.tour) {
+      // Distinct from "you answered nothing", because they need opposite responses from the reviewer.
+      return sayRecord("PANTRY cannot tell which tour this card belongs to, so it will not guess. Reload the frame and start the tour from the rail.", "error");
+    }
+    const tour = await loadTour(card.tour);
+    if (!tour || !tour.prompt) {
+      return sayRecord(`Could not read the tour file for "${card.tour}", so the questions are unknown. Nothing was recorded.`, "error");
+    }
+    // One POST per ask, because each ask IS a decision and the log's unit is a decision, not a card.
+    // Bundling them would give the next session one entry it has to take apart, and an ack that
+    // cannot say which half was acted on.
+    const answered = (tour.prompt.asks || [])
+      .filter((a) => card.asks[a.id])
+      .filter((a) => !recorded.has(`${card.tour}#${a.id}`));
+    if (answered.length === 0) {
+      return sayRecord(recorded.size ? "Everything answered here is already recorded." : "Nothing answered on this card yet.", "error");
+    }
+    recordBtn.disabled = true;
+    // Settled, not all-or-nothing. `Promise.all` rejects on the first throw and discards what the
+    // others did, which for an append-only log means answers that ARE on disk get reported as a
+    // failure and then written again on the retry.
+    const outcomes = await Promise.all(answered.map(async (a) => {
+      const ref = `${card.tour}#${a.id}`;
+      try {
+        const res = await post({
+          via: "pantry-review",
+          choice: card.asks[a.id],
+          composed: card.composed,
+          request: {
+            source: "tour",
+            ref,
+            question: a.label,
+            options: a.options || [],
+            // What an answer to a review question actually unblocks is the tour itself: until it is
+            // answered nobody can honestly mark the walk verified. Saying "the review of <title>" read
+            // as "the review of Review: served by PANTRY", which is the kind of doubled word that only
+            // shows up once a real title goes through it.
+            unblocks: tour.title ? `marking "${tour.title}" verified` : "",
+          },
+        });
+        if (res.ok) recorded.add(ref);
+        return res;
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }));
+    recordBtn.disabled = false;
+    const ok = outcomes.filter((r) => r.ok).length;
+    const failed = outcomes.filter((r) => !r.ok);
+    if (failed.length === 0) return sayRecord(`Recorded ${ok} answer${ok === 1 ? "" : "s"}.`, "ok");
+    // Say what DID land. A bare error after a partial write is the message that makes someone press
+    // the button again.
+    sayRecord(`${ok} recorded, ${failed.length} failed: ${failed[0].error}. Press Record again to retry only the ones that failed.`, "error");
+  }
+
+  // The rail is served under the reserved prefix, so its own pathname carries the base. Derived from
+  // location rather than from the meta tag because this page always lives under the prefix, and one
+  // fewer thing to be stamped is one fewer thing to be missing.
+  const pantryBase = window.location.pathname.replace(/\/review\/?$/, "");
+  async function post(payload) {
+    const res = await fetch(`${pantryBase}/answers`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, id: body.id } : { ok: false, error: body.error || `HTTP ${res.status}` };
+  }
+
+  if (recordBtn) recordBtn.addEventListener("click", recordAnswer);
 
   // ── which tour is actually running ────────────────────────────────────────
   // Read from CRUMB's own record rather than inferred from the rail's last click. The rail is not

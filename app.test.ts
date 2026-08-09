@@ -18,7 +18,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   docsDirs: [],
   graphPath: null,
   graphDir: join(EXAMPLE, "graphify-out"),
-  decisionsDir: join(EXAMPLE, "decisions"),
+  decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"),
   artifactsDir: join(EXAMPLE, "artifacts"),
   runsDir: join(EXAMPLE, "artifacts", "runs"),
   previewTarget: null,
@@ -614,5 +614,130 @@ describe("mindmap with a real graphify-out (piece 10)", () => {
     // when a graph exists the machine brain points agents at it; without one it stays silent
     const k = await (await get(handler, "/knowledge.json")).json();
     expect(k.surfaces.some((s: { route: string }) => s.route === "/map")).toBe(true);
+  });
+});
+
+// ── the answer write-back (P2 of plans/pantry-review-layer.md) ────────────────
+// PANTRY's ONLY write, so what is tested here is mostly what it REFUSES. Each refusal below is a
+// bullet in that plan's security section, and a bullet whose test does not exist is a sentence.
+describe("the answer channel — the one route in PANTRY that writes", () => {
+  const withLog = async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pantry-answers-route-"));
+    const config = { ...configWith(), answersLog: join(dir, "answers.jsonl") };
+    return { dir, handler: createPantryHandler({ plansDir: EXAMPLE, config }), log: config.answersLog };
+  };
+
+  // Bun hands the server to the fetch handler; the tests stand in the one method the handler reads,
+  // so a test that wants the write-back has to SAY which address it came from.
+  const from = (address: string | null) =>
+    ({ requestIP: () => (address ? { address } : null) });
+
+  const post = (
+    handler: (r: Request, s?: { requestIP?: (r: Request) => { address: string } | null }) => Promise<Response>,
+    body: unknown,
+    address: string | null = "127.0.0.1",
+  ) => handler(
+    new Request("http://localhost/answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    }),
+    from(address),
+  );
+
+  const goodBody = {
+    via: "test",
+    choice: "SQLite",
+    request: { source: "decision", ref: "run-ledger", question: "Which datastore for the run ledger?" },
+  };
+
+  test("a loopback POST appends and says where it landed", async () => {
+    const { handler, log } = await withLog();
+    const res = await post(handler, goodBody);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.ok).toBe(true);
+    expect(body.path).toBe(log);
+    expect((await Bun.file(log).text()).trim().split("\n")).toHaveLength(1);
+  });
+
+  test("a POST from off this machine is refused, and nothing is written", async () => {
+    const { handler, log } = await withLog();
+    const res = await post(handler, goodBody, "203.0.113.9");
+    expect(res.status).toBe(403);
+    expect(await Bun.file(log).exists()).toBe(false);
+  });
+
+  test("a POST with no knowable address is refused too — the unanswerable case defaults to no", async () => {
+    const { handler } = await withLog();
+    expect((await post(handler, goodBody, null)).status).toBe(403);
+  });
+
+  test("an answer with no question is refused, so the log cannot hold an unusable entry", async () => {
+    const { handler, log } = await withLog();
+    const res = await post(handler, { choice: "SQLite", request: { source: "decision", ref: "x" } });
+    expect(res.status).toBe(400);
+    expect(await Bun.file(log).exists()).toBe(false);
+  });
+
+  test("a body that is not JSON is a 400, not a 500", async () => {
+    const { handler } = await withLog();
+    expect((await post(handler, "{not json")).status).toBe(400);
+  });
+
+  test("a body over the cap is refused on the bytes actually read", async () => {
+    const { handler } = await withLog();
+    const huge = JSON.stringify({ ...goodBody, notes: "x".repeat(100_000) });
+    expect((await post(handler, huge)).status).toBe(413);
+  });
+
+  // The cap has to STOP the read, not measure it afterwards. A reviewer caught the first version
+  // buffering the whole body and then deciding, which caps what gets written and nothing else. This
+  // streams, so a body that never ends is refused rather than held: the test would hang otherwise.
+  test("an oversized body is refused without being read to the end", async () => {
+    const { handler, log } = await withLog();
+    let pushed = 0;
+    const chunk = new TextEncoder().encode("x".repeat(8 * 1024));
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pushed += chunk.byteLength;
+        // Far past the cap. If the handler drained this instead of stopping, `pushed` would run away.
+        if (pushed > 40 * 1024 * 1024) { controller.close(); return; }
+        controller.enqueue(chunk);
+      },
+    });
+    const res = await handler(
+      new Request("http://localhost/answers", { method: "POST", body, duplex: "half" } as RequestInit),
+      from("127.0.0.1"),
+    );
+    expect(res.status).toBe(413);
+    expect(pushed).toBeLessThan(1024 * 1024);   // stopped near the cap, nowhere near the stream's end
+    expect(await Bun.file(log).exists()).toBe(false);
+  });
+
+  test("GET /answers renders the log and marks what is unread; /answers.json is its twin", async () => {
+    const { handler } = await withLog();
+    await post(handler, goodBody);
+    const page = await (await get(handler, "/answers")).text();
+    expect(page).toContain("Which datastore for the run ledger?");
+    expect(page).toContain("Unread (1)");
+    const json = await (await get(handler, "/answers.json")).json();
+    expect(json.unread).toHaveLength(1);
+    expect(json.answers[0].choice).toBe("SQLite");
+  });
+
+  test("with the decisions surface off, the channel is off too — write and read alike", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pantry-answers-off-"));
+    const config = { ...configWith({ decisions: false }), answersLog: join(dir, "answers.jsonl") };
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config });
+    expect((await post(handler, goodBody)).status).toBe(404);
+    expect((await get(handler, "/answers")).status).toBe(404);
+    expect(await Bun.file(config.answersLog).exists()).toBe(false);
+  });
+
+  test("a GET to /answers never writes, whatever it carries", async () => {
+    const { handler, log } = await withLog();
+    await get(handler, "/answers");
+    expect(await Bun.file(log).exists()).toBe(false);
   });
 });

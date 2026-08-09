@@ -17,6 +17,7 @@
 //     - Postgres — durable, needs a running service
 //     - SQLite — zero-ops, single-writer
 //   recommendation: SQLite — zero-ops, single-writer   # optional; should match an option
+//   unblocks: the run ledger's storage, and piece 12 behind it   # optional; what changes once answered
 //   evidence:
 //     - PLAN.md piece 11c | /docs/plans/pantry         # "label | href"; href optional
 //     - drift.ts drift fold-in                          # label only is fine
@@ -47,6 +48,11 @@ export interface DecisionRequest {
   options: string[];
   /** the agent's recommended option, verbatim; absent when the file offers none */
   recommendation?: string;
+  /** what changes once this is answered (DECISIONS §3's fourth item). Optional in the file and
+   *  required by nothing here, because an existing request that predates the field must still render
+   *  — but it is carried into the answer log, where its absence is what makes an answer unusable to
+   *  the session that did not ask. */
+  unblocks?: string;
   evidence: DecisionEvidence[];
   /** the raw markdown body (frontmatter stripped) — rendered to HTML by the view, kept raw here so
    *  the data layer stays render-free and testable */
@@ -114,12 +120,14 @@ function parseDecision(id: string, file: string, raw: string): DecisionRequest {
   const recommendation = typeof data.recommendation === "string" && data.recommendation.trim()
     ? data.recommendation.trim()
     : undefined;
+  const unblocks = typeof data.unblocks === "string" && data.unblocks.trim() ? data.unblocks.trim() : undefined;
   return {
     id,
     title,
     status,
     options: asArray(data.options),
     recommendation,
+    unblocks,
     evidence: asArray(data.evidence).map(parseEvidence),
     body,
     file,

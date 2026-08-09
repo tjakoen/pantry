@@ -25,6 +25,10 @@ import { PANTRY_PREFIX, proxyToPreview, rebasePantryCss, rebasePantryHtml, resol
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
+import {
+  answers, appendAnswer, AnswerRejected, isLoopbackRequest, normalizeAnswer, readAnswerLog, unacked,
+  MAX_ANSWER_BODY_BYTES, type AnswerEntry, type AnswerLog,
+} from "./answers.ts";
 import { buildArtifactsPayload, classifyArtifact, type ArtifactsPayload, type ArtifactEntry } from "./artifacts.ts";
 import { buildRunsPayload, type RunsPayload, type RunReport, type RunPair, type EvidenceGap } from "./runs.ts";
 import { runDoctor, type DoctorReport, type DoctorCheck } from "./doctor.ts";
@@ -154,6 +158,7 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
     surfaces.plans && [`${PANTRY_PREFIX}/plans`, "Plans"],
     surfaces.runs && [`${PANTRY_PREFIX}/runs`, "Runs"],
     surfaces.decisions && [`${PANTRY_PREFIX}/decisions`, "Decisions"],
+    surfaces.decisions && [`${PANTRY_PREFIX}/answers`, "Answers"],
     surfaces.artifacts && [`${PANTRY_PREFIX}/artifacts`, "Artifacts"],
     surfaces.timeline && [`${PANTRY_PREFIX}/timeline`, "Timeline"],
   ].filter(Boolean) as [string, string][];
@@ -201,6 +206,12 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
            it is also the sort of thing that makes a reviewer file a bug against a screen they
            themselves restyled, so it is stated rather than left to be discovered. -->
       <span class="pantry-review__themed" data-themed hidden></span>
+      <!-- The one control that writes anything. Hidden until the walk actually reaches a decision
+           card, because a button offering to record an answer to nothing is how a reviewer learns to
+           ignore the bar. It lives out here rather than inside the card for the reason P1 settled:
+           CRUMB draws the card, PANTRY draws the chrome, and neither reaches into the other. -->
+      <button class="pantry-review__record" type="button" data-record hidden>Record answer</button>
+      <span class="pantry-review__recordstatus" data-record-status role="status" hidden></span>
       <a class="pantry-review__open" target="_blank" rel="noopener" data-frame-open>Open full</a>
     </div>
     <!-- The frame's target is carried in data-src and set by the client, NOT in src. Every
@@ -464,7 +475,7 @@ function decisionCard(d: DecisionRequest): string {
 function decisionsIndexBody(payload: DecisionsPayload): string {
   const header = `<header>
   <h1 class="proof-masthead">Decisions</h1>
-  <p class="proof-lede">Open decisions the AI has routed to you for ${escapeHtml(payload.project)} — the question, its options, and the evidence, side by side. You resolve one by generating a prompt to paste back into chat; PANTRY runs no model and writes nothing. Machine twin at <a href="/decisions.json">/decisions.json</a>.</p>
+  <p class="proof-lede">Open decisions the AI has routed to you for ${escapeHtml(payload.project)} — the question, its options, and the evidence, side by side. Answering one records it to the <a href="/answers">answer log</a>, which the next session reads on wake, or generates a prompt to paste straight back into chat. PANTRY still runs no model, and the log is the one thing it writes. Machine twin at <a href="/decisions.json">/decisions.json</a>.</p>
 </header>`;
   if (!payload.available) {
     return `${header}
@@ -510,9 +521,16 @@ function renderAgentBody(md: string): string {
 }
 
 // The DETAIL view: the question + options (radios) + evidence, an always-present notes box, and the
-// "generate prompt" button. All resolution logic is client-side (pantry-decisions.js) assembling a
-// prompt string — PANTRY never POSTs, never writes. The data-* attributes feed that script the file
-// path + title it needs to build the paste-back instruction.
+// two ways an answer leaves this page. The data-* attributes feed pantry-decisions.js everything both
+// paths need, which is more than the paste-back needed alone: the answer log entry has to carry the
+// question, the options and what it unblocks, so they are handed to the client rather than re-derived
+// from the DOM it is about to read.
+//
+// **Both paths, not one replacing the other.** "Record answer" appends to the log and is the durable
+// channel; "Generate prompt" is the paste, which is still the right move when someone is watching and
+// the run is in front of them (DECISIONS §2 puts the chat above every surface below it). What changed
+// in P2 is that the paste is no longer the ONLY path, which is what made an answer usable only while
+// the session that asked was still alive.
 function decisionDetailBody(d: DecisionRequest): string {
   const opts = d.options.length
     ? d.options.map((opt, i) => {
@@ -549,7 +567,10 @@ ${resolvedBanner}
 <div class="pantry-decision"
      data-decision-id="${escapeHtml(d.id)}"
      data-decision-title="${escapeHtml(d.title)}"
-     data-decision-file="${escapeHtml(d.file)}">
+     data-decision-file="${escapeHtml(d.file)}"
+     data-decision-options="${escapeHtml(JSON.stringify(d.options))}"
+     ${d.recommendation ? `data-decision-recommendation="${escapeHtml(d.recommendation)}"` : ""}
+     ${d.unblocks ? `data-decision-unblocks="${escapeHtml(d.unblocks)}"` : ""}>
   <div class="pantry-decision-grid">
     <section class="pantry-decision-options">
       <h2 class="pantry-section-title">Options</h2>
@@ -559,7 +580,12 @@ ${resolvedBanner}
   </div>
   <label class="pantry-decision-notes-label" for="decision-notes">Additional notes (always sent)</label>
   <textarea id="decision-notes" class="pantry-decision-notes" rows="4" placeholder="Anything the AI should know beyond the chosen option — constraints, a different option entirely, follow-ups."></textarea>
-  <button type="button" class="pantry-decision-generate" id="decision-generate">Generate prompt</button>
+  <div class="pantry-decision-actions">
+    <button type="button" class="pantry-decision-record" id="decision-record">Record answer</button>
+    <button type="button" class="pantry-decision-generate" id="decision-generate">Generate prompt</button>
+  </div>
+  <p class="pantry-decision-hint">Recording appends to the answer log the next session reads on wake. Generating a prompt is the paste-back, for when someone is already in the chat.</p>
+  <p class="pantry-decision-status" id="decision-status" role="status" hidden></p>
   <div class="pantry-decision-output" hidden>
     <label class="pantry-decision-notes-label" for="decision-prompt">Prompt — copy this into chat</label>
     <textarea id="decision-prompt" class="pantry-decision-prompt" rows="10" readonly></textarea>
@@ -567,6 +593,120 @@ ${resolvedBanner}
   </div>
 </div>
 <script src="/pantry-decisions.js" defer></script>`;
+}
+
+/** What Bun hands the fetch handler. Only the one method is used, and it is typed narrowly so a test
+ *  can stand in a fake without pulling in the whole server surface. */
+export interface PantryServer {
+  requestIP?: (req: Request) => { address: string } | null;
+}
+
+/**
+ * Read a request body, stopping at `cap` rather than measuring afterwards. Null means over the cap.
+ *
+ * The first version called `req.arrayBuffer()` and checked the length it got back, which is a cap on
+ * what gets WRITTEN and not a cap on what gets read: the whole payload was already in memory by the
+ * time the 413 was decided. Trusting Content-Length instead would be worse, for the reason the proxy
+ * already learned — a declared length is a claim. So the only honest version reads the stream and
+ * stops, which is what this does.
+ */
+async function readBodyUpTo(req: Request, cap: number): Promise<Uint8Array | null> {
+  if (!req.body) return new Uint8Array(0);
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > cap) {
+      await reader.cancel().catch(() => { /* the client hung up first; the refusal stands either way */ });
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) { out.set(chunk, at); at += chunk.byteLength; }
+  return out;
+}
+
+/**
+ * The write-back (P2). PANTRY's ONLY write, and every bound on it lives in this one function so the
+ * list can be read rather than reconstructed:
+ *
+ *   - **Loopback socket only.** Checked on the connection, never on a header, because Origin and
+ *     Referer are claims and the point of the check is to believe no claims.
+ *   - **A body cap read from the bytes**, not from Content-Length, for the same reason the proxy
+ *     stopped trusting it: a declared length is another claim.
+ *   - **A validated shape.** An entry with no question is refused, so "the answer carries its own
+ *     question" is a property of the file rather than a habit of its writers.
+ *   - **The path comes from config.** Nothing in the request names, hints at, or influences where
+ *     this is written. That is what keeps a POST-from-a-page from being a write-anywhere primitive.
+ *   - **Append only.** There is no route that edits or deletes an entry, here or anywhere.
+ */
+async function recordAnswerRequest(req: Request, clientAddress: string | null, logPath: string): Promise<Response> {
+  if (!isLoopbackRequest(clientAddress)) {
+    return Response.json({ error: "The answer log accepts writes from this machine only." }, { status: 403 });
+  }
+  const raw = await readBodyUpTo(req, MAX_ANSWER_BODY_BYTES);
+  if (raw === null) {
+    return Response.json({ error: `Over the ${MAX_ANSWER_BODY_BYTES} byte cap.` }, { status: 413 });
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(raw));
+  } catch {
+    return Response.json({ error: "Body is not JSON." }, { status: 400 });
+  }
+  try {
+    const entry = await appendAnswer(logPath, normalizeAnswer(body), new Date());
+    return Response.json({ ok: true, id: entry.id, at: entry.at, path: logPath }, { status: 201 });
+  } catch (err) {
+    if (err instanceof AnswerRejected) return Response.json({ error: err.message }, { status: 400 });
+    return Response.json({ error: "Could not write the answer log." }, { status: 500 });
+  }
+}
+
+// /answers — the read half of the channel. Deliberately plain: the questions are rendered richly over
+// on /decisions, and repeating that here would be two surfaces for one thing. What this page owes is
+// the tail nobody has acted on, in the order it has to be acted on.
+function answerCard(a: AnswerEntry, unread: boolean): string {
+  const options = a.request.options?.length
+    ? `<p class="pantry-answer__meta">Offered: ${a.request.options.map((o) => escapeHtml(o)).join(" · ")}</p>`
+    : "";
+  const unblocks = a.request.unblocks
+    ? `<p class="pantry-answer__meta">Unblocks: ${escapeHtml(a.request.unblocks)}</p>`
+    : "";
+  const notes = a.notes ? `<p class="pantry-answer__notes">${escapeHtml(a.notes)}</p>` : "";
+  return `<article class="card pantry-member pantry-answer" data-pad="sm" data-unread="${unread}">
+  <p class="pantry-answer__head"><code>${escapeHtml(a.id)}</code> · ${escapeHtml(a.at)} · <b>${escapeHtml(a.request.source)}</b> · ${escapeHtml(a.request.ref)}</p>
+  <p class="pantry-answer__q">${escapeHtml(a.request.question)}</p>
+  ${options}${unblocks}
+  ${a.choice ? `<p class="pantry-answer__a">${escapeHtml(a.choice)}</p>` : ""}
+  ${notes}
+</article>`;
+}
+
+function answersBody(log: AnswerLog, project: string): string {
+  const unread = unacked(log);
+  const unreadIds = new Set(unread.map((a) => a.id));
+  const rest = answers(log).filter((a) => !unreadIds.has(a.id));
+  const header = `<header>
+  <h1 class="proof-masthead">Answers</h1>
+  <p class="proof-lede">Every answer ${escapeHtml(project)} has given a run, in one append-only log. A session reads the unread ones when it wakes and acks what it acted on; nothing here is ever edited. Machine twin at <a href="/answers.json">/answers.json</a>. <a href="/decisions">← The questions</a></p>
+  <p class="pantry-answer__path"><code>${escapeHtml(log.path)}</code>${log.malformed ? ` · ${log.malformed} unparseable line(s) skipped` : ""}</p>
+</header>`;
+  if (log.entries.length === 0) {
+    return `${header}
+<p class="pantry-member__role">Nothing answered yet. A run raises a question on a decision request or a tour's decision card, you answer it there, and it lands here.</p>`;
+  }
+  const unreadSection = `<h2 class="pantry-section-title">Unread (${unread.length})</h2>
+${unread.length ? unread.map((a) => answerCard(a, true)).join("\n") : `<p class="pantry-member__role">Every answer has been acted on.</p>`}`;
+  const restSection = rest.length
+    ? `<h2 class="pantry-section-title">Acted on (${rest.length})</h2>\n${rest.map((a) => answerCard(a, false)).join("\n")}`
+    : "";
+  return `${header}\n${unreadSection}\n${restSection}`;
 }
 
 // /runs (piece 11c, the human half) — the RUN LEDGER surface. The INDEX lists closed runs newest
@@ -1072,6 +1212,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   projectName: basename(dirname(plansDir)) || "project",
   plansDir, docsDirs: [], graphPath: null, graphDir: join(dirname(plansDir), "graphify-out"),
   decisionsDir: join(plansDir, "decisions"),
+  answersLog: join(plansDir, "decisions", "answers.jsonl"),
   artifactsDir: join(dirname(plansDir), "artifacts"),
   runsDir: join(dirname(plansDir), "artifacts", "runs"),
   previewTarget: null,
@@ -1171,7 +1312,15 @@ export function createPantryHandler(opts: PantryOptions) {
   // PANTRY's own routing, taking the path with any reserved prefix ALREADY stripped. Returns null for
   // "not one of mine" so the caller decides what that means: a 404 with the proxy off, and a pass to
   // the target with it on.
-  const pantryRoutes = async (path: string, url: URL): Promise<Response | null> => {
+  const pantryRoutes = async (path: string, url: URL, req: Request, clientAddress: string | null): Promise<Response | null> => {
+    // --- the answer write-back (P2): the ONE channel an answer comes back on, and the only route in
+    // PANTRY that writes anything. Every bound on it is here, in one place, rather than spread across
+    // the handler: loopback socket, POST only, a body cap, a validated shape that must carry its own
+    // question, and a path that comes from config and can never be named by the request. ---
+    if (surfaces.decisions && path === "/answers" && req.method === "POST") {
+      return recordAnswerRequest(req, clientAddress, config.answersLog);
+    }
+
     // --- assets ---
     if (path.startsWith("/styles/")) return rebaseCssResponse(await serveStyles(path.slice("/styles".length)), base);
     if (path.startsWith("/scripts/")) return serveScripts(path.slice("/scripts".length));
@@ -1231,6 +1380,22 @@ export function createPantryHandler(opts: PantryOptions) {
       if (d) return html(page(d.title, decisionDetailBody(d)));
       return new Response("Not found", { status: 404 });
     }
+
+    // --- the answer log (P2, the read half): human /answers, machine twin /answers.json. It rides on
+    // the decisions toggle rather than earning one of its own, because a question and its answer are
+    // one surface split across two pages, and a host that turned the inbox off has no use for either. ---
+    if (surfaces.decisions && path === "/answers.json") {
+      const log = await readAnswerLog(config.answersLog);
+      return Response.json({
+        path: log.path,
+        malformed: log.malformed,
+        unread: unacked(log),
+        answers: answers(log),
+        generatedAt: new Date().toISOString(),
+      });
+    }
+    if (surfaces.decisions && path === "/answers")
+      return html(page("Answers", answersBody(await readAnswerLog(config.answersLog), config.projectName)));
 
     // --- the run ledger (piece 11c): human /runs + /runs/<id>, machine twin /runs.json. Each closed
     // run report parsed against LOOP.md §9, with the items it is missing. The human page was the open
@@ -1319,20 +1484,24 @@ ${body}`));
     return null;   // not one of PANTRY's — the caller decides (404, or the preview target)
   };
 
-  return async (req: Request): Promise<Response> => {
+  return async (req: Request, server?: PantryServer): Promise<Response> => {
     const url = new URL(req.url);
     const path = url.pathname;
+    // Bun hands the server to the fetch handler, and it is the only thing here that knows which
+    // socket a request arrived on. Read once and passed down, so the write-back's loopback check has
+    // a real address rather than a header anyone can set.
+    const clientAddress = server?.requestIP?.(req)?.address ?? null;
 
     // The ordinary case: no preview target, PANTRY owns the root, nothing is rewritten.
     if (!previewTarget) {
-      return (await pantryRoutes(path, url)) ?? new Response("Not found", { status: 404 });
+      return (await pantryRoutes(path, url, req, clientAddress)) ?? new Response("Not found", { status: 404 });
     }
 
     // The proxy is on. PANTRY answers only under its reserved prefix; the root belongs to the target,
     // whole, so the reviewed app's root-relative URLs resolve exactly as they always did.
     if (path === PANTRY_PREFIX || path.startsWith(`${PANTRY_PREFIX}/`)) {
       const inner = path.slice(PANTRY_PREFIX.length) || "/";
-      const res = await pantryRoutes(inner, url);
+      const res = await pantryRoutes(inner, url, req, clientAddress);
       if (!res) return new Response("Not found", { status: 404 });
       return rebasePantryResponse(res, base, inner);
     }

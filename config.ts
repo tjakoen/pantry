@@ -50,6 +50,21 @@ export interface PantryConfig {
    *  plans/ so the existing PROOF tooling + `pantry doctor`'s plans-present check already cover it —
    *  no new tracked dir). PANTRY renders these read-only at /decisions; it never writes them. */
   decisionsDir?: string;
+  /** the ONE channel an answer comes back on (standards/DECISIONS.md §4); default
+   *  "<decisionsDir>/answers.jsonl", so it rides along with the questions it answers and adds no new
+   *  tracked dir. This is the single path PANTRY writes to, and it is append-only.
+   *
+   *  **The extension is `.jsonl` and not `.log` on purpose.** `*.log` is in almost every .gitignore
+   *  ever written, including this estate's, so the obvious name would have been silently untracked —
+   *  and a per-repo answer log that git never sees gives up the entire reason for choosing per repo
+   *  over per machine. It was ignored on the first write, which is the only way this was going to be
+   *  found.
+   *
+   *  Per repo is the default because an answer belongs beside the evidence and inside the same git
+   *  history as the change it unblocks. Pointing it at an absolute path outside the repo makes it per
+   *  MACHINE instead, which is the trade for a session that works across repos and wants exactly one
+   *  path to watch. Both are supported on purpose, and neither is a mode with its own code. */
+  answersLog?: string;
   /** where runs deposit evidence — screenshots, audit reports, diffs — that PANTRY serves read-only;
    *  default ./artifacts. Absent → the /artifacts surface degrades to guidance. */
   artifactsDir?: string;
@@ -93,6 +108,9 @@ export interface ResolvedPantryConfig {
   graphDir: string;
   /** the decision-request folder (absolute); default <plansDir>/decisions */
   decisionsDir: string;
+  /** the append-only answer log (absolute); default <decisionsDir>/answers.jsonl. The one path PANTRY
+   *  writes to — resolved here so no request ever names it. */
+  answersLog: string;
   /** the artifacts folder (absolute); default <cwd>/artifacts */
   artifactsDir: string;
   /** the run-report folder (absolute); default <artifactsDir>/runs */
@@ -142,6 +160,8 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
   const preview = resolvePreviewTarget(raw.previewTarget);
   if (preview.problem) console.warn(`[pantry] preview proxy off: ${preview.problem}`);
 
+  const decisionsDir = raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions");
+
   return {
     cwd,
     projectName: raw.projectName ?? basename(cwd) ?? "project",
@@ -150,7 +170,9 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     graphPath: resolveGraphPath(graphDir),
     graphDir,
     // default under plansDir (not cwd) so it rides along with the board's own folder
-    decisionsDir: raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions"),
+    decisionsDir,
+    // default beside the decision requests, for the same reason: the answer belongs with the question
+    answersLog: raw.answersLog ? abs(cwd, raw.answersLog) : join(decisionsDir, "answers.jsonl"),
     artifactsDir,
     // default under artifactsDir (not cwd) so the ledger rides along with the evidence it cites
     runsDir: raw.runsDir ? abs(cwd, raw.runsDir) : join(artifactsDir, "runs"),
