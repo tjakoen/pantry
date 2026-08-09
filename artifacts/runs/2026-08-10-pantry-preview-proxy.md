@@ -5,8 +5,8 @@ status: complete
 lane: gated
 branch: main
 scope:
-  - pantry/ (P0 of plans/pantry-review-layer.md, and only P0)
-  - tjakoen.github.io/plans/pantry-review-layer.md
+  - pantry
+  - tjakoen.github.io/plans
 touched:
   - pantry/preview.ts
   - pantry/preview.test.ts
@@ -44,10 +44,61 @@ gates:
 diffstat: pantry 13 files changed, 170 insertions(+), 23 deletions(-), plus 4 new files (preview.ts, preview.test.ts, pantry-review-client.js, 4 evidence screenshots); portfolio 1 plan file
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
-unpushed: 37 | 18 portfolio + 9 pantry + 4 grain + 6 claude-config, all measured this run; pushing is owner-gated
+unpushed: 41 | 19 portfolio + 12 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
 verifiedBy: a browser walk of both targets against the built server, which found two defects a code read had not (the absolute Location and the CSS font leak). NOT verified by an independent session or agent, see "What needs human eyes".
 doctor: re-run after committing; the 4 due items are all pre-existing and carried forward by name below
 ---
+
+## Gate output
+
+Verbatim, from the tails of each run. The declared envelope was `pantry` plus the one plan file in
+the portfolio, and everything touched sits under those two.
+
+```
+$ bun test                                   # pantry, after
+ 333 pass
+ 3 fail
+ 896 expect() calls
+Ran 336 tests across 14 files. [726.00ms]
+
+$ bun test                                   # pantry at HEAD, scratch worktree, before
+ 302 pass
+ 3 fail
+(fail) buildKnowledge — the machine brain > plans come from PROOF's derived index over the host's real plans folder
+(fail) renderLlmsTxt — the session context pack (same brain, human projection) > llmstxt.org shape: H1 project, summary blockquote, plan + doc sections with fetchable links
+(fail) pantry cockpit surfaces > AI-retrieval (piece 9): /knowledge.json is the machine brain over this project
+
+$ bun run check
+$ tsc --noEmit
+(no output)
+
+$ bun run lint
+23 warnings, none in preview.ts, preview.test.ts or pantry-review-client.js
+
+$ bunx proof verify plans                    # portfolio, where the plan lives
+[warning] (none) touches: artifacts/runs/2026-08-09-conformance-and-handover.md is outside every plan's touches
+[warning] runs-surface-polish touches: every touches entry points outside this repo (../pantry/app.ts, ../pantry/pantry.css, ../pantry/app.test.ts), so nothing about it can be verified here
+18 plans, 1 changed file(s) vs HEAD, 2 problems
+OK
+
+$ bun cli.ts doctor                          # pantry
+[warn] graphify freshness: graph built from c4f86611, code moved since — run graphify update .
+[warn] e2e suite present: no e2e suite — the mechanical gate can't run end-to-end
+[warn] layer pins current: 2 behind: grain 0.1.12<0.1.19, proof 0.1.2<0.1.3 — run deps:refresh
+[warn] run ledger: 2 of 8 run reports missing evidence: 2026-08-07-s3b-run-ledger, 2026-08-07-s4-graphify-symbol-drift
+14 checks, 0 failing, 4 due
+OK
+
+$ browser walk (playwright, chromium)
+01-portfolio-through-pantry: review-client={"base":"/__pantry","phase":"p0","sameOrigin":true} errors=none
+   hydration: "clicked 0" -> "clicked 2"
+02-next-through-pantry: review-client={"base":"/__pantry","phase":"p0","sameOrigin":true} errors=none
+03-pantry-own-home-under-prefix: review-client=ABSENT errors=none
+04-pantry-board-under-prefix: review-client=ABSENT errors=none
+```
+
+`review-client=ABSENT` on the last two is the correct result, not a miss: the client is injected into
+a proxied page and never into PANTRY's own.
 
 ## What this run did
 
@@ -195,4 +246,6 @@ a screenshot.
 - **Doctor's four due items, all pre-existing and carried forward by name:** graphify freshness (graph
   built from `c4f86611`), no e2e suite, layer pins 2 behind (grain 0.1.12 < 0.1.19, proof 0.1.2 <
   0.1.3), and 2 of 8 older run reports missing evidence.
-- **Nothing is pushed.** 37 commits across four repos, counted above. Owner-gated.
+- **Nothing is pushed.** 41 commits across four repos, counted above. Owner-gated. The handoff into
+  this run said 16 portfolio and 8 pantry; the measured numbers before this run started were 18 and
+  9, so two of those came from elsewhere. Worth knowing before anyone treats a stated count as fact.
