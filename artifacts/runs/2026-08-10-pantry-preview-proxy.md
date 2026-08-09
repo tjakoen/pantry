@@ -1,5 +1,5 @@
 ---
-title: The dev preview proxy, so PANTRY can serve a project under its own origin
+title: The dev preview proxy, and the chrome PANTRY draws around what it proxies
 date: 2026-08-10
 status: complete
 lane: gated
@@ -15,6 +15,8 @@ touched:
   - pantry/app.ts
   - pantry/cli.ts
   - pantry/config.ts
+  - pantry/pantry-review.js
+  - pantry/pantry.css
   - pantry/pantry-cmdk.js
   - pantry/pantry-map.js
   - pantry/INSTALL.md
@@ -36,7 +38,7 @@ skills:
 plans:
   - pantry-review-layer
 gates:
-  - bun test (pantry) | 343 pass, 3 fail, 1044 expect() calls, 346 tests across 14 files
+  - bun test (pantry) | 346 pass, 3 fail, 948 expect() calls, 349 tests across 14 files
   - bun test (pantry, at HEAD before this change) | 302 pass, 3 fail — the same 3, in a scratch worktree
   - tsc --noEmit (pantry) | clean, no output
   - oxlint (pantry) | 23 warnings, 0 from any file this run added or created
@@ -49,7 +51,7 @@ gates:
 diffstat: pantry 5 commits, 16 files changed and 3 created (preview.ts, preview.test.ts, pantry-review-client.js) plus 4 evidence screenshots and this report; portfolio 2 commits, 1 plan file and 1 new tour
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
-unpushed: 45 | 20 portfolio + 15 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
+unpushed: 50 | 20 portfolio + 15 pantry + 4 grain + 6 claude-config, measured after this run's own commits; pushing is owner-gated
 verifiedBy: two independent reviewers that did not write the change, plus a browser walk of both targets. Between them they found six defects the author had not, one of them an open relay. Every finding was reproduced before being accepted and every fix carries a regression test.
 doctor: re-run after committing, 14 checks 0 failing 4 due; it rejected this report twice (prose scope, no Gate output section) before accepting it, and the 4 due items are pre-existing and carried forward by name below
 ---
@@ -60,11 +62,11 @@ Verbatim, from the tails of each run. The declared envelope was `pantry` plus th
 the portfolio, and everything touched sits under those two.
 
 ```
-$ bun test                                   # pantry, after the review fixes
- 343 pass
+$ bun test                                   # pantry, final
+ 346 pass
  3 fail
- 1044 expect() calls
-Ran 346 tests across 14 files.
+ 948 expect() calls
+Ran 349 tests across 14 files. [1080.00ms]
 
 $ bun test                                   # pantry at HEAD, scratch worktree, before
  302 pass
@@ -93,6 +95,14 @@ $ bun cli.ts doctor                          # pantry
 [warn] run ledger: 2 of 8 run reports missing evidence: 2026-08-07-s3b-run-ledger, 2026-08-07-s4-graphify-symbol-drift
 14 checks, 0 failing, 4 due
 OK
+
+$ browser walk, the review shell (playwright, chromium)
+tours listed: 8
+frame url bar: /
+steps listed: 4
+frame url bar after stepping: /notes
+rail state: closed
+errors: none
 
 $ browser walk (playwright, chromium)
 01-portfolio-through-pantry: review-client={"base":"/__pantry","phase":"p0","sameOrigin":true} errors=none
@@ -128,9 +138,18 @@ review a production build, rather than half-handled. Request bodies are capped a
 only buffered up to 4 MB, above which it streams uninjected.
 
 **One byte changes on a proxied page.** `pantry-review-client.js`, injected before the closing body
-tag. It exposes `window.__pantryReview` and does nothing else on purpose: the tour client, the
-spotlight and the decision card are P1 and P2, and building them here would make the proxy hard to
-tell apart from the thing it carries.
+tag. It exposes `window.__pantryReview` and does nothing else on purpose: the spotlight and the
+decision card are later phases, and building them into the injected client would make the proxy hard
+to tell apart from the thing it carries.
+
+**And then the chrome around it (P1), asked for mid-review.** `/__pantry/review` puts the project in
+a same-origin frame with a rail beside it: the project's own tours, the steps of whichever is
+running, PANTRY's surfaces, and a control that collapses the rail to nothing. The bar over the frame
+reads the frame's real location, which only works because it is same origin, so the rail follows the
+app's own navigation rather than only the navigation it caused. Walking it found two more defects
+reading had not: the rebase was rewriting `data-src` as well as `src` (a word boundary sits between
+the hyphen and the `s`), which framed PANTRY inside PANTRY, and the frame's target had to leave `src`
+entirely, since it is the one URL on the page that must not move.
 
 ## The proof, in the order the handoff asked for it
 
@@ -258,9 +277,16 @@ deliberate and more robust than rebasing, so nothing changed there.
 
 ## What was NOT done
 
-- **P1 through P4.** Untouched, on instruction. No review chrome, no step rail, no decision card, no
-  write-back, no Tier 1 attributes. `pantry-review-client.js` is a stub with a marker and a log line,
-  and the plan's three open questions are still open and were not answered by building this.
+- **P2 through P4.** No decision card, no write-back, no session-side wait-and-read, no Tier 1
+  attributes on a non-GRAIN project. `pantry-review-client.js` is still a stub with a marker and a
+  log line: the shell frames the project rather than driving it, so nothing yet needs the injected
+  client to do more.
+  **P1 was built after the owner asked for it mid-review**, having been out of scope when the run
+  started. `/__pantry/review` frames the project and keeps a rail beside it. One correction to the
+  plan's own description of P1: PANTRY parses no tour file. The rail reads the reviewed project's
+  manifest through the proxy at `/crumb/tours.json`, which keeps the "one parser, never a second"
+  rule by having none, and means the shell needs no new config key. The owner also settled the plan's
+  first open question: CRUMB keeps drawing the card and the lamp inside the frame.
 - **Websocket passthrough.** Refused with a 501 rather than half-implemented. `next dev` will not
   work through this and is not meant to; the plan calls this a later upgrade.
 - **No doctor check for the preview config.** The plan lists `doctor.ts` in its touches, but a
@@ -310,6 +336,6 @@ passes both. That is a pin gap, not a tour defect.
 - **Doctor's four due items, all pre-existing and carried forward by name:** graphify freshness (graph
   built from `c4f86611`), no e2e suite, layer pins 2 behind (grain 0.1.12 < 0.1.19, proof 0.1.2 <
   0.1.3), and 2 of 8 older run reports missing evidence.
-- **Nothing is pushed.** 45 commits across four repos, counted above. Owner-gated. The handoff into
+- **Nothing is pushed.** 50 commits across four repos, counted above. Owner-gated. The handoff into
   this run said 16 portfolio and 8 pantry; the measured numbers before this run started were 18 and
   9, so two of those came from elsewhere. Worth knowing before anyone treats a stated count as fact.
