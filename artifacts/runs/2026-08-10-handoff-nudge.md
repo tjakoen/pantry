@@ -21,20 +21,25 @@ gates:
   - bash tools/review-gate.sh against the committed tree (portfolio) | silent on nudge 4, lint gate level at 494, exit 0
   - bun cli.ts doctor (pantry, first pass, this report present) | see Gate output
   - bun cli.ts doctor (pantry, second pass) | see Gate output
+  - live watch, spawned session 9f587e3b ticking a real phase box | NUDGE DID NOT FIRE, marker absent
+  - gate self-test after the fix, 13 cases including the replayed failure | all pass, exit 0 every time
+  - time bash tools/review-gate.sh (portfolio, whole gate) | 0.71s total, lint gate dominates
 diffstat: 1 file changed, 84 insertions(+), 1 deletion(-) in the portfolio (tools/review-gate.sh),
-  committed as 52a848d. 8 untracked files deleted (6 PNG, 1 JSON, 1 README). 1 file added in pantry
-  (this report).
+  committed as 52a848d, then 70 insertions(+), 14 deletions(-) to the same file as ce083eb after the
+  gate was watched and did not fire. 8 untracked files deleted (6 PNG, 1 JSON, 1 README). 1 file
+  added in pantry (this report).
 dirty:
   - tjakoen.github.io/artifacts/runs/2026-08-09-conformance-and-handover.md | staged as deleted,
     pre-existing at session start, not touched by this run, left alone on instruction
   - tjakoen.github.io/artifacts/runs/ | untracked, contains only the file above, pre-existing, not
     touched by this run
-unpushed: 7 | tjakoen.github.io 3 (one is this run's commit), pantry 4 (one is this report). Nothing
-  was pushed; the push is the owner's call and is still open.
-verifiedBy: a second reader, and it earned its keep. The `caveman:cavecrew-reviewer` subagent read
-  the working diff cold and returned 1 red plus 3 yellow. The red was real and the author had run a
-  six-case self-test that passed without catching it, because every case tested the first phase
-  closing and none tested the second.
+unpushed: 9 | tjakoen.github.io 5 (two are this run's commits, one is a sibling session's), pantry 4
+  (one is this report). Nothing was pushed; the push is the owner's call and is still open.
+verifiedBy: three passes, and only the third one found what mattered. A `caveman:cavecrew-reviewer`
+  subagent read the first working diff cold and returned 1 red plus 3 yellow; a second one read the
+  fix and returned 0 red plus 5 yellow, 4 taken. Neither of them, and none of my own thirteen test
+  cases, found the defect that a single unrelated session found by simply existing: see What
+  watching it found.
 doctor: pantry against itself, 15 checks, 0 failing, 4 due, exit 0, both passes. The run-ledger line
   reads the same before and after this report existed apart from the report count, which moved 14 to
   15, and this report is not among the named gaps.
@@ -90,11 +95,47 @@ and not by content, because keying on content would re-nudge on every save while
 being drafted. That is a session's worth of noise, traded against the case of a date-stamped filename
 being reused for unrelated work.
 
-One more thing the first draft got wrong, found by running it rather than reading it. The trigger
+One more thing that draft got wrong, found by running it rather than reading it. The trigger
 tested that a run report exists on disk, and the portfolio carries a staged deletion whose file is
 still sitting there unmodified. Git reports that path as both deleted and untracked, so the gate
 fired on somebody else's tidy-up on the very first run. A report counts only when its bytes differ
 from HEAD's now.
+
+## What watching it found, which neither reviewer nor thirteen tests did
+
+The gate was then put in front of a real session rather than described. A sibling session
+(`9f587e3b`) was spawned on an unrelated task from `plans/nimbalyst-in-the-loop.md`, told nothing
+about the gate, and it did the thing the gate exists to catch: it ticked a phase box and closed out.
+
+**It was never nudged.** `.git/handoff-nudged` did not exist afterwards, so nothing had fired.
+
+The cause is one line of reasoning nobody in this run questioned, two cold reviewers included, each
+looking straight at it. The trigger read the WORKING DIFF. The session edited
+`plans/nimbalyst-in-the-loop.md` and committed it as `98d5b96` inside the same turn, so by the time
+the Stop hook ran there was no working diff left to read. **The gate nudged the session that leaves a
+mess at a turn boundary and stayed silent for the one that commits promptly**, which is exactly
+backwards, and every test written for it passed because every test left the change uncommitted. The
+suite and the author shared one assumption, so thirteen cases tested it thirteen times.
+
+Fixed in `ce083eb`: a close is looked for in unpushed commits as well, keyed by sha. The failure was
+then replayed against the real commit rather than a fixture, by removing `98d5b96` from the marker
+and running the gate, which prints it.
+
+A second cold reviewer read the fix and returned no red and five yellows. Four were taken: the log
+call is path-filtered so a turn end no longer pays two subprocess calls against thirty commits;
+merges are read with `-m --first-parent`, since `git show --name-only` prints nothing at all for a
+merge and a close arriving through one is exactly as closed as any other; the no-upstream window is
+5 rather than 30, which is also what a pruned upstream ref degrades into; and the baseline comment
+now says what baselining actually swallows, which is the whole current backlog rather than the
+softer "first close after install" it claimed. The fifth, that a close scrolling past the 30-commit
+bound is never nudged at all, is real and is left standing, because the honest mitigation is pushing
+and the push is owner-gated.
+
+**The generalisable part.** Two independent cold reviewers and thirteen tests all missed a defect
+that one unrelated session found by existing. The reviewers were reading code that was internally
+consistent; the tests were written by the person holding the wrong assumption. Only the watch had no
+stake in it. Which is LOOP section 4a's evidence requirement in its strongest form so far: a gate
+nobody has watched fire has not been tested, it has been described.
 
 ## Gate output
 
@@ -191,6 +232,17 @@ in the handoff.
   and it was not answered, because the instruction named this file.
 - **No source code in pantry was read for defects or changed.** The only pantry file this run wrote
   is this report.
+- **The thing the watch was actually for was NOT measured.** The question was whether a session,
+  told nothing, would run `/handoff` on being nudged. The nudge never fired, so the answer is still
+  unknown. What got measured instead is that the trigger was wrong, which is more useful and is not
+  the same result. The next session that closes a phase with the fixed gate in place is the real
+  test, and it has not happened yet.
+- **The 30-commit bound was not removed.** A close that scrolls past it is never nudged, which the
+  second reviewer raised and which stands as a known hole. Raising the number trades one arbitrary
+  bound for another; the actual fix is the owner's push.
+- **The sibling session's own work was not reviewed.** It concluded no other repo earns the harness
+  section, ticked its box and wrote its own report. That verdict was read as a subject of this
+  watch, not audited as a result.
 
 ## What needs human eyes
 
