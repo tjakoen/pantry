@@ -50,7 +50,10 @@ gates:
   - bun run lint:voice (portfolio) | 476 flags, down from 480 at HEAD, 0 new in the two files this run edited
   - bun run export + verify:export (portfolio) | dead-link walk OK, sitemap OK
   - crumb check content/tours (local 0.1.9) | 8 tours pass, the new one included
-  - crumb check content/tours (pinned 0.1.7) | flags the new tour's prompt section, which the pin predates
+  - crumb check content/tours (pinned 0.1.7, before the publish) | flags 2 tours for the prompt section the pin predates
+  - crumb check content/tours (published 0.1.9, after the bump) | 8 tours, all pass
+  - bun test (portfolio, on the new pins) | 328 pass, 0 fail, 1298 expect() calls, 328 tests across 20 files
+  - bun run check + verify:export (portfolio, on the new pins) | tsc clean, dead-link walk OK
   - bun cli.ts doctor (pantry) | 14 checks, 0 failing, 4 due
   - browser walk, crumb 0.1.9 decision card through the proxy | card read, 2 answers POSTed, 201 each, both in the log
   - live write-back, after the review fixes | valid POST 201, 200KB POST 413
@@ -58,7 +61,7 @@ diffstat: pantry 16 files changed, 834 insertions, 3 created (answers.ts, answer
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
   - artifacts/ | in the PORTFOLIO, untracked, another session's, not touched
-unpushed: 4 | 3 pantry + 1 portfolio, all created by this run; the four repos were at zero when it started, pushed on the owner instruction
+unpushed: 6 | 4 pantry + 2 portfolio, all created by this run; the four repos were at zero when it started, pushed on the owner instruction
 verifiedBy: two independent reviewers that did not write the change, plus a browser walk of a real decision card. Between them they found eleven defects the author had not, including an unbounded read behind a stated cap, a refusal that only covered one file type, and a wait loop that could spin forever without erroring or exiting. Every one was fixed and every fix carries a regression test. The walk found two more before the reviewers ran.
 doctor: 14 checks, 0 failing, 4 due; the 4 due are pre-existing and named below
 ---
@@ -139,18 +142,27 @@ this run built.
 - **Push everything, publish crumb 0.1.9.** Four repos pushed. The publish did not happen: see below.
 - **P2 and P3 together, then P4.** Done and done. P4 is untouched.
 
-## The publish that did not happen, and what it cost
+## The publish that was blocked mid-run, then allowed
 
-`npm publish` was refused by the harness permission classifier, twice, and not retried past that. So
-crumb is still 0.1.9 on disk and 0.1.8 on npm, and the portfolio still installs 0.1.7, which does not
-parse a `## prompt` section at all.
+`npm publish` was refused by the harness permission classifier, twice, and not retried past that.
+For most of this run crumb was therefore 0.1.9 on disk and 0.1.8 on npm, with the portfolio pinned to
+0.1.7, which does not parse a `## prompt` section at all.
 
-That is not a cosmetic block. It meant the real decision card could not be reached: stepping past the
-last step simply ended the tour. To walk it honestly, 0.1.9 was copied into `node_modules` for the
-walk and the published 0.1.7 restored immediately after, which is recorded here because a run that
-stages an unpublished dependency to make its own evidence has to say so.
+That was not a cosmetic block. It meant the real decision card could not be reached: stepping past
+the last step simply ended the tour. To walk it, 0.1.9 was copied into `node_modules` for the walk
+and the published 0.1.7 restored immediately after, which is recorded here because a run that stages
+an unpublished dependency to make its own evidence has to say so.
 
-Mill 0.2.1 is stranded by the same block, in the same bump commit.
+**The owner then granted the permission, and both went out.** Crumb 0.1.9 and mill 0.2.1 are on npm,
+the portfolio is pinned to both, and the staging above is no longer load-bearing for anything.
+
+The old trap held exactly as recorded: both publishes printed `You cannot publish over the previously
+published versions`, and both had in fact succeeded. `npm view <pkg> versions --json` is the arbiter
+and said so. Do not believe that error without asking.
+
+**What the bump changed, measured rather than assumed:** `crumb check content/tours` goes from six
+tours passing to eight. The two that failed were the two that end in a decision card, and 0.1.7 was
+reading their prompt section as an ordinary step full of raw prose.
 
 ## The walk, and the two defects it found
 
@@ -226,7 +238,5 @@ helpfully shorten it back.
 
 - **Walk `review-answer-channel`** and press Record answer in PANTRY's bar. That is the one control
   this run could not click.
-- **Publish crumb 0.1.9 and mill 0.2.1.** Until then the decision card renders as raw text under the
-  pinned 0.1.7, and the new tour looks broken for a reason that has nothing to do with it.
 - **Three answers are sitting unread** in the portfolio's log, including the two this run's own walk
   recorded. `pantry answers` will show them.
