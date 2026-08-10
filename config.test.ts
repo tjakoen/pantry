@@ -16,6 +16,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { loadPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 
 const made: string[] = [];
 afterAll(async () => {
@@ -435,5 +436,48 @@ describe("surfaces and standardsSource — what the host may turn off", () => {
 
     const other = await withJson({ projectName: "some-other-repo" });
     expect((await loadPantryConfig(other)).standardsSource).toBeUndefined();
+  });
+});
+
+// The hygiene lines (S3a). The asymmetry is the whole point and it is the only part worth testing
+// hard: an ABSENT key takes the estate default, and a key that is PRESENT and unusable mutes its
+// check rather than quietly falling back — a host that said something must never be warned on a line
+// its config appears to have turned off.
+describe("loadPantryConfig — the hygiene lines", () => {
+  test("a host that says nothing gets the estate defaults, every key filled", async () => {
+    const root = await withJson({});
+    const h = (await loadPantryConfig(root)).hygiene;
+    expect(Object.keys(h).sort()).toEqual(
+      ["runReportMaxCommits", "uncommittedMaxAgeDays", "unpushedMaxAgeDays", "unpushedMaxCommits"],
+    );
+    expect(h).toEqual(DEFAULT_HYGIENE);
+  });
+
+  test("a host's numbers win, key by key, and the rest stay default", async () => {
+    const root = await withJson({ hygiene: { uncommittedMaxAgeDays: 3 } });
+    const h = (await loadPantryConfig(root)).hygiene;
+    expect(h.uncommittedMaxAgeDays).toBe(3);
+    expect(h.unpushedMaxCommits).toBe(DEFAULT_HYGIENE.unpushedMaxCommits);
+  });
+
+  test("an explicit null mutes that check instead of taking the default", async () => {
+    const root = await withJson({ hygiene: { unpushedMaxAgeDays: null } });
+    const h = (await loadPantryConfig(root)).hygiene;
+    expect(Number.isFinite(h.unpushedMaxAgeDays)).toBe(false);
+    expect(h.uncommittedMaxAgeDays).toBe(DEFAULT_HYGIENE.uncommittedMaxAgeDays);
+  });
+
+  test("a value that is not a positive number mutes rather than warning on a default nobody set", async () => {
+    // JSON lets a host write anything here; zero, a negative and a string all mean "not a line".
+    const root = await withJson({ hygiene: { uncommittedMaxAgeDays: 0, unpushedMaxCommits: -4, runReportMaxCommits: "soon" } });
+    const h = (await loadPantryConfig(root)).hygiene;
+    expect(Number.isFinite(h.uncommittedMaxAgeDays)).toBe(false);
+    expect(Number.isFinite(h.unpushedMaxCommits)).toBe(false);
+    expect(Number.isFinite(h.runReportMaxCommits)).toBe(false);
+  });
+
+  test("an empty hygiene object is the same as saying nothing", async () => {
+    const root = await withJson({ hygiene: {} });
+    expect((await loadPantryConfig(root)).hygiene).toEqual(DEFAULT_HYGIENE);
   });
 });

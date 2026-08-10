@@ -8,6 +8,7 @@ import { mkdtemp, writeFile, mkdir, symlink, utimes, rm } from "node:fs/promises
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 import { runDoctor, formatDoctorReport, type DoctorReport } from "./doctor.ts";
 import type { GitRunner } from "./timeline.ts";
 
@@ -36,6 +37,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   previewCommand: null,
   previewCommandCwd: dir,
   toursDir: null,
+  hygiene: DEFAULT_HYGIENE,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
   ...over,
 });
@@ -816,6 +818,285 @@ describe("unacted answers", () => {
     const c = byId(await run(), "unacted-answers");
     expect(c.severity).toBe("warn");
     expect(c.detail).toContain("still-seen");
+  });
+});
+
+// S3a: the loop's hygiene half. The FACTS are hygiene.test.ts's; these are about the judgement — which
+// severity a state earns, which boundary it sits on, and the one rule that holds across all four: a
+// pile-up is due work and never a broken build. Every git call is doubled, so none of this depends on
+// what the machine's own checkout happens to look like.
+describe("pantry doctor — loop hygiene (S3a: work that is finished and still sitting)", () => {
+  // Keyed on the first two args, same shape as hygiene.test.ts's double. Unlisted calls answer null,
+  // which is what the other checks in doctor already expect from a non-repo temp host.
+  const hygieneGit = (over: Record<string, string | null> = {}): GitRunner => async (args) => {
+    const answers: Record<string, string | null> = {
+      "rev-parse --is-inside-work-tree": "true\n",
+      "status --porcelain": "",
+      remote: "origin\n",
+      "rev-parse --abbrev-ref": "origin/main\n",
+      "log --format=%cI": "",
+      "rev-list --count": "0\n",
+      ...over,
+    };
+    const key = args.slice(0, 2).join(" ");
+    return key in answers ? answers[key] : null;
+  };
+
+  /** A dirty file of a known age, plus the porcelain line git would report for it. */
+  async function dirtyFile(name: string, days: number) {
+    await writeFile(join(dir, name), "work in progress");
+    await setAge(join(dir, name), days);
+    return ` M ${name}\0`;
+  }
+
+  /** A runs dir carrying one dated report, so run-report-presence has something to measure from. */
+  async function datedRun(date: string) {
+    await mkdir(join(dir, "artifacts", "runs"), { recursive: true });
+    await writeFile(join(dir, "artifacts", "runs", `${date}-a-run.md`), `---\ntitle: A run\ndate: ${date}\n---\nbody\n`);
+  }
+
+  const LINES = { uncommittedMaxAgeDays: 5, unpushedMaxAgeDays: 5, unpushedMaxCommits: 25, runReportMaxCommits: 15 };
+
+  describe("no-remote — info in both directions, so it can never read as a failure", () => {
+    test("a repo with no remote is a state, not a fault", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ remote: "", "rev-parse --abbrev-ref": null }), hygiene: LINES }), "no-remote");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("local only");
+    });
+
+    test("a repo with a remote names the branch it tracks", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit(), hygiene: LINES }), "no-remote");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("origin/main");
+    });
+
+    test("a remote with no upstream on this branch says which fix applies", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-parse --abbrev-ref": null }), hygiene: LINES }), "no-remote");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("no upstream");
+    });
+
+    test("nothing measurable is said out loud rather than passed silently", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-parse --is-inside-work-tree": null }), hygiene: LINES }), "no-remote");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("nothing measured");
+    });
+  });
+
+  describe("uncommitted-age", () => {
+    test("a dirty file older than the line warns, names the file and its age, and does not fail CI", async () => {
+      await compliantKit();
+      const porcelain = await dirtyFile("half-done.ts", 12);
+      const r = await run({}, { gitRunner: hygieneGit({ "status --porcelain": porcelain }), hygiene: LINES });
+      const c = byId(r, "uncommitted-age");
+      expect(c.severity).toBe("warn");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("half-done.ts");
+      expect(c.detail).toContain("12 days old");
+      expect(c.detail).toContain("over 5d");
+      expect(r.ok).toBe(true);
+    });
+
+    test("a dirty file inside the line is fine", async () => {
+      await compliantKit();
+      const porcelain = await dirtyFile("today.ts", 1);
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "status --porcelain": porcelain }), hygiene: LINES }), "uncommitted-age");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("1 dirty path");
+    });
+
+    test("exactly at the line is not over it (older THAN N, not N or more)", async () => {
+      await compliantKit();
+      const porcelain = await dirtyFile("edge.ts", 5);
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "status --porcelain": porcelain }), hygiene: LINES }), "uncommitted-age");
+      expect(c.ok).toBe(true);
+    });
+
+    test("the OLDEST dirty path decides, not the newest", async () => {
+      await compliantKit();
+      const a = await dirtyFile("fresh.ts", 0);
+      const b = await dirtyFile("stale.ts", 20);
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "status --porcelain": a + b }), hygiene: LINES }), "uncommitted-age");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("stale.ts");
+      expect(c.detail).toContain("2 dirty paths");
+    });
+
+    test("a clean tree passes and says so", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit(), hygiene: LINES }), "uncommitted-age");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("working tree clean");
+    });
+
+    test("a muted line reports the age it measured and drops to info", async () => {
+      await compliantKit();
+      const porcelain = await dirtyFile("ancient.ts", 90);
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "status --porcelain": porcelain }), hygiene: { ...LINES, uncommittedMaxAgeDays: Infinity } }), "uncommitted-age");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("90 days old");
+      expect(c.detail).toContain("no line set");
+    });
+
+    test("git that cannot answer is an info, never a clean bill of health", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-parse --is-inside-work-tree": null }), hygiene: LINES }), "uncommitted-age");
+      expect(c.severity).toBe("info");
+      expect(c.detail).toContain("nothing measured");
+    });
+  });
+
+  describe("unpushed-age — by size or by age, either one alone", () => {
+    const ahead = (dates: string[]) => ({ "log --format=%cI": dates.join("\n") + "\n" });
+
+    test("one commit sitting past the age line warns, even though one commit is small", async () => {
+      await compliantKit();
+      // NOW is 2026-07-26, so this one commit has been sitting 11 days against a 5-day line.
+      const c = byId(await run({}, { gitRunner: hygieneGit(ahead(["2026-07-15T09:00:00Z"])), hygiene: LINES }), "unpushed-age");
+      expect(c.severity).toBe("warn");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("1 commit ahead of origin/main");
+      expect(c.detail).toContain("over 5d");
+    });
+
+    test("a big pile from this morning warns on count alone", async () => {
+      await compliantKit();
+      const today = Array.from({ length: 30 }, () => "2026-07-25T09:00:00Z"); // NOW is 2026-07-26
+      const c = byId(await run({}, { gitRunner: hygieneGit(ahead(today)), hygiene: LINES }), "unpushed-age");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("30 commits ahead");
+      expect(c.detail).toContain("over 25 commits");
+    });
+
+    test("the count boundary is N or more; the age boundary is older than N", async () => {
+      await compliantKit();
+      const at25 = Array.from({ length: 25 }, () => "2026-07-25T09:00:00Z");
+      const at24 = at25.slice(1);
+      expect(byId(await run({}, { gitRunner: hygieneGit(ahead(at25)), hygiene: LINES }), "unpushed-age").ok).toBe(false);
+      expect(byId(await run({}, { gitRunner: hygieneGit(ahead(at24)), hygiene: LINES }), "unpushed-age").ok).toBe(true);
+    });
+
+    test("both lines crossed says both reasons rather than picking one", async () => {
+      await compliantKit();
+      const old = Array.from({ length: 30 }, () => "2026-06-01T09:00:00Z");
+      const c = byId(await run({}, { gitRunner: hygieneGit(ahead(old)), hygiene: LINES }), "unpushed-age");
+      expect(c.detail).toContain("over 25 commits");
+      expect(c.detail).toContain("over 5d");
+    });
+
+    test("nothing ahead passes and names the upstream", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit(), hygiene: LINES }), "unpushed-age");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("up to date with origin/main");
+    });
+
+    test("no remote is nothing to be ahead OF, so it is an info", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ remote: "", "rev-parse --abbrev-ref": null }), hygiene: LINES }), "unpushed-age");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+    });
+
+    test("a branch with no upstream is unmeasurable, not a 200-commit pile-up", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-parse --abbrev-ref": null, ...ahead(["2026-01-01T09:00:00Z"]) }), hygiene: LINES }), "unpushed-age");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("no upstream");
+    });
+
+    test("an unpushed pile never fails the build", async () => {
+      await compliantKit();
+      const r = await run({}, { gitRunner: hygieneGit(ahead(["2026-01-01T09:00:00Z"])), hygiene: LINES });
+      expect(byId(r, "unpushed-age").ok).toBe(false);
+      expect(r.ok).toBe(true);
+    });
+  });
+
+  describe("run-report-presence — commits with no ledger entry behind them", () => {
+    test("commits piling up past the line since the newest report warns", async () => {
+      await compliantKit();
+      await datedRun("2026-07-20");
+      const r = await run({}, { gitRunner: hygieneGit({ "rev-list --count": "20\n" }), hygiene: LINES });
+      const c = byId(r, "run-report-presence");
+      expect(c.severity).toBe("warn");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("20 commits since the newest run report (2026-07-20)");
+      expect(r.ok).toBe(true);
+    });
+
+    test("under the line is fine", async () => {
+      await compliantKit();
+      await datedRun("2026-07-20");
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-list --count": "4\n" }), hygiene: LINES }), "run-report-presence");
+      expect(c.ok).toBe(true);
+    });
+
+    test("a runs dir with no DATED report says so and still counts", async () => {
+      await compliantKit();
+      await mkdir(join(dir, "artifacts", "runs"), { recursive: true });
+      await writeFile(join(dir, "artifacts", "runs", "undated.md"), "---\ntitle: no date\n---\nbody\n");
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-list --count": "40\n" }), hygiene: LINES }), "run-report-presence");
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("no dated run report");
+    });
+
+    test("no runs dir at all is an info naming where a report goes — an opt-in host is never nagged", async () => {
+      await compliantKit();
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-list --count": "500\n" }), hygiene: LINES }), "run-report-presence");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("no runs dir");
+    });
+
+    test("git that cannot count is an info, not a pass", async () => {
+      await compliantKit();
+      await datedRun("2026-07-20");
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-list --count": null }), hygiene: LINES }), "run-report-presence");
+      expect(c.severity).toBe("info");
+      expect(c.detail).toContain("unmeasurable");
+    });
+
+    test("a muted line drops to info and still reports the count", async () => {
+      await compliantKit();
+      await datedRun("2026-07-20");
+      const c = byId(await run({}, { gitRunner: hygieneGit({ "rev-list --count": "99\n" }), hygiene: { ...LINES, runReportMaxCommits: Infinity } }), "run-report-presence");
+      expect(c.severity).toBe("info");
+      expect(c.ok).toBe(true);
+      expect(c.detail).toContain("99 commits");
+      expect(c.detail).toContain("no line set");
+    });
+  });
+
+  describe("where the lines come from", () => {
+    test("the host's pantry.config supplies them when the caller names none", async () => {
+      await compliantKit();
+      const porcelain = await dirtyFile("sitting.ts", 9);
+      const c = byId(
+        await run({ hygiene: { ...LINES, uncommittedMaxAgeDays: 3 } }, { gitRunner: hygieneGit({ "status --porcelain": porcelain }) }),
+        "uncommitted-age",
+      );
+      expect(c.ok).toBe(false);
+      expect(c.detail).toContain("over 3d");
+    });
+
+    test("an explicit override beats the host's config", async () => {
+      await compliantKit();
+      const porcelain = await dirtyFile("sitting.ts", 9);
+      const c = byId(
+        await run({ hygiene: { ...LINES, uncommittedMaxAgeDays: 3 } }, { gitRunner: hygieneGit({ "status --porcelain": porcelain }), hygiene: { uncommittedMaxAgeDays: 30 } }),
+        "uncommitted-age",
+      );
+      expect(c.ok).toBe(true);
+    });
   });
 });
 

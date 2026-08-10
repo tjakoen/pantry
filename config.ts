@@ -9,6 +9,7 @@
 import { isAbsolute, join, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { resolvePreviewTarget } from "./preview.ts";
+import { DEFAULT_HYGIENE, type HygieneThresholds } from "./hygiene.ts";
 
 export interface PantrySurfaces {
   plans: boolean;
@@ -111,6 +112,12 @@ export interface PantryConfig {
   toursDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
+  /** the four loop-hygiene lines (S3a): how old uncommitted work, unpushed work, and commits with no
+   *  run report behind them get before `pantry doctor` warns. Partial — anything omitted takes the
+   *  estate default, and setting one to null (or any non-finite value) mutes that check in this repo
+   *  and says so in its detail line, which is how a repo where a pile-up is normal opts out without
+   *  learning to skim a warn. See hygiene.ts's HygieneThresholds. */
+  hygiene?: Partial<Record<keyof HygieneThresholds, number | null>>;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
    *  it legitimately carries real canon-named files in `standards/`, so `pantry doctor`'s
    *  forked-standards check skips it. Every other repo references the standards by URL (LOOP.md §3),
@@ -157,6 +164,9 @@ export interface ResolvedPantryConfig {
    *  route that 404s on every request. */
   toursDir: string | null;
   surfaces: PantrySurfaces;
+  /** every hygiene line filled: the host's value where it gave one, the estate default otherwise, and
+   *  Infinity where the host muted a check. Resolved here so no check has to merge defaults itself. */
+  hygiene: HygieneThresholds;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
 }
@@ -236,8 +246,31 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     // above rather than being silently equivalent to having none.
     toursDir,
     surfaces: { ...ALL_ON, ...raw.surfaces },
+    hygiene: resolveHygiene(raw.hygiene),
     standardsSource: raw.standardsSource,
   };
+}
+
+/**
+ * Fill the hygiene lines: the host's number where it gave a usable one, the estate default where it
+ * said nothing, and muted where it said something unusable.
+ *
+ * The asymmetry is on purpose. An ABSENT key takes the default, because a host that never mentioned
+ * a check has not opted out of it. A key that is present and not a positive finite number mutes that
+ * check instead of falling back, because the host did say something, and silently substituting a
+ * default for `null` or `"soon"` would leave a repo warned on a line its config appears to have
+ * turned off. A muted check says so in its own detail line, so nothing goes quiet without a reason
+ * on screen.
+ */
+function resolveHygiene(raw: PantryConfig["hygiene"]): HygieneThresholds {
+  const out = { ...DEFAULT_HYGIENE };
+  if (!raw) return out;
+  for (const key of Object.keys(DEFAULT_HYGIENE) as (keyof HygieneThresholds)[]) {
+    if (!(key in raw)) continue;
+    const v = raw[key];
+    out[key] = typeof v === "number" && Number.isFinite(v) && v > 0 ? v : Infinity;
+  }
+  return out;
 }
 
 // The mindmap reads the host's graphify pass. Prefer the whole-stack `merged-graph.json` (produced by

@@ -13,6 +13,7 @@ import {
 } from "./preview.ts";
 import { createPantryHandler } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 
 const TAG = `<script src="${PANTRY_PREFIX}/pantry-review-client.js" defer></script>`;
 
@@ -314,6 +315,7 @@ describe("createPantryHandler — the reserved prefix", () => {
     graphPath: null, graphDir: join(import.meta.dir, "graphify-out"),
     decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), artifactsDir: join(import.meta.dir, "artifacts"),
     runsDir: join(import.meta.dir, "artifacts", "runs"), previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
+    hygiene: DEFAULT_HYGIENE,
     surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true },
   });
 

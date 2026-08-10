@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { syncSkills, listSkills, slugFor, renderSkill, resolveCanonDir, formatSkillsSync, formatSkillsList } from "./skills.ts";
 import { runDoctor } from "./doctor.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 
 let host: string;
 let canon: string;
@@ -52,6 +53,7 @@ const cfg = (): ResolvedPantryConfig => ({
   previewCommand: null,
   previewCommandCwd: host,
   toursDir: null,
+  hygiene: DEFAULT_HYGIENE,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

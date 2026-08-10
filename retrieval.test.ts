@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { PROOF_EXAMPLE as EXAMPLE } from "./fixtures.ts";
 
@@ -14,6 +15,7 @@ const AT = "2026-07-10T00:00:00.000Z";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
   cwd: EXAMPLE, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, graphDir: join(EXAMPLE, "graphify-out"), decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), artifactsDir: join(EXAMPLE, "artifacts"), runsDir: join(EXAMPLE, "artifacts", "runs"), previewTarget: null, previewCommand: null, previewCommandCwd: EXAMPLE, toursDir: null,
+  hygiene: DEFAULT_HYGIENE,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
 });
 

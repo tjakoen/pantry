@@ -11,6 +11,7 @@ import { join } from "node:path";
 import { runPantryInit } from "./init.ts";
 import { runDoctor } from "./doctor.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 
 let dir: string;
 beforeEach(async () => {
@@ -35,6 +36,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   previewCommand: null,
   previewCommandCwd: dir,
   toursDir: null,
+  hygiene: DEFAULT_HYGIENE,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

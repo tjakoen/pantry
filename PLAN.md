@@ -473,6 +473,32 @@ Open, deferred out of S2 on purpose: whether third-party skills are mounted by t
 a config allowlist. The allowlist is the estate-consistent answer, but nothing third-party is adopted
 yet, and a config key with no consumer is speculative surface. Revisit when the first one lands.
 
+**11g — the loop-hygiene checks (DONE 2026-08-11, this branch).** S3a of the portfolio's
+skills-runtime plan, and the one piece of 11c that was deferred rather than built: `hygiene.ts` plus
+four doctor checks over what LOOP.md §8 calls the estate's real failure, work that is finished, green
+and still sitting. `uncommitted-age` (warn) takes the oldest dirty path by mtime; `unpushed-age`
+(warn) takes commits ahead of the upstream, by count or by the age of the oldest, either one alone;
+`run-report-presence` (warn) counts commits landed since the newest dated run report; `no-remote` is
+**info in both directions**, because a local-only repo is a deliberate state and warning about it
+would put a permanent yellow line under one. Two git plumbing calls and a stat, no model, and every
+age measured against the injected `now`, so the tests are not clock-dependent.
+
+Three things worth keeping. **mtime is a floor on a change's age, not the age**, so uncommitted-age
+under-reports and can never cry wolf: what it really measures is written, untouched since, and still
+uncommitted, which is a smaller and stronger set than "dirty for N days". **Git status is read in the
+NUL form**, because the newline form quotes any path with a space in it and a plain split would hand
+back a path that does not exist on disk, silently skipping the file most likely to have been sitting
+there for weeks. And **a threshold that cannot be turned off is a threshold everybody mutes**: a host
+setting any `hygiene` key to null in pantry.config mutes that check and gets an info saying so, while
+an absent key takes the estate default, since a host that never mentioned a check has not opted out.
+
+The four numbers are the owner's, not the run's (5 days, 5 days, 25 commits, 15 commits; answered
+2026-08-11 through the answer channel, ref `2026-08-11-loop-hygiene-thresholds`). The measurement
+behind them is in `hygiene.ts`: the portfolio averaged 9.9 commits per active day over the preceding
+thirty days and peaked at 42, so a ten-commit unpushed line would have fired daily. The check earned
+itself on the first live run, which is the only evidence worth quoting here: 42 commits in the
+portfolio since its newest run report, over the line of 15, with nothing before this saying so.
+
 ## Non-goals
 
 - **Not a new layer.** PANTRY imports the layers; nothing imports PANTRY. It's an app.

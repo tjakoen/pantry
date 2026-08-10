@@ -23,6 +23,7 @@ import { listSkills } from "./skills.ts";
 import { buildRunsPayload, type RunsPayload } from "./runs.ts";
 import { answers, readAnswerLog, unacked } from "./answers.ts";
 import { affectedBy, loadGraph } from "./graph.ts";
+import { commitsSince, daysBetween, isSet, plural, readHygieneState, type HygieneThresholds } from "./hygiene.ts";
 import type { GitRunner } from "./timeline.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
@@ -83,6 +84,9 @@ export interface DoctorOptions {
   runSymbols?: boolean;
   /** inject the git reader the graph-freshness check uses (tests); default spawns real git */
   gitRunner?: GitRunner;
+  /** override the host's loop-hygiene lines (tests, and a one-off run); anything omitted falls back
+   *  to the resolved config, which falls back to the estate default. See hygiene.ts. */
+  hygiene?: Partial<HygieneThresholds>;
 }
 
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
@@ -98,9 +102,6 @@ const CANON_STANDARDS = new Set([
   "FIGURES.md",
   "README-STANDARD.md",
 ]);
-
-const DAY_MS = 86_400_000;
-const daysBetween = (now: Date, then: Date): number => Math.floor((now.getTime() - then.getTime()) / DAY_MS);
 
 // `graphify` writes a Graph Freshness block into GRAPH_REPORT.md carrying the commit the extraction
 // ran against:  "- Built from commit: `18017a67`". Read that instead of stat-ing the file. Null when
@@ -700,6 +701,131 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     }
   } catch (err) {
     checks.push({ id: "run-report-evidence", severity: "info", ok: true, label: "run ledger", detail: `run-ledger check skipped: ${err instanceof Error ? err.message : String(err)}` });
+  }
+
+  // ── Loop hygiene: work that is finished, green, and still sitting (S3a) ──
+  //
+  // LOOP.md §8 names uncommitted and unpushed pile-up as the one thing this estate actually breaks,
+  // and until now nothing measured it — it was visible only to whoever happened to run git status
+  // and think about what they were looking at. These four make it a line in the report a session
+  // already reads at start.
+  //
+  // All warns, never errors, for the reason every other due-chore check here is: a pile-up is work
+  // that has not been delivered yet, not a broken kit, and failing CI on it would mean nobody can
+  // push while somebody else's branch is behind. `no-remote` is the exception and is INFO by design:
+  // a repo with no remote is a legitimate state, not a lesser one, and warning about it would put a
+  // permanent yellow line under every local-only repo until someone muted the whole check.
+  //
+  // Every threshold is the host's (pantry.config `hygiene`), every age is measured against the
+  // injected `now`, and a git that cannot answer produces an info saying so rather than a pass.
+  try {
+    const t: HygieneThresholds = { ...config.hygiene, ...opts.hygiene };
+    const h = await readHygieneState(cwd, git);
+    const unmeasurable = "not a git repo, or git could not answer — nothing measured";
+
+    // no-remote: info in BOTH directions, so it can never read as a failure.
+    checks.push({
+      id: "no-remote",
+      severity: "info",
+      ok: true,
+      label: "remote configured",
+      detail: !h.isRepo
+        ? unmeasurable
+        : h.remotes.length === 0
+          ? "no remote — this repo is local only, which is a deliberate state in some repos and never a failure here"
+          : h.upstream
+            ? `${h.remotes.join(", ")}, this branch tracks ${h.upstream}`
+            : `${h.remotes.join(", ")}, but this branch has no upstream — push it once to set one`,
+    });
+
+    // uncommitted-age: the oldest dirty path, by mtime. See hygiene.ts's oldestDirty for what that
+    // age is and is not — it is a floor, so this under-reports and cannot cry wolf.
+    if (!h.isRepo) {
+      checks.push({ id: "uncommitted-age", severity: "info", ok: true, label: "uncommitted work", detail: unmeasurable });
+    } else if (!h.oldestDirty) {
+      checks.push({
+        id: "uncommitted-age",
+        severity: "warn",
+        ok: true,
+        label: "uncommitted work",
+        detail: h.dirty.length === 0 ? "working tree clean" : `${plural(h.dirty.length, "dirty path")}, none with a readable age`,
+      });
+    } else {
+      const age = daysBetween(now, h.oldestDirty.at);
+      const set = isSet(t.uncommittedMaxAgeDays);
+      const over = set && age > t.uncommittedMaxAgeDays;
+      const where = `oldest is ${h.oldestDirty.path}, ${plural(age, "day")} old`;
+      checks.push({
+        id: "uncommitted-age",
+        severity: set ? "warn" : "info",
+        ok: !over,
+        label: "uncommitted work",
+        detail: `${plural(h.dirty.length, "dirty path")}, ${where}` +
+          (over
+            ? ` — over ${t.uncommittedMaxAgeDays}d, commit it or name it as deliberately dirty in the run report (LOOP.md §9)`
+            : set ? "" : " (no line set: hygiene.uncommittedMaxAgeDays)"),
+      });
+    }
+
+    // unpushed-age: ahead by too many commits, or ahead for too long. Either one alone is a pile-up.
+    if (!h.isRepo) {
+      checks.push({ id: "unpushed-age", severity: "info", ok: true, label: "unpushed work", detail: unmeasurable });
+    } else if (h.remotes.length === 0) {
+      checks.push({ id: "unpushed-age", severity: "info", ok: true, label: "unpushed work", detail: "no remote — nothing to be ahead of" });
+    } else if (!h.upstream) {
+      // A branch that has never been pushed has no baseline to count against, and counting its whole
+      // history as unpushed would report a number that is technically true and useless.
+      checks.push({ id: "unpushed-age", severity: "info", ok: true, label: "unpushed work", detail: "this branch has no upstream — push it once to make this measurable" });
+    } else if (h.unpushedCount === 0) {
+      checks.push({ id: "unpushed-age", severity: "warn", ok: true, label: "unpushed work", detail: `up to date with ${h.upstream}` });
+    } else {
+      const age = h.oldestUnpushed ? daysBetween(now, h.oldestUnpushed) : null;
+      // Commits use >= (the Nth commit is the one that crosses), age uses > (a change is not "over
+      // five days old" on its fifth day). Both said out loud because a boundary nobody wrote down is
+      // a boundary two readers disagree about.
+      const byCount = isSet(t.unpushedMaxCommits) && h.unpushedCount >= t.unpushedMaxCommits;
+      const byAge = isSet(t.unpushedMaxAgeDays) && age !== null && age > t.unpushedMaxAgeDays;
+      const anySet = isSet(t.unpushedMaxCommits) || isSet(t.unpushedMaxAgeDays);
+      const head = `${plural(h.unpushedCount, "commit")} ahead of ${h.upstream}` + (age === null ? "" : `, oldest ${plural(age, "day")} old`);
+      const why = [byCount ? `over ${t.unpushedMaxCommits} commits` : null, byAge ? `over ${t.unpushedMaxAgeDays}d` : null].filter(Boolean).join(" and ");
+      checks.push({
+        id: "unpushed-age",
+        severity: anySet ? "warn" : "info",
+        ok: !(byCount || byAge),
+        label: "unpushed work",
+        detail: head + (byCount || byAge ? ` — ${why}, push or say in the run report why not` : anySet ? "" : " (no line set: hygiene.unpushedMaxCommits, hygiene.unpushedMaxAgeDays)"),
+      });
+    }
+
+    // run-report-presence: commits with no ledger entry behind them (LOOP.md §4a). Measured from the
+    // newest DATED report, so it scales with work rather than with the calendar. A repo with no runs
+    // dir is silent, exactly as run-report-evidence above is: the convention is opt-in per host.
+    const newestRunDate = runsPayload.available ? (runsPayload.runs.find((r) => !!r.date)?.date ?? null) : null;
+    if (!runsPayload.available) {
+      checks.push({ id: "run-report-presence", severity: "info", ok: true, label: "run reports keeping up", detail: `no runs dir — a run closes with a report at ${config.runsDir} (LOOP.md §4a)` });
+    } else if (!h.isRepo) {
+      checks.push({ id: "run-report-presence", severity: "info", ok: true, label: "run reports keeping up", detail: unmeasurable });
+    } else {
+      const since = await commitsSince(cwd, git, newestRunDate);
+      const set = isSet(t.runReportMaxCommits);
+      if (since === null) {
+        checks.push({ id: "run-report-presence", severity: "info", ok: true, label: "run reports keeping up", detail: "commit count since the last report unmeasurable (no git history)" });
+      } else {
+        const over = set && since >= t.runReportMaxCommits;
+        const head = newestRunDate
+          ? `${plural(since, "commit")} since the newest run report (${newestRunDate})`
+          : `${plural(since, "commit")} and no dated run report`;
+        checks.push({
+          id: "run-report-presence",
+          severity: set ? "warn" : "info",
+          ok: !over,
+          label: "run reports keeping up",
+          detail: head + (over ? ` — over ${t.runReportMaxCommits}, close a run with a report` : set ? "" : " (no line set: hygiene.runReportMaxCommits)"),
+        });
+      }
+    }
+  } catch (err) {
+    checks.push({ id: "loop-hygiene", severity: "info", ok: true, label: "loop hygiene", detail: `hygiene checks skipped: ${err instanceof Error ? err.message : String(err)}` });
   }
 
   // ── Unacted answers (DECISIONS §4 made a loop step rather than a habit) ──

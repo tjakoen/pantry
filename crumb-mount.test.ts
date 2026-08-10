@@ -23,6 +23,7 @@ import {
 } from "./preview.ts";
 import { createPantryHandler, resolveToursSource } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 
 const CRUMB_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/crumb/crumb-live.js"));
 
@@ -164,6 +165,7 @@ const configWith = (previewTarget: string | null, toursDir: string | null): Reso
   decisionsDir: join(PLANS, "decisions"), answersLog: join(PLANS, "decisions", "answers.jsonl"),
   artifactsDir: join(import.meta.dir, "artifacts"), runsDir: join(import.meta.dir, "artifacts", "runs"),
   previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
+  hygiene: DEFAULT_HYGIENE,
   surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true },
 });
 

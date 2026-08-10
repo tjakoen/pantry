@@ -18,6 +18,7 @@ import {
   surfaceSelector, targetIsUp, waitForTarget, type CaptureManifest,
 } from "./capture.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { DEFAULT_HYGIENE } from "./hygiene.ts";
 
 let dir: string;
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), "pantry-capture-")); });
@@ -41,6 +42,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   previewCommand: null,
   previewCommandCwd: dir,
   toursDir: null,
+  hygiene: DEFAULT_HYGIENE,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
   ...over,
 });
