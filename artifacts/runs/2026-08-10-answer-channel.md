@@ -61,7 +61,7 @@ diffstat: pantry 16 files changed, 834 insertions, 3 created (answers.ts, answer
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
   - artifacts/ | in the PORTFOLIO, untracked, another session's, not touched
-unpushed: 6 | 4 pantry + 2 portfolio, all created by this run; the four repos were at zero when it started, pushed on the owner instruction
+unpushed: 0 | everything this run wrote is pushed, in all four repos
 verifiedBy: two independent reviewers that did not write the change, plus a browser walk of a real decision card. Between them they found eleven defects the author had not, including an unbounded read behind a stated cap, a refusal that only covered one file type, and a wait loop that could spin forever without erroring or exiting. Every one was fixed and every fix carries a regression test. The walk found two more before the reviewers ran.
 doctor: 14 checks, 0 failing, 4 due; the 4 due are pre-existing and named below
 ---
