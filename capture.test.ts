@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   CAPTURE_WRITE_EXTS, captureDirName, classifyMatch, formatCaptureIndex, formatCaptureResult,
-  isInside, isWritableCaptureFile, problemFor, resolveDriver, runCapture, stepFileStem,
+  isWritableCaptureFile, problemFor, resolveDriver, runCapture, stepFileStem,
   surfaceSelector, targetIsUp, waitForTarget, type CaptureManifest,
 } from "./capture.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
@@ -168,13 +168,9 @@ describe("where it may write", () => {
     }
   });
 
-  test("isInside is a containment check and not a prefix trick", () => {
-    expect(isInside("/a/b", "/a/b/c")).toBe(true);
-    expect(isInside("/a/b", "/a/b")).toBe(true);
-    // The classic: /a/bc starts with /a/b as a string and is nowhere near inside it.
-    expect(isInside("/a/b", "/a/bc")).toBe(false);
-    expect(isInside("/a/b", "/a")).toBe(false);
-  });
+  // The containment rule itself moved to paths.ts and is tested in paths.test.ts. What stays here is
+  // that capture APPLIES it to the dir it is about to write into — asserted by runCapture's own
+  // tests below, not by re-testing the predicate in two files.
 });
 
 describe("the driver, borrowed and never owned", () => {

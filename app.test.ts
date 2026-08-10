@@ -8,8 +8,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { createPantryHandler, homeBody } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import type { DoctorReport } from "./doctor.ts";
-
-const EXAMPLE = join(import.meta.dir, "..", "proof", "example");
+import { PROOF_EXAMPLE as EXAMPLE } from "./fixtures.ts";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
   cwd: EXAMPLE,

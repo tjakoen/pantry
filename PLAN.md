@@ -357,7 +357,9 @@ alias matching) and paths normalise case, leading `/` and `./`, and trailing `/`
 findings landed with them: `plans:` hrefs get decisions.ts's `safeHref` treatment (same committed-file
 threat, and the guard sits in the data layer so a future view cannot forget it), and the reader gets
 artifacts.ts's `lstat`+`realpath` containment — this module reads file CONTENTS, so an escaping symlink
-would be an exfiltration path through the cockpit rather than a metadata leak.
+would be an exfiltration path through the cockpit rather than a metadata leak. (That containment moved
+to `paths.ts` on 2026-08-10, where it is one `linkContained` shared with artifacts.ts rather than a
+second hand-written copy of it; seven such sites existed by then and two of them had drifted.)
 
 Files: `runs.ts` (pure data, like decisions.ts) + `runs.test.ts` (40) + the doctor check (4) + the
 `runsDir` config key + `artifacts/runs/README.md`. 227/230 suite green (the same 3 retrieval/app plan

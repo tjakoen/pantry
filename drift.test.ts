@@ -9,8 +9,7 @@ import { join } from "node:path";
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { checkDrift, checkSymbolDrift, formatDriftReport, usesMergedGraph } from "./drift.ts";
-
-const EXAMPLE = join(import.meta.dir, "..", "proof", "example");   // real plans → real /plans/plan/:id routes
+import { PROOF_EXAMPLE as EXAMPLE } from "./fixtures.ts";   // real plans → real /plans/plan/:id routes
 const AT = "2026-07-10T00:00:00.000Z";
 
 const config = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
@@ -71,11 +70,18 @@ describe("checkDrift — the doc-drift lint (piece 9c)", () => {
     expect(report.problems[0].message).toContain("/docs/b/nope");
   });
 
+  // The REAL plan id is the half of this test that was doing nothing. While the fixture path was
+  // broken the corpus was empty, so every plan route was dead, and a test named "a live plan route
+  // resolves" passed by flagging the bogus one and never noticing there was no live one to resolve.
+  // Linking a plan the fixture actually contains is what makes the first clause of the name true.
   test("a live plan route resolves; a bogus plan id is flagged", async () => {
-    const col = docs("/docs/x", { intro: "The [board](/plans) and a [bad plan](/plans/plan/does-not-exist)." });
+    const col = docs("/docs/x", {
+      intro: "The [board](/plans), a [real plan](/plans/plan/001-core-parser) and a [bad plan](/plans/plan/does-not-exist).",
+    });
     const report = await checkDrift(config(), [col], { generatedAt: AT });
     expect(report.ok).toBe(false);
     expect(report.problems.some((p) => p.message.includes("does-not-exist"))).toBe(true);
+    expect(report.problems.some((p) => p.message.includes("001-core-parser"))).toBe(false);
   });
 
   test("the board off → no plan routes to link into, so a plan link is dead", async () => {

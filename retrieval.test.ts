@@ -8,8 +8,8 @@ import { tmpdir } from "node:os";
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
+import { PROOF_EXAMPLE as EXAMPLE } from "./fixtures.ts";
 
-const EXAMPLE = join(import.meta.dir, "..", "proof", "example");
 const AT = "2026-07-10T00:00:00.000Z";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({

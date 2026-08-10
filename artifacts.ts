@@ -11,9 +11,10 @@
 // It is a CLI command and no route reaches it, so the SERVER still writes nothing here and this
 // surface still renders a folder it does not own. Stated rather than left as a comment that quietly
 // became false, which is the failure this project has now shipped twice.
-import { readdir, stat, lstat, realpath } from "node:fs/promises";
+import { readdir, stat, realpath } from "node:fs/promises";
 import { join, basename, extname, relative, sep } from "node:path";
 import { existsSync } from "node:fs";
+import { linkContained } from "./paths.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
 export type ArtifactKind = "image" | "report" | "diff" | "html" | "other";
@@ -69,13 +70,13 @@ const toPosix = (p: string) => p.split(sep).join("/");
 // MAX_DEPTH. A single unreadable file/dir is skipped rather than throwing — the walk must survive
 // a broken symlink or a permission-denied entry without taking the whole surface down.
 //
-// SECURITY: `lstat` (not `stat`) so a symlink is seen AS a symlink, never silently dereferenced. A
-// symlink is only followed — for both listing a file and recursing into a dir — when its resolved
-// real path stays under `realBase` (the realpath of artifactsDir). This is the same containment the
-// raw-serve route enforces (app.ts serveArtifactRaw): a link that points inside is fine (it's still
-// this project's evidence), a link that escapes (e.g. artifacts/escape -> /etc) is skipped so the
-// LISTING can't enumerate an outside tree's metadata (names, sizes, mtimes). Broken links `lstat` as
-// symlinks but fail to `realpath`, so they're skipped too.
+// SECURITY: a symlink is only followed — for both listing a file and recursing into a dir — when its
+// resolved real path stays under `realBase` (the realpath of artifactsDir). That is `linkContained`
+// in paths.ts, the same rule the raw-serve route enforces (app.ts serveArtifactRaw): a link that
+// points inside is fine (it's still this project's evidence), a link that escapes (e.g.
+// artifacts/escape -> /etc) is skipped so the LISTING can't enumerate an outside tree's metadata
+// (names, sizes, mtimes). An entry that vanished, denied permission, or is a broken link comes back
+// uncontained and is skipped the same way — the walk must survive one bad entry, not crash on it.
 async function walk(realBase: string, root: string, dir: string, depth: number, out: ArtifactEntry[]): Promise<void> {
   if (depth > MAX_DEPTH) return;
   let names: string[];
@@ -87,23 +88,9 @@ async function walk(realBase: string, root: string, dir: string, depth: number, 
   for (const name of names) {
     if (name.startsWith(".")) continue; // dotfiles/dirs (.DS_Store, .git, …)
     const full = join(dir, name);
-    let ls;
-    try {
-      ls = await lstat(full);
-    } catch {
-      continue; // permission denied / vanished — skip, never crash the walk
-    }
     // A symlink is only trusted when it resolves to somewhere still inside artifactsDir; otherwise it
     // (and anything under it) is skipped — no metadata from outside the dir ever reaches the payload.
-    if (ls.isSymbolicLink()) {
-      let realTarget: string;
-      try {
-        realTarget = await realpath(full);
-      } catch {
-        continue; // broken symlink — skip
-      }
-      if (realTarget !== realBase && !realTarget.startsWith(realBase + sep)) continue; // escapes → skip
-    }
+    if (!(await linkContained(realBase, full))) continue;
     // With containment settled, `stat` (dereferencing) is now safe: a followed link is known-inside.
     let st;
     try {

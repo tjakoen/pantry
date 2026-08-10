@@ -18,8 +18,10 @@
     "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#5e079ef"
   },
   "files": [
+    "answers.ts",
     "app.ts",
     "artifacts.ts",
+    "capture.ts",
     "cli.ts",
     "config.ts",
     "decisions.ts",
@@ -29,6 +31,7 @@
     "graph.ts",
     "init.ts",
     "map.ts",
+    "paths.ts",
     "preview.ts",
     "retrieval.ts",
     "runs.ts",

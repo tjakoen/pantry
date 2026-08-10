@@ -46,10 +46,11 @@
 // **Gate output is never compressed.** LOOP.md §4a demands verbatim; a lossy pass over machine output
 // mangled a date in testing (`2026-07-30` → `2026:7:30`), so summarizing or compressing gate output
 // into a report is out, not discouraged.
-import { readdir, lstat, realpath } from "node:fs/promises";
-import { join, basename, sep } from "node:path";
+import { readdir, realpath } from "node:fs/promises";
+import { join, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
+import { linkContained } from "./paths.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
 export type RunStatus = "complete" | "partial" | "blocked";
@@ -415,20 +416,13 @@ export async function buildRunsPayload(
     if (name.toLowerCase() === "readme.md") continue;
     const id = basename(name, ".md");
     const file = join(dir, name);
-    // SECURITY: `lstat` (not `stat`) so a symlink is seen AS a symlink, and it is only read when its
-    // real target stays under the runs dir — the same containment artifacts.ts enforces on its walk.
-    // The stakes are higher here: this module reads file CONTENTS into `body`, which a surface will
-    // render, so an escaping link (artifacts/runs/x.md -> ~/.ssh/id_rsa) would be an exfiltration path
-    // through the cockpit, not just a metadata leak. Closed before any view exists to exploit it.
-    try {
-      const ls = await lstat(file);
-      if (ls.isSymbolicLink()) {
-        const realTarget = await realpath(file); // a broken link throws → skipped by the catch
-        if (realTarget !== realBase && !realTarget.startsWith(realBase + sep)) continue;
-      }
-    } catch {
-      continue;
-    }
+    // SECURITY: a report is only read when it is not a symlink, or is one whose real target stays
+    // under the runs dir — `linkContained` in paths.ts, the same rule artifacts.ts enforces on its
+    // walk. The stakes are higher here: this module reads file CONTENTS into `body`, which a surface
+    // will render, so an escaping link (artifacts/runs/x.md -> ~/.ssh/id_rsa) would be an
+    // exfiltration path through the cockpit, not just a metadata leak. Closed before any view exists
+    // to exploit it.
+    if (!(await linkContained(realBase, file))) continue;
     try {
       runs.push(parseRun(id, file, await Bun.file(file).text()));
     } catch {

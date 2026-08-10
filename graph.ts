@@ -24,7 +24,8 @@
 import { existsSync } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, dirname, sep, basename } from "node:path";
+import { join, dirname, basename } from "node:path";
+import { isInside } from "./paths.ts";
 
 // ── Blast radius ─────────────────────────────────────────────────────────────────────────────────
 //
@@ -227,7 +228,13 @@ export async function findSiblingGraphs(siblingsRoot: string): Promise<GraphDisc
 
   for (const name of entries) {
     const dir = join(siblingsRoot, name);
-    if (dir === edgeRepo || dir.startsWith(edgeRepo + sep)) continue; // never touch edge — hard constraint
+    // Never touch edge — hard constraint. `isInside` (paths.ts) rather than a hand-written prefix
+    // test, and it is the stricter of the two here: a RELATIVE siblingsRoot used to produce a
+    // relative `dir` that could never string-match an absolute edgeRepo, so the exclusion quietly
+    // did not fire. Both sides are resolved now. Neither is realpathed, so a symlink pointing INTO
+    // edge still walks past — this scan only ever reads a graph.json, and the guard is about not
+    // enumerating that repo rather than about defeating someone who linked it on purpose.
+    if (isInside(edgeRepo, dir)) continue;
 
     let st;
     try {

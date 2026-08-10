@@ -32,6 +32,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { loadTour } from "@tjakoen/crumb/loader.ts";
 import { needsNavigation } from "@tjakoen/crumb/core";
 import type { Step, Tour } from "@tjakoen/crumb/core";
+import { isInside } from "./paths.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
 // ---- What a step's address can be, and only one of these is a pass ---------------------------
@@ -139,14 +140,6 @@ export function problemFor(verdict: CaptureVerdict, surface: string, matches: nu
   return `data-surface="${surface}" resolved to one element on ${url} and that element has no box: it is hidden, collapsed, or not yet rendered when the page settled.`;
 }
 
-/** Is `child` really inside `parent`? Both must already be real paths — the point of taking them
- *  resolved is that a symlink cannot be checked by looking at a string. */
-export function isInside(parent: string, child: string): boolean {
-  const p = resolve(parent);
-  const c = resolve(child);
-  return c === p || c.startsWith(p.endsWith(sep) ? p : p + sep);
-}
-
 /** A file name this module is allowed to write: no separators, no traversal, allowlisted extension. */
 export function isWritableCaptureFile(name: string): boolean {
   if (name.includes("/") || name.includes("\\") || name.includes("\0")) return false;
@@ -183,7 +176,7 @@ const DRIVER_SPECIFIERS = ["playwright", "@playwright/test"] as const;
  * pantry's devDependency is then the host's dependency, and the guard is off.
  */
 export function resolveDriver(hostDir: string, pantryDir: string): DriverResolution {
-  // REAL paths on both sides, for the reason isInside states two functions up: a symlink cannot be
+  // REAL paths on both sides, for the reason `isInside` states in paths.ts: a symlink cannot be
   // checked by looking at a string. The first version compared `resolve()`d paths, which normalizes
   // dots and follows nothing, so a PANTRY consumed through a link — bun link, a workspace symlink, a
   // bind-mounted dev checkout — would have compared the link path against the resolver's real one,
@@ -191,7 +184,7 @@ export function resolveDriver(hostDir: string, pantryDir: string): DriverResolut
   // is the exact false green this guard exists to stop, reachable through the guard itself.
   const real = (p: string): string => { try { return realpathSync(p); } catch { return resolve(p); } };
   const realPantry = real(pantryDir);
-  const ownNodeModules = join(realPantry, "node_modules") + sep;
+  const ownNodeModules = join(realPantry, "node_modules");
   const hostIsPantry = real(hostDir) === realPantry;
   const refused: string[] = [];
 
@@ -202,7 +195,7 @@ export function resolveDriver(hostDir: string, pantryDir: string): DriverResolut
     } catch {
       continue;
     }
-    if (!hostIsPantry && real(path).startsWith(ownNodeModules)) {
+    if (!hostIsPantry && isInside(ownNodeModules, real(path))) {
       refused.push(spec);
       continue;
     }

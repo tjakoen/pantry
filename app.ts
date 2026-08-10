@@ -26,6 +26,7 @@ import { createCrumbRoutes } from "@tjakoen/crumb/routes.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
+import { isInside } from "./paths.ts";
 import {
   PANTRY_PREFIX, pageAlreadyRunsCrumb, proxyToPreview, rebaseCrumbLive, rebasePantryCss, spotlightRulesOnly,
   rebasePantryHtml, resolvePreviewTarget, withPantryBase,
@@ -1227,9 +1228,9 @@ function rawContentType(name: string): string {
 // URL-decoded by the caller) — it can legitimately contain `../../etc/passwd`, an absolute path, or a
 // segment that resolves through a symlink to somewhere outside artifactsDir. `join` alone does NOT
 // stop `..` (it normalises the string but happily walks above the base), so this resolves the joined
-// path to its real, symlink-expanded form and then checks it is still (a) exactly artifactsDir's real
-// path (only possible if reqPath is empty) or (b) a real descendant of it — i.e. starts with the real
-// artifactsDir plus a path separator. Anything else — traversal, an absolute reqPath, or a symlink
+// path to its real, symlink-expanded form and then hands both real paths to `isInside` (paths.ts),
+// which is the one containment rule this repo has: exactly artifactsDir's real path (only possible if
+// reqPath is empty) or a real descendant of it. Anything else — traversal, an absolute reqPath, or a symlink
 // that escapes the dir — returns 404 without ever opening the file. The file must also actually exist
 // (not just resolve validly) before we treat it as in-bounds, so a nonexistent path can't be probed.
 async function serveArtifactRaw(artifactsDir: string, reqPath: string): Promise<Response> {
@@ -1243,8 +1244,7 @@ async function serveArtifactRaw(artifactsDir: string, reqPath: string): Promise<
   } catch {
     return new Response("Not found", { status: 404 });
   }
-  const inBounds = realTarget === realBase || realTarget.startsWith(realBase + sep);
-  if (!inBounds) return new Response("Not found", { status: 404 });
+  if (!isInside(realBase, realTarget)) return new Response("Not found", { status: 404 });
   let st;
   try {
     st = statSync(realTarget);
@@ -1696,7 +1696,7 @@ async function fixProofResponse(res: Response): Promise<Response> {
 // is resolved and confirmed to be under the fonts root before anything is opened.
 async function serveFont(root: string, rel: string): Promise<Response> {
   const file = resolve(normalize(join(root, decodeURIComponent(rel))));
-  if (file !== root && !file.startsWith(root + sep)) return new Response("Forbidden", { status: 403 });
+  if (!isInside(root, file)) return new Response("Forbidden", { status: 403 });
   const f = Bun.file(file);
   if (!(await f.exists())) return new Response("Not found", { status: 404 });
   return new Response(f, { headers: { "Content-Type": "font/woff2", "Cache-Control": "public, max-age=31536000, immutable" } });
