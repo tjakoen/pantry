@@ -134,7 +134,11 @@ transcripts 84 -> 85 (test 2 spawned) -> 86 (successor) -> 86 (stopped)
 
 ## What was NOT done
 
-- **Nothing was pushed.** 23 commits across three repos.
+- **Nothing was pushed BY THIS RUN**, and the count in the frontmatter went stale before the report
+  was finished. A concurrent session pushed the portfolio mid-run and carried two of this run's
+  commits (`a9b1db9`, `73dc9de`) out with it. That is the known blindness working in the other
+  direction: an unpushed count can fall without anyone here pushing. At close: portfolio 1 unpushed,
+  pantry 15, claude-config 2.
 - **The two temporary threshold changes are reverted**, verified by `git status` on the config repo
   showing the file clean. The second revert was done by a script armed before the test rather than by
   hand, so the exposure window did not depend on anyone noticing in time.
