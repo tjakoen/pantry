@@ -7,6 +7,7 @@ branch: main
 scope:
   - standards/
   - ~/.claude/tools/
+  - ~/.claude/settings.json
 touched:
   - standards/SESSION-LOOP.md
   - ~/.claude/tools/context-trigger.sh
