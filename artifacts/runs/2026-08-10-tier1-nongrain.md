@@ -35,7 +35,7 @@ skills:
 plans:
   - pantry-review-layer
 gates:
-  - bun test (pantry, final) | 434 pass, 3 fail, 1143 expect() calls, 437 tests across 17 files
+  - bun test (pantry, final) | 435 pass, 3 fail, 1149 expect() calls, 438 tests across 17 files
   - bun test (pantry, at HEAD before this change) | the same 3 failures, confirmed by stashing and re-running
   - tsc --noEmit (pantry) | clean, no output
   - oxlint (pantry) | 23 warnings, identical count to HEAD, none from a file this run added
@@ -48,12 +48,12 @@ gates:
   - crumb check content/tours | 10 tours pass, the new one included
   - browser walk, Next 15.5 production build through the proxy | 3 steps resolved, lamp on target within 6px, decision card read by PANTRY's client
   - no-leak measurement, app served direct vs through the proxy | computed styles and element geometry identical on 6 selectors and 3 surfaces
-diffstat: pantry 14 files changed, 932 insertions, 28 deletions, 1 created (crumb-mount.test.ts); portfolio 3 files changed, 1 created (the tour)
+diffstat: pantry 15 files changed, 956 insertions, 34 deletions, 1 created (crumb-mount.test.ts); portfolio 3 files changed, 1 created (the tour)
 dirty:
   - artifacts/runs/2026-08-09-conformance-and-handover.md | in the PORTFOLIO, staged as deleted by another session, deliberately left exactly as found
   - artifacts/ | in the PORTFOLIO, untracked, another session's, not touched
 unpushed: 0 | pushed in both repos after the gates above
-verifiedBy: two independent reviewers that did not write the change, plus a browser walk of a real Next production build. The walk found two defects before the reviewers ran; between them the reviewers found twelve more, including a comment that was false about the file it was describing. Every finding was reproduced before being accepted, every fix carries a regression test, and the walk was repeated afterwards.
+verifiedBy: two independent reviewers that did not write the change, plus a browser walk of a real Next production build. The walk found two defects before the reviewers ran; between them the reviewers found thirteen more, including a comment that was false about the file it was describing and six rail links that had been 404ing since P1. Every finding was reproduced before being accepted, every fix carries a regression test, and the walk was repeated afterwards.
 doctor: 14 checks, 0 failing, 4 due; the 4 due are pre-existing and named below
 ---
 
@@ -85,7 +85,7 @@ ever appears, because a rebase that moves one specifier by name stops being comp
 ## Gate output
 
 ```
-bun test (pantry)          434 pass, 3 fail, 1143 expect() calls, 437 tests across 17 files
+bun test (pantry)          435 pass, 3 fail, 1149 expect() calls, 438 tests across 17 files
 tsc --noEmit (pantry)      clean
 oxlint (pantry)            23 warnings (23 at HEAD)
 bun cli.ts doctor          14 checks, 0 failing, 4 due
@@ -176,6 +176,13 @@ corrupting the document in the same edit. Writing the quote-aware version then p
 opposite failure, caught by a test written in the same sitting: matching the pattern anywhere in the
 tag deleted `<meta name="note" content="we set http-equiv=Content-Security-Policy at the edge">`, a tag
 that sets no policy and describes one.
+
+**And one the reviewer set aside as out of scope, which was worth picking up.** The review rail's six
+cockpit links were written carrying `/__pantry` already, and PANTRY rebases its own root-absolute
+hrefs on the way out, so every one of them resolved to `/__pantry/__pantry/…` and 404'd. It had been
+that way since P1, through a build, a walk and two reviews. The header nav two inches above uses
+root-relative hrefs and was always correct, which is exactly why nobody looked at the other half.
+Fixed in `743f4cd` with a test that the prefix never appears twice in the shell.
 
 Two more were accepted as stated tradeoffs rather than fixed: an explicit `toursDir` that does not
 exist is still honoured, and now warns at boot; and the injection still reaches the app's own 404 and
