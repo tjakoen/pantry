@@ -33,6 +33,8 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   artifactsDir: join(dir, "artifacts"),
   runsDir: join(dir, "artifacts", "runs"),
   previewTarget: null,
+  previewCommand: null,
+  previewCommandCwd: dir,
   toursDir: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
   ...over,
@@ -743,6 +745,77 @@ Nothing.
     expect(c.detail).toContain("2026-07-25-x");
     expect(c.detail).not.toContain("2026-07-24-x");
     expect(c.detail).toContain("and 1 more");
+  });
+});
+
+// The check that turns DECISIONS §4 from a habit into a loop step. Doctor runs at session start, so
+// this is where an answer nobody acted on becomes something a session cannot claim not to have seen.
+describe("unacted answers", () => {
+  const logPath = () => join(dir, "plans", "decisions", "answers.jsonl");
+  const writeLog = async (lines: string[]) => {
+    await mkdir(join(dir, "plans", "decisions"), { recursive: true });
+    await writeFile(logPath(), lines.join("\n") + "\n");
+  };
+  const answer = (id: string, ref: string) => JSON.stringify({
+    kind: "answer", id, at: "2026-08-10T06:00:00.000Z", via: "chat",
+    request: { source: "chat", ref, question: `what about ${ref}?` }, choice: "yes",
+  });
+  const ack = (id: string, forId: string) => JSON.stringify({
+    kind: "ack", id, at: "2026-08-10T07:00:00.000Z", for: forId,
+  });
+
+  test("no log at all is an info naming where one appears, not a warn", async () => {
+    await compliantKit();
+    const c = byId(await run(), "unacted-answers");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain(logPath());
+  });
+
+  test("every answer acked reads as info", async () => {
+    await compliantKit();
+    await writeLog([answer("a-1", "some-ref"), ack("k-1", "a-1")]);
+    const c = byId(await run(), "unacted-answers");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("1 answers, all acted on");
+  });
+
+  test("an unacted answer warns and names the ref, because a bare count is not actionable", async () => {
+    await compliantKit();
+    await writeLog([answer("a-1", "p4d-capture-server")]);
+    const c = byId(await run(), "unacted-answers");
+    expect(c.severity).toBe("warn");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("p4d-capture-server");
+  });
+
+  // WARN and not error, deliberately: CI has no session to act on a pending decision, and a check
+  // that blocks every push on one gets muted inside a week.
+  test("a pending answer never fails the build", async () => {
+    await compliantKit();
+    await writeLog([answer("a-1", "r1")]);
+    const r = await run();
+    expect(byId(r, "unacted-answers").ok).toBe(false);
+    expect(r.ok).toBe(true);
+  });
+
+  test("more than three pending are summarised rather than dumped into a terminal line", async () => {
+    await compliantKit();
+    await writeLog([1, 2, 3, 4, 5].map((n) => answer(`a-${n}`, `ref-${n}`)));
+    const c = byId(await run(), "unacted-answers");
+    expect(c.detail).toContain("5 answers no session has acted on");
+    expect(c.detail).toContain("and 2 more");
+  });
+
+  // One bad line must never cost the rest: a lost answer and an answer never given have to stay
+  // distinguishable, which is why readAnswerLog counts malformed lines instead of throwing.
+  test("a malformed line does not take the check down with it", async () => {
+    await compliantKit();
+    await writeLog(["{not json", answer("a-1", "still-seen")]);
+    const c = byId(await run(), "unacted-answers");
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("still-seen");
   });
 });
 

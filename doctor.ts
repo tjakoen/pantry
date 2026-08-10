@@ -21,6 +21,7 @@ import { checkPantryDrift, checkPantrySymbolDrift, usesMergedGraph } from "./dri
 import { checkPantryDeps } from "./deps.ts";
 import { listSkills } from "./skills.ts";
 import { buildRunsPayload, type RunsPayload } from "./runs.ts";
+import { answers, readAnswerLog, unacked } from "./answers.ts";
 import { affectedBy, loadGraph } from "./graph.ts";
 import type { GitRunner } from "./timeline.ts";
 
@@ -699,6 +700,45 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     }
   } catch (err) {
     checks.push({ id: "run-report-evidence", severity: "info", ok: true, label: "run ledger", detail: `run-ledger check skipped: ${err instanceof Error ? err.message : String(err)}` });
+  }
+
+  // ── Unacted answers (DECISIONS §4 made a loop step rather than a habit) ──
+  //
+  // The answer channel worked before this check existed and nothing obliged anyone to look at it,
+  // which DECISIONS §4 said out loud: "a channel that works and is not yet one that is always
+  // checked". A sentence in a standard does not make a session read a file. Doctor runs at session
+  // start (LOOP.md §2, tier 1), so putting the count here is what turns the habit into a step.
+  //
+  // WARN, never error, and the distinction is the whole design. An unacted answer is work that is
+  // due, not a broken kit, and CI has no session to act on it: failing the build would mean a
+  // pending decision blocks every push by everyone, which is how a check gets muted inside a week
+  // (LOOP.md §2's baseline rule, same lesson). An ack is itself an entry, so deferring is one
+  // command and the count goes down honestly rather than by editing the log.
+  try {
+    if (!existsSync(config.answersLog)) {
+      checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `no answer log yet — one appears at ${config.answersLog} the first time a question is answered (DECISIONS §4)` });
+    } else {
+      const log = await readAnswerLog(config.answersLog);
+      const pending = unacked(log);
+      if (pending.length === 0) {
+        checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `${answers(log).length} answers, all acted on` });
+      } else {
+        // Named, not just counted. A number tells a session there is something to read and nothing
+        // about whether it touches the work in front of it; the ref is what makes it actionable in
+        // the one line a terminal gives this check.
+        const named = pending.slice(0, 3).map((a) => a.request.ref);
+        const rest = pending.length - named.length;
+        checks.push({
+          id: "unacted-answers",
+          severity: "warn",
+          ok: false,
+          label: "answer log",
+          detail: `${pending.length} answers no session has acted on: ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""} — read them with pantry answers, then act or ack`,
+        });
+      }
+    }
+  } catch (err) {
+    checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `answer-log check skipped: ${err instanceof Error ? err.message : String(err)}` });
   }
 
   // ── Scope growth, diagnosed rather than just reported (S4) ───────────────

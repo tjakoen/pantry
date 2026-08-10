@@ -81,6 +81,23 @@ export interface PantryConfig {
    *  it always has. Present → PANTRY's own routes move under /__pantry and the target owns the root,
    *  which is what lets the app's root-relative URLs keep resolving untouched. */
   previewTarget?: string;
+  /** the command `pantry capture` runs to bring `previewTarget` up when nothing is answering there
+   *  (plans/pantry-review-layer.md P4d): "bun run start", "npm run preview", whatever the project
+   *  already uses. Absent (the default) → capture starts nothing and tells the owner what to run.
+   *
+   *  **This is the key the plan's cost section named as the line to watch, crossed on purpose.**
+   *  The owner was asked on 2026-08-10 with that warning stated and chose it, so the honest thing is
+   *  to bound it rather than pretend it is small. What bounds it: it is NEVER guessed, only ever the
+   *  string a human wrote here; only `pantry capture` reads it, never `pantry serve` and never a
+   *  route; the process is killed when capture ends, on every path including a failure; and a target
+   *  that already answers is left alone, so capture never starts a second copy of a running project.
+   *  Delete the key and capture still works against a project you started yourself, which is the
+   *  retreat the cost section asks to keep open. */
+  previewCommand?: string;
+  /** where `previewCommand` runs; default the host repo root. A project reviewed from a sibling repo
+   *  is the normal case for Tier 1 (the reviewing repo holds the tours, the reviewed one holds the
+   *  app), so the command's cwd is almost never the host's. */
+  previewCommandCwd?: string;
   /** the CRUMB tour folder PANTRY serves ITSELF, so a review can be walked on a project that has
    *  never heard of CRUMB (plans/pantry-review-layer.md P4, Tier 1); default "./content/tours" when
    *  that folder exists, and nothing when it does not.
@@ -129,6 +146,12 @@ export interface ResolvedPantryConfig {
   /** the validated preview-proxy origin, or null when the proxy is off (the default, and the result
    *  of a target that failed validation — a bad value degrades the surface, it never boots a relay) */
   previewTarget: string | null;
+  /** the command `pantry capture` may run to bring the target up, or null when the host named none.
+   *  Read by capture.ts alone — nothing in the server ever spawns it. */
+  previewCommand: string | null;
+  /** where that command runs (absolute); defaults to cwd. Meaningless when previewCommand is null,
+   *  and still resolved, because a host that sets only the cwd has made a typo worth seeing. */
+  previewCommandCwd: string;
   /** the tour folder PANTRY serves under its own prefix (absolute), or null when there is none.
    *  Resolved by existence like docsDirs, so a repo with no tours simply has no mount rather than a
    *  route that 404s on every request. */
@@ -202,6 +225,11 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     // default under artifactsDir (not cwd) so the ledger rides along with the evidence it cites
     runsDir: raw.runsDir ? abs(cwd, raw.runsDir) : join(artifactsDir, "runs"),
     previewTarget: preview.origin,
+    // An empty or whitespace-only string is the same as not naming a command, and it has to be
+    // folded to null HERE rather than checked at the call site: `if (config.previewCommand)` is the
+    // natural test and "  " passes it, which would hand a shell a command that is nothing at all.
+    previewCommand: raw.previewCommand?.trim() ? raw.previewCommand.trim() : null,
+    previewCommandCwd: raw.previewCommandCwd ? abs(cwd, raw.previewCommandCwd) : cwd,
     // An EXPLICIT toursDir is honoured whether or not it exists yet, because a host that named one
     // has said what it means; the DEFAULT is existence-gated, because auto-mounting a folder nobody
     // asked for is only defensible while the folder is really there. A missing explicit one warns

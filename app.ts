@@ -1285,6 +1285,8 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   artifactsDir: join(dirname(plansDir), "artifacts"),
   runsDir: join(dirname(plansDir), "artifacts", "runs"),
   previewTarget: null,
+  previewCommand: null,
+  previewCommandCwd: dirname(plansDir),
   toursDir: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });

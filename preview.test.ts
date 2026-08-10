@@ -313,7 +313,7 @@ describe("createPantryHandler — the reserved prefix", () => {
     cwd: import.meta.dir, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [],
     graphPath: null, graphDir: join(import.meta.dir, "graphify-out"),
     decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), artifactsDir: join(import.meta.dir, "artifacts"),
-    runsDir: join(import.meta.dir, "artifacts", "runs"), previewTarget, toursDir,
+    runsDir: join(import.meta.dir, "artifacts", "runs"), previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
     surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true },
   });
 

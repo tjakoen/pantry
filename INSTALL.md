@@ -59,9 +59,55 @@ is, and hides when you want the width. The rail reads the reviewed project's tou
 the proxy, so a project that mounts CRUMB gets its tours listed with no extra configuration, and one
 that does not gets a rail with just its navigation.
 
-## The answer log (the one thing PANTRY writes)
+## Capture: driving the review instead of watching it
 
-Every other surface is a pure read. This one is not, and it is small enough to state completely.
+`pantry capture <tour-id>` walks a tour against the reviewed project and writes what it saw into
+`artifacts/reviews/<date>-<tour-id>/`: one screenshot per step, a crop of the element each step is
+about, a manifest, and an index that reads with nothing running.
+
+```
+bunx pantry capture review-refunds --preview http://localhost:3000
+```
+
+It exists because of when a broken address is cheapest to find. A tour resolves each step by its
+`data-surface` name, and a name that no longer matches anything fails one of two ways: loudly here,
+in a harness, or silently at review time, lighting the wrong element in front of the one person who
+trusted it. So capture **exits nonzero** when a step's address matches nothing, matches more than one
+element, or matches an element with no box. The ambiguous case is the one worth setting up for: an
+address on a component that appears on six routes resolves to whichever copy the query reaches first,
+and that is the drift the whole layer exists to avoid.
+
+Three things it deliberately does not do:
+
+- **It does not ship a browser.** Playwright is resolved from your repo, and PANTRY's own copy is
+  refused on purpose, because a capture that works only while PANTRY is a sibling checkout is a green
+  that disappears the day PANTRY installs as a dependency. With none installed you get the two
+  commands to run and nothing else happens.
+- **It does not guess how to start your project.** If the target is already answering it is left
+  alone. If it is not, capture runs `previewCommand` and only that, in its own process group, killed
+  when capture ends:
+
+  ```json
+  { "previewCommand": "bun run start", "previewCommandCwd": "../the-project" }
+  ```
+
+  Both are also flags (`--start`, `--start-cwd`) for the usual reason: which project you are
+  reviewing today is a session's choice, not the repo's. With no command configured and nothing
+  answering, capture stops and tells you what to run. This key is the one place PANTRY knows how to
+  run a project rather than read one, and it is bounded to that.
+- **It does not review what you did not see.** The pages are loaded through PANTRY's own proxy, so
+  the pixels in the folder are the pixels of the embed, and motion is disabled so every shot is a
+  settled state rather than a frame of a transition.
+
+## The two things PANTRY writes
+
+Every other surface is a pure read. There are exactly two exceptions, and both are small enough to
+state completely. The first is the answer log below. The second is capture, above, which writes only
+under `artifacts/reviews/<id>/`, only PNG, JSON and Markdown, and only after the resolved directory
+has been proved to sit inside the configured artifacts dir. Capture is a command; no route reaches
+it, and the running server writes nothing but the log.
+
+### The answer log
 
 An agent that cannot decide something alone raises a question: a decision request under
 `plans/decisions/`, or a decision card at the end of a review tour. The answer comes back on **one

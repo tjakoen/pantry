@@ -16,6 +16,11 @@
 //                               called by doctor; see graph.ts's header)
 //   pantry scope <file...>      what a change to these files is likely to reach, asked BEFORE the work
 //                               so the declared scope in a run report can be right the first time
+//   pantry capture <tour>       drive the reviewed project through the proxy, resolve every step's
+//                               data-surface address, and write the states into
+//                               <artifacts>/reviews/<id>/. Exits nonzero on an address that is
+//                               missing or ambiguous — the failure belongs here, not in front of the
+//                               reviewer. Borrows the HOST's Playwright; ships none.
 //   pantry answers              the append-only answer log (DECISIONS §4): what has been answered and
 //                               what no session has acted on yet. READ THIS ON WAKE.
 //   pantry answers wait <ref>   block until that question is answered (only useful while awake)
@@ -25,7 +30,8 @@
 // relative to the pantry module, so `bunx pantry` works from any project. See INSTALL.md.
 import { isAbsolute, join } from "node:path";
 import { servePantryFromCwd } from "./app.ts";
-import { PANTRY_PREFIX } from "./preview.ts";
+import { PANTRY_PREFIX, resolvePreviewTarget } from "./preview.ts";
+import { runCapture, formatCaptureResult } from "./capture.ts";
 import { checkPantryDrift, formatDriftReport } from "./drift.ts";
 import { runDoctor, formatDoctorReport } from "./doctor.ts";
 import { checkPantryDeps, formatDepsReport } from "./deps.ts";
@@ -42,6 +48,11 @@ const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
 
 /** Flags that take no value. Anything not listed here consumes the next non-flag token. */
 const BOOLEAN_FLAGS = new Set(["json"]);
+
+/** The token after position `i`, when it is a value rather than the next flag. One helper so the
+ *  named flags and the generic handler cannot drift apart on what counts as a value. */
+const nextValue = (args: string[], i: number): string | undefined =>
+  args[i + 1] !== undefined && !args[i + 1].startsWith("-") ? args[i + 1] : undefined;
 
 /** A declared-boolean flag, read the way a person means it. `--json=false` is off, and the naive
  *  truthiness check that shipped first read it as on, because every flag value is a string. */
@@ -77,11 +88,15 @@ export function parseArgs(argv: string[]): { cmd: string; rest: string[]; port: 
   let preview: string | null = null;
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (a === "--port" || a === "-p") { port = Number(args[++i]); continue; }
+    // The two named flags below take a value, and they take it the same way the generic handler
+    // does: only when the next token is not itself a flag. The version that consumed the next token
+    // unconditionally turned `--preview --force` into the target "--force", which then failed
+    // loopback validation and reported a bad preview while the flag it actually ate went unmentioned.
+    if (a === "--port" || a === "-p") { const v = nextValue(args, i); if (v !== undefined) { port = numberFlag(v, port); i++; } continue; }
     if (a.startsWith("--port=")) { port = Number(a.slice("--port=".length)); continue; }
     if (a === "--force" || a === "-f") { force = true; continue; }
     if (a === "--kit") { kit = true; continue; }
-    if (a === "--preview") { preview = args[++i] ?? null; continue; }
+    if (a === "--preview") { const v = nextValue(args, i); if (v !== undefined) { preview = v; i++; } continue; }
     if (a.startsWith("--preview=")) { preview = a.slice("--preview=".length); continue; }
     if (a.startsWith("--")) {
       const eq = a.indexOf("=");
@@ -93,7 +108,10 @@ export function parseArgs(argv: string[]): { cmd: string; rest: string[]; port: 
       // a value and equally true of `ack`. A parser cannot infer arity from the argument list, so it
       // is told.
       if (BOOLEAN_FLAGS.has(name)) { flags[name] = "true"; continue; }
-      flags[name] = args[i + 1] && !args[i + 1].startsWith("-") ? args[++i] : "true";
+      const v = nextValue(args, i);
+      if (v === undefined) { flags[name] = "true"; continue; }
+      flags[name] = v;
+      i++;
       continue;
     }
     if (!a.startsWith("-")) rest.push(a);
@@ -138,6 +156,43 @@ async function main() {
     const report = await runDoctor({ cwd: process.cwd() });
     console.log(formatDoctorReport(report));
     process.exit(report.ok ? 0 : 1);   // nonzero on a broken kit → fails CI (warns/infos don't)
+  }
+
+  if (cmd === "capture") {
+    const tourId = rest[0];
+    if (!tourId) {
+      console.error(`usage: pantry capture <tour-id> [--preview http://localhost:PORT] [--start "<command>"] [--start-cwd <dir>] [--id <folder>] [--force] [--start-timeout <seconds>]`);
+      process.exit(1);
+    }
+    const config = await loadPantryConfig(process.cwd());
+    // Same validation as serve: a target typed on the command line is still a string a caller typed,
+    // and the loopback rule does not get to be optional because it arrived by a different route.
+    if (preview) {
+      const flag = resolvePreviewTarget(preview);
+      if (flag.problem) { console.error(`--preview rejected: ${flag.problem}`); process.exit(1); }
+      config.previewTarget = flag.origin;
+    }
+    // --start is to previewCommand what --preview is to previewTarget, and for the same reason: which
+    // project you are reviewing today is a dev-session choice, not a property of the repo. Committing
+    // a start command into a shared pantry.config points every future run at one fixture.
+    // A bare `--start` with no value parses as the string "true", which would hand a shell the word
+    // true and time out ninety seconds later saying the target never answered.
+    if (flags.start && flags.start !== "true") config.previewCommand = flags.start;
+    if (flags["start-cwd"] && flags["start-cwd"] !== "true") {
+      config.previewCommandCwd = abs(flags["start-cwd"]);
+    }
+    const result = await runCapture({
+      config,
+      tourId,
+      id: flags.id && flags.id !== "true" ? flags.id : undefined,
+      force,
+      startTimeoutMs: numberFlag(flags["start-timeout"], 90) * 1000,
+    });
+    console.log(formatCaptureResult(result));
+    // Nonzero on an unresolved address, and that is the whole point of the command: a surface that
+    // is not there fails HERE, in a harness, rather than lighting the wrong element in front of the
+    // one person who trusted the review.
+    process.exit(result.ok ? 0 : 1);
   }
 
   if (cmd === "deps") {
@@ -278,7 +333,7 @@ async function main() {
     return;
   }
 
-  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|answers|skills|graph|scope|init> [dir] [--port N] [--force] [--kit]`);
+  console.error(`pantry: unknown command "${cmd}"\nusage: pantry <serve|check|doctor|deps|capture|answers|skills|graph|scope|init> [dir] [--port N] [--force] [--kit]`);
   process.exit(1);
 }
 

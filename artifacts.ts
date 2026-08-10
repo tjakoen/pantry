@@ -3,8 +3,14 @@
 // session — deposits evidence (screenshots, audit reports, diffs) into the host's artifacts dir;
 // PANTRY renders that dir read-only at /artifacts. doctor.ts's newestAuditReport already treats
 // artifacts/ as a first-class scan target (alongside reports/ and docs/) — this module is the
-// general-purpose surface over the same convention. PANTRY writes NOTHING here — it runs no model
-// and this module is pure reads: it walks the dir and stats files, it never mutates them.
+// general-purpose surface over the same convention. This module is pure reads: it walks the dir and
+// stats files, it never mutates them.
+//
+// **The sentence that used to be here said PANTRY writes NOTHING in this dir, and that stopped being
+// true in P4d.** `pantry capture` writes screenshots and a manifest under `<artifactsDir>/reviews/<id>/`.
+// It is a CLI command and no route reaches it, so the SERVER still writes nothing here and this
+// surface still renders a folder it does not own. Stated rather than left as a comment that quietly
+// became false, which is the failure this project has now shipped twice.
 import { readdir, stat, lstat, realpath } from "node:fs/promises";
 import { join, basename, extname, relative, sep } from "node:path";
 import { existsSync } from "node:fs";
