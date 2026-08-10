@@ -87,6 +87,43 @@ const DROP_RESPONSE_HEADERS = new Set([
   "content-security-policy", "content-security-policy-report-only", "x-frame-options",
 ]);
 
+/**
+ * Drop a `<meta http-equiv="content-security-policy">` from a page PANTRY is injecting into.
+ *
+ * The response HEADER is already dropped a few lines up, for reasons stated there. This is the same
+ * decision applied to the same policy expressed the other way, and leaving it would mean the two
+ * disagreed: a page whose CSP arrives in markup would keep enforcing `script-src` against tags PANTRY
+ * had just added, and the visible symptom would be a tour that does not start with no failed request
+ * to point at. Only the meta form, only on a page being injected into, only on loopback.
+ */
+export function stripMetaCsp(html: string): string {
+  // Quote-aware, because `[^>]*>` stops at the FIRST `>` and a CSP value may legally contain one.
+  // A reviewer produced `content="script-src 3 > 2 self"`, where the naive pattern cut the tag in
+  // half and left ` 2 self">` as loose text in the head — removing too little and corrupting the
+  // document in the same edit. Matching a tag means honouring its quoting, not scanning for a
+  // bracket.
+  return html.replace(/<meta\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi, (tag, attrs: string) =>
+    isCspMeta(attrs) ? "" : tag,
+  );
+}
+
+/**
+ * Does this attribute list declare a CSP, as an ATTRIBUTE rather than as text somewhere in the tag?
+ *
+ * Testing the whole tag for the pattern removed `<meta name="note" content="we set
+ * http-equiv=Content-Security-Policy at the edge">`, which is a tag that sets no policy at all and
+ * describes one. Removing too much and removing too little are the same mistake here, made from
+ * opposite ends: one is a policy that keeps enforcing, the other is a sentence that disappears.
+ */
+function isCspMeta(attrs: string): boolean {
+  for (const m of attrs.matchAll(/([\w-]+)\s*=\s*("[^"]*"|'[^']*'|[^\s>]*)/g)) {
+    if (m[1]!.toLowerCase() !== "http-equiv") continue;
+    const value = m[2]!.replace(/^["']|["']$/g, "").trim().toLowerCase();
+    if (value === "content-security-policy" || value === "content-security-policy-report-only") return true;
+  }
+  return false;
+}
+
 /** Insert `tag` immediately before the LAST closing body tag; append when a response has none. */
 export function injectBeforeBodyClose(html: string, tag: string): string {
   const at = html.toLowerCase().lastIndexOf("</body>");
@@ -184,9 +221,173 @@ function stripSecureAttribute(cookie: string): string {
     .join(";");
 }
 
+/**
+ * Keep only the rules of GRAIN's `ai.css` that cannot reach the app being reviewed.
+ *
+ * **This exists because the comment it replaces was false, and a reviewer read the file the comment
+ * was about.** The claim was that every rule in the composed tour stylesheet is scoped to names a
+ * foreign app does not use. `ai.css` contains `html[data-xray] [data-surface] { outline: … }` — and
+ * `data-surface` is not a name the app does not use, it is the ENTIRE Tier 1 contract, the one thing
+ * PANTRY asks a project to add. The rule is inert today because nothing PANTRY injects sets
+ * `data-xray`, so the leak needed the reviewed app to set that attribute itself. That is a thin
+ * reason to be safe, and it is not the reason the comment gave.
+ *
+ * So the bound is enforced instead of asserted: a rule whose selector reaches for `html`, `body` or
+ * any `data-` attribute is dropped. What survives is the spotlight — `.ai-lamp`, `.ai-backdrop`,
+ * `.ai-spotlit` and their keyframes — which is all the tour layer ever needed from this file. The
+ * dropped rules are GRAIN's own dev overlay and its AI presence indicator, neither of which exists
+ * on a page PANTRY is proxying.
+ */
+export function spotlightRulesOnly(css: string): string {
+  const kept: string[] = [];
+  let i = 0;
+  while (i < css.length) {
+    const open = css.indexOf("{", i);
+    if (open === -1) break;
+    // Brace-matched, so a nested block (`@media`, `@keyframes`) is taken whole rather than cut at
+    // its first inner close.
+    let depth = 0;
+    let end = open;
+    for (; end < css.length; end++) {
+      if (css[end] === "{") depth++;
+      else if (css[end] === "}" && --depth === 0) break;
+    }
+    const selector = css.slice(i, open);
+    const block = css.slice(i, Math.min(end + 1, css.length));
+    // The selector as the author wrote it, with comments taken out so a `[data-…]` mentioned in
+    // prose above a rule does not condemn it.
+    const bare = selector.replace(/\/\*[\s\S]*?\*\//g, "").trim();
+    const reachesTheApp = /\[data-/.test(bare) || /(^|[,\s>+~])(html|body)\b/i.test(bare);
+    if (!reachesTheApp) kept.push(block.replace(/^\s*/, ""));
+    i = end + 1;
+  }
+  return kept.join("\n");
+}
+
+/**
+ * The one absolute import CRUMB's browser client carries.
+ *
+ * `crumb-live.js` is a host-served asset, so it cannot import a `.ts` sibling and reaches grain's
+ * spotlight by absolute path instead. On a GRAIN host that path is correct and nothing here runs. On
+ * a non-GRAIN target it is a request fired at the REVIEWED APP's root for a file that app has never
+ * heard of, which is the whole reason Tier 1 needed PANTRY to carry CRUMB rather than expect it.
+ */
+export const CRUMB_SPOTLIGHT_IMPORT = "/scripts/ai-spotlight.js";
+
+/**
+ * Move CRUMB's one absolute import onto `base`, so the client PANTRY serves loads the spotlight from
+ * PANTRY rather than from the app being reviewed.
+ *
+ * The same move as `rebasePantryCss`, for the same reason and with the same limit: PANTRY is the one
+ * that moved off the root, so PANTRY is the one that pays. It is a rebase and not a fork — the bytes
+ * are the package's, one specifier long.
+ *
+ * Deliberately NOT a general "rewrite every absolute import" pass. A second absolute import would be
+ * a new dependency of the tour client on its host, and rewriting it silently is how PANTRY would end
+ * up serving something it had never looked at. `crumbLiveAbsoluteImports` exists so a test can fail
+ * loudly on that day instead.
+ */
+export function rebaseCrumbLive(js: string, base: string): string {
+  if (!base) return js;
+  // All three literal forms, not just the one the package happens to use today. A rebase that only
+  // knows double quotes and a guard that only looks for double quotes share a blind spot, and the
+  // failure they would share is silent: the import survives the rebase unchanged and fires at the
+  // reviewed app's root.
+  return js
+    .replaceAll(`"${CRUMB_SPOTLIGHT_IMPORT}"`, `"${base}${CRUMB_SPOTLIGHT_IMPORT}"`)
+    .replaceAll(`'${CRUMB_SPOTLIGHT_IMPORT}'`, `'${base}${CRUMB_SPOTLIGHT_IMPORT}'`)
+    .replaceAll(`\`${CRUMB_SPOTLIGHT_IMPORT}\``, `\`${base}${CRUMB_SPOTLIGHT_IMPORT}\``);
+}
+
+/**
+ * Every root-absolute module specifier in a piece of browser JS, plus a marker for any import this
+ * cannot read statically.
+ *
+ * The drift guard's eyes: the rebase above is only honest while this returns exactly the one path it
+ * knows how to move. A COMPUTED dynamic import cannot be resolved by reading, so it comes back as
+ * `"(computed)"` rather than being skipped — the guard then fails, which is the correct outcome,
+ * because a specifier nobody can read is a specifier nobody can promise was rebased.
+ */
+export function crumbLiveAbsoluteImports(js: string): string[] {
+  const found = new Set<string>();
+  const QUOTED = "[\"'`](/[^\"'`]*)[\"'`]";
+  for (const m of js.matchAll(new RegExp(String.raw`\bfrom\s*${QUOTED}`, "g"))) found.add(m[1]!);
+  for (const m of js.matchAll(new RegExp(String.raw`\bimport\s*\(\s*${QUOTED}\s*\)`, "g"))) found.add(m[1]!);
+  for (const m of js.matchAll(new RegExp(String.raw`\bimport\s*${QUOTED}`, "g"))) found.add(m[1]!);
+  // `import(` whose argument does not start with a quote is built at runtime. Not `import.meta`,
+  // which is not an import at all.
+  for (const m of js.matchAll(/\bimport\s*\(\s*(.)/g)) {
+    if (!`"'\``.includes(m[1]!)) found.add("(computed)");
+  }
+  return [...found];
+}
+
+/**
+ * Does this page already run CRUMB itself?
+ *
+ * A GRAIN host serves `crumb-live.js` from its own root, and injecting a second copy would put two
+ * tour clients on one page: two lamps, two dialogs, and both driving the SAME `crumb:active` key in
+ * sessionStorage, so a step advanced in one would be re-read by the other. The failure would look
+ * like a flickering tour rather than like a duplicate script, which is the kind of symptom nobody
+ * traces back to the proxy.
+ *
+ * A string check on the target's HTML, and deliberately so: what matters is whether the browser will
+ * load that module, and the script tag is the only place that is decided. But "a string check" is
+ * where the first version of this was wrong in BOTH directions, and both were found by a reviewer:
+ *
+ *   - **A bundled filename is hashed.** `crumb-live.8f3a91c2.js` is the ordinary shape of a
+ *     production asset and did not match a pattern anchored on the exact name, so a GRAIN host with
+ *     a bundler got a second tour client — the precise failure the paragraph above describes.
+ *   - **A commented-out or inert tag is not a script that runs.** `<!-- <script src=…> -->` and
+ *     `type="text/plain"` both looked like CRUMB, so PANTRY withheld its own client and Tier 1
+ *     vanished with nothing on screen to say why.
+ *
+ * Both directions matter and they fail differently: the false negative is visible (a flickering
+ * tour), the false positive is silent (no tour at all). The silent one is why this walks script tags
+ * rather than pattern-matching the document.
+ */
+export function pageAlreadyRunsCrumb(html: string): boolean {
+  const live = html.replace(/<!--[\s\S]*?-->/g, "");
+  for (const tag of live.matchAll(/<script\b([^>]*)>/gi)) {
+    const attrs = tag[1] ?? "";
+    const src = /\bsrc\s*=\s*["']([^"']*)["']/i.exec(attrs);
+    if (!src) continue;
+    // The FILENAME must begin with `crumb-live`, and may then carry a bundler's hash in either of
+    // the two shapes bundlers use. Anchored at the path segment on purpose: matching anywhere would
+    // make `not-crumb-liveness.js` count, and a false positive here is the silent failure — PANTRY
+    // withholds its client and Tier 1 disappears with nothing to say why. A bundler that renames the
+    // file to something not starting with `crumb-live` defeats this, and would show as a doubled
+    // tour rather than as a missing one, which is the direction worth being wrong in.
+    const file = (src[1]!.split(/[?#]/)[0] ?? "").split("/").pop() ?? "";
+    if (!/^crumb-live(?:[.-][\w]+)*\.js$/i.test(file)) continue;
+    // An absent type is a classic script; `module` is how CRUMB is loaded. Anything else (a
+    // template, `text/plain`, an import map) is markup the browser will not execute.
+    const type = (/\btype\s*=\s*["']?([^"'\s>]*)/i.exec(attrs)?.[1] ?? "").toLowerCase();
+    if (type === "" || type === "module" || type === "text/javascript" || type === "application/javascript") return true;
+  }
+  return false;
+}
+
+/**
+ * Is this the request for a PAGE, as opposed to something the page then asks for?
+ *
+ * Only a read can be one, which is the part `Accept` cannot tell you: a form POST accepts HTML back
+ * and is not a document fetch. `Sec-Fetch-Dest` is exact where a browser sends it; `Accept` is the
+ * fallback for everything that does not, which includes curl and every test in this repo.
+ */
+export function isDocumentRequest(req: Request): boolean {
+  if (req.method !== "GET" && req.method !== "HEAD") return false;
+  const dest = req.headers.get("sec-fetch-dest");
+  if (dest) return dest === "document" || dest === "iframe" || dest === "frame";
+  return (req.headers.get("accept") ?? "").includes("text/html");
+}
+
 export interface PreviewProxyOptions {
-  /** the exact tag injected before `</body>` on HTML responses; omit to inject nothing */
-  inject?: string;
+  /** the tags injected before `</body>` on HTML responses; omit to inject nothing. A function is
+   *  handed the page and returns what to insert, so a caller can decide per response (whether the
+   *  page already runs CRUMB, say) without this module having to know why. Return "" to inject
+   *  nothing into that page. */
+  inject?: string | ((html: string) => string);
 }
 
 /**
@@ -215,6 +416,22 @@ export async function proxyToPreview(
   const headers = new Headers();
   for (const [key, value] of req.headers) {
     if (!DROP_REQUEST_HEADERS.has(key.toLowerCase())) headers.append(key, value);
+  }
+  // A conditional request for a DOCUMENT is dropped when PANTRY has something to inject, so the
+  // target always sends a body there is somewhere to inject into. Without this, a browser holding a
+  // page from an earlier run revalidates, the target answers 304 against its own unchanged bytes, and
+  // the browser reuses a copy carrying whatever PANTRY injected last time. `no-store` on the way out
+  // stops that happening again; this is what unsticks the copy already in the cache.
+  //
+  // "Document" is the whole load-bearing word, and the first version got it from `Accept` alone.
+  // A browser form submission carries `Accept: text/html` too, so a POST with the standard
+  // create-if-absent precondition `If-None-Match: *` had that precondition quietly removed on the
+  // way upstream, turning an atomic create into an unconditional overwrite. Read requests only, and
+  // `Sec-Fetch-Dest` where the browser sends it, because that header says what the request IS rather
+  // than what the caller would accept back.
+  if (opts.inject && isDocumentRequest(req)) {
+    headers.delete("if-none-match");
+    headers.delete("if-modified-since");
   }
   // Say where the request really came from, in the terms a framework already understands. Some
   // servers build absolute URLs from these, and a wrong one sends the browser off PANTRY's origin.
@@ -278,7 +495,29 @@ export async function proxyToPreview(
   if (!read.complete) {
     return new Response(read.body, { status: upstream.status, statusText: upstream.statusText, headers: outHeaders });
   }
-  const html = injectBeforeBodyClose(new TextDecoder().decode(read.bytes), opts.inject!);
+  const source = new TextDecoder().decode(read.bytes);
+  const tags = typeof opts.inject === "function" ? opts.inject(source) : opts.inject!;
+  // A page PANTRY changed must not be cached, and this was found by the change not appearing.
+  //
+  // A production build is what gets reviewed, deliberately, and a production build sets long cache
+  // headers and a strong ETag. Both describe the UPSTREAM bytes. The moment PANTRY injects, the
+  // validator is a lie about what was served: the tags can change between one run and the next while
+  // the ETag does not, so the browser keeps serving a page carrying a previous run's client and
+  // revalidation agrees with it. The symptom is the worst kind available to a review — the reviewer
+  // is looking at an older build of the review layer and nothing on screen says so.
+  //
+  // Only on the injected response. Scripts, images and fonts stream through with their caching
+  // intact, which is most of what makes the proxy feel like the app rather than like a proxy.
+  if (tags) {
+    outHeaders.delete("etag");
+    outHeaders.delete("last-modified");
+    outHeaders.set("cache-control", "no-store");
+  }
+  // An empty decision is a real one — a page that already runs CRUMB gets nothing added — and it must
+  // still return the bytes rather than falling through to a re-read of a stream already consumed.
+  // Unmodified in that case, meta CSP included: nothing was added for it to block.
+  if (!tags) return new Response(source, { status: upstream.status, statusText: upstream.statusText, headers: outHeaders });
+  const html = injectBeforeBodyClose(stripMetaCsp(source), tags);
   return new Response(html, { status: upstream.status, statusText: upstream.statusText, headers: outHeaders });
 }
 

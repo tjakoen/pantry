@@ -21,6 +21,7 @@
   const demosGroup = shell.querySelector("[data-demos-group]");
   const stepsGroup = shell.querySelector("[data-steps-group]");
   const stepList = shell.querySelector("[data-steps]");
+  const sourceNote = shell.querySelector("[data-tour-source]");
   const recordBtn = shell.querySelector("[data-record]");
   const recordStatus = shell.querySelector("[data-record-status]");
 
@@ -306,10 +307,20 @@
     tourList.replaceChildren(li);
   }
 
+  // ── which server answers for tours ────────────────────────────────────────
+  // Read, not discovered. The rail used to probe the project's /crumb/tours.json and accept any 2xx,
+  // which an SPA catch-all answering 200 text/html satisfies without serving a single tour — and
+  // that is the shape of the projects Tier 1 exists to reach. The decision is PANTRY's now
+  // (`resolveToursSource` in app.ts), where it can check a content type and a parsed body, and where
+  // a test can reach it. The client reads one attribute.
+  const toursBase = shell.dataset.toursBase || null;
+  const toursAreOurs = shell.dataset.toursSource === "pantry";
+
   const tourCache = new Map();
   async function loadTour(id) {
+    if (!toursBase) return null;
     if (tourCache.has(id)) return tourCache.get(id);
-    const p = fetch(`/crumb/tours/${encodeURIComponent(id)}.json`)
+    const p = fetch(`${toursBase}/tours/${encodeURIComponent(id)}.json`, { headers: { accept: "application/json" } })
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
     tourCache.set(id, p);
@@ -356,20 +367,29 @@
 
   (async () => {
     try {
-      const res = await fetch("/crumb/tours.json");
-      if (!res.ok) return empty("This project does not serve tours. The frame is still live, and a step's verify line is something you perform.");
+      const ours = toursAreOurs;
+      if (!toursBase) return empty("Neither this project nor PANTRY serves tours. The frame is still live, and a step's verify line is something you perform — that is Tier 0, and it is a real review.");
+      const res = await fetch(`${toursBase}/tours.json`, { headers: { accept: "application/json" } });
+      if (!res.ok) return empty("The tour manifest stopped answering between one fetch and the next.");
       const tours = await res.json();
-      if (!Array.isArray(tours) || tours.length === 0) return empty("No tours in this project yet.");
+      if (!Array.isArray(tours) || tours.length === 0) return empty(ours ? "No tours in PANTRY's own tours folder yet." : "No tours in this project yet.");
+      // Say WHOSE tours these are. A reviewer who edits a step will otherwise look for the file in
+      // the project, and on Tier 1 it is not there — it lives in the repo running PANTRY, which is
+      // the arrangement that let the project stay untouched in the first place.
+      // Guarded, because a stale cached copy of this script against newer markup would otherwise
+      // throw here and be reported by the catch below as a manifest that could not be read, which is
+      // a message about the wrong thing entirely.
+      if (ours && sourceNote) sourceNote.textContent = "Tours served by PANTRY, from the reviewing repo. The project itself carries none.";
       const reviews = tours.filter((t) => t.mode === "dev");
       const demos = tours.filter((t) => t.mode !== "dev");
-      if (reviews.length === 0) empty("No review tours in this project. The demo tours below are product walkthroughs.");
+      if (reviews.length === 0) empty(ours ? "No review tours in PANTRY's tours folder. The demo tours below are product walkthroughs." : "No review tours in this project. The demo tours below are product walkthroughs.");
       else renderTours(tourList, reviews, true);
       if (demos.length > 0) {
         renderTours(demoList, demos, false);
         demosGroup.hidden = false;
       }
     } catch {
-      empty("Could not reach the project's tour manifest. Is it still running?");
+      empty("Could not read a tour manifest from either the project or PANTRY. Is the project still running?");
     }
   })();
 })();

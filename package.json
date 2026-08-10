@@ -11,6 +11,7 @@
   "homepage": "https://tjakoen.github.io/pantry",
   "dependencies": {
     "@tjakoen/batch": "^0.2.0",
+    "@tjakoen/crumb": "^0.1.9",
     "@tjakoen/grain": "^0.1.12",
     "@tjakoen/mill": "^0.2.0",
     "@tjakoen/proof": "^0.1.2",

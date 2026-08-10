@@ -49,6 +49,7 @@ const cfg = (): ResolvedPantryConfig => ({
   artifactsDir: join(host, "artifacts"),
   runsDir: join(host, "artifacts", "runs"),
   previewTarget: null,
+  toursDir: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

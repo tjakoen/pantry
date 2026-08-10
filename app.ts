@@ -18,10 +18,18 @@ import { renderGrainDocument } from "@tjakoen/mill/adapters/grain/grain-adapter.
 import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
+// CRUMB, carried rather than expected (plans/pantry-review-layer.md P4). PANTRY mounts the tour DATA
+// routes and serves the client + stylesheet as its own assets, so a review can be walked on a project
+// that has never heard of CRUMB. This is the SAME parser the GRAIN host uses — the plan's "one parser,
+// never a second" rule is kept by importing crumb's, not by writing one here.
+import { createCrumbRoutes } from "@tjakoen/crumb/routes.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
-import { PANTRY_PREFIX, proxyToPreview, rebasePantryCss, rebasePantryHtml, resolvePreviewTarget, withPantryBase } from "./preview.ts";
+import {
+  PANTRY_PREFIX, pageAlreadyRunsCrumb, proxyToPreview, rebaseCrumbLive, rebasePantryCss, spotlightRulesOnly,
+  rebasePantryHtml, resolvePreviewTarget, withPantryBase,
+} from "./preview.ts";
 import { buildKnowledge, renderLlmsTxt } from "./retrieval.ts";
 import { buildMapPayload, type MapPayload } from "./map.ts";
 import { buildDecisionsPayload, type DecisionsPayload, type DecisionRequest } from "./decisions.ts";
@@ -47,6 +55,10 @@ const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 const GRAIN_ROOT = dirname(fileURLToPath(import.meta.resolve("@tjakoen/grain/PLAN.md")));
 const PROOF_CSS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board.css"));
 const BOARD_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/proof/board-live.js"));
+// CRUMB's browser half, resolved as a package for the same reason everything else here is: the files
+// travel inside `@tjakoen/crumb` and PANTRY serves them as its own assets under the reserved prefix.
+const CRUMB_LIVE_JS = fileURLToPath(import.meta.resolve("@tjakoen/crumb/crumb-live.js"));
+const CRUMB_CSS = fileURLToPath(import.meta.resolve("@tjakoen/crumb/crumb.css"));
 // The standards docs are canonically homed in the PORTFOLIO package (tjakoen.github.io/standards/,
 // since the 2026-07-09 fold-in) — resolved like the framework docs, so pantry renders them from the
 // installed portfolio package in any host, not a sibling of the monorepo. A host that doesn't install
@@ -143,17 +155,61 @@ export function buildDocCollections(config: ResolvedPantryConfig): MillCollectio
   ];
 }
 
+/** Where the review rail should read tours from: the project's own mount, PANTRY's, or nowhere. */
+export type ToursSource = "project" | "pantry" | "none";
+
+/**
+ * Decide, on the SERVER, which mount answers for tours.
+ *
+ * **This was the rail's job until a reviewer broke it, twice, in the same way.** The client probed
+ * the project's `/crumb/tours.json` and accepted any 2xx as proof. A project that answers unmatched
+ * paths with `200 text/html` — the ordinary SPA catch-all, and precisely the kind of app Tier 1
+ * exists to reach — made the wrong candidate win. PANTRY's own tours were then never tried, the
+ * `res.json()` on an HTML body threw, and the rail reported that neither source had tours while one
+ * of them was serving them correctly the whole time.
+ *
+ * Moving it here fixes more than the missing content-type check. A probe in the browser is reachable
+ * by no test in this repo, which is why it shipped wrong; a probe here is a function with arguments.
+ * The check is what it always should have been: a 2xx, a JSON content type, and a body that really
+ * parses to an array. Anything short of all three is not a manifest, whatever its status line said.
+ *
+ * The project always wins where it genuinely answers, because a GRAIN host owns its own tours and a
+ * copy carried by PANTRY would be a second source that disagrees the first time either is edited.
+ */
+export async function resolveToursSource(
+  previewTarget: string | null,
+  hasOwnTours: boolean,
+  fetchImpl: typeof fetch = fetch,
+): Promise<ToursSource> {
+  if (previewTarget) {
+    try {
+      const res = await fetchImpl(`${previewTarget}/crumb/tours.json`, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(TOURS_PROBE_TIMEOUT_MS),
+      });
+      const type = res.headers.get("content-type") ?? "";
+      if (res.ok && type.includes("json") && Array.isArray(await res.json())) return "project";
+    } catch {
+      // Unreachable, slow, or not JSON. All three mean the same thing here: not a manifest.
+    }
+  }
+  return hasOwnTours ? "pantry" : "none";
+}
+
+/** How long the project gets to answer the manifest probe. It is loopback and the review page is
+ *  waiting on it, so this is short on purpose: a project that cannot answer in a second has told us
+ *  what we needed to know. */
+export const TOURS_PROBE_TIMEOUT_MS = 1_000;
+
 // The review shell (P1): PANTRY's chrome drawn AROUND the project it is proxying. The project sits
 // in a same-origin frame at the root, so it is the real running app rather than a picture of one,
 // and PANTRY keeps the rail beside it.
 //
-// The rail reads the reviewed project's OWN tour manifest, fetched through the proxy at
-// /crumb/tours.json. That is the whole reason this needs no new config key: a host that mounts CRUMB
-// answers it, a host that does not returns a 404 and the rail quietly carries only its navigation.
-// PANTRY never parses a tour here; CRUMB keeps drawing the card and the lamp inside the frame, which
-// is the call the plan left open and the owner settled on 2026-08-10 — the standalone path for a
-// GRAIN host with no PANTRY alongside stays intact.
-function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
+// Which mount the rail reads tours from is decided above and stamped into the markup, so the client
+// carries no discovery logic at all. PANTRY never parses a tour either way; CRUMB keeps drawing the
+// card and the lamp inside the frame, which is the call the plan left open and the owner settled on
+// 2026-08-10 — the standalone path for a GRAIN host with no PANTRY alongside stays intact.
+function reviewBody(previewTarget: string, surfaces: PantrySurfaces, tours: ToursSource): string {
   const railLinks = [
     surfaces.plans && [`${PANTRY_PREFIX}/plans`, "Plans"],
     surfaces.runs && [`${PANTRY_PREFIX}/runs`, "Runs"],
@@ -163,7 +219,10 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
     surfaces.timeline && [`${PANTRY_PREFIX}/timeline`, "Timeline"],
   ].filter(Boolean) as [string, string][];
 
-  return `<div class="pantry-review" data-rail="open">
+  // The tours mount, resolved server-side and stamped. `none` is a real answer and gets an empty
+  // base rather than a missing attribute, so the client reads one thing in every case.
+  const toursBase = tours === "project" ? "/crumb" : tours === "pantry" ? `${PANTRY_PREFIX}/crumb` : "";
+  return `<div class="pantry-review" data-rail="open" data-tours-base="${escapeHtml(toursBase)}" data-tours-source="${tours}">
   <aside class="pantry-review__rail" aria-label="Review rail">
     <div class="pantry-review__railhead">
       <b class="pantry-review__title">Review</b>
@@ -177,8 +236,12 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces): string {
     <section class="pantry-review__group" aria-labelledby="pantry-review-tours">
       <h2 class="pantry-review__grouptitle" id="pantry-review-tours">Reviews</h2>
       <ol class="pantry-review__tours" data-tours>
-        <li class="pantry-review__empty">Looking for tours in the reviewed project…</li>
+        <li class="pantry-review__empty">Looking for tours…</li>
       </ol>
+      <!-- Whose tours these are. Empty on a GRAIN host, where the project answers for its own and
+           the question does not arise; filled on Tier 1, where the walk lives in the repo running
+           PANTRY and a reviewer who goes looking for the file in the project will not find it. -->
+      <p class="pantry-review__note" data-tour-source></p>
     </section>
     <!-- A demo tour is product work: it shows someone round the app. A review tour is dev work: it
          asks someone to check a change. They share a file format and nothing else, and mixing them
@@ -1216,6 +1279,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   artifactsDir: join(dirname(plansDir), "artifacts"),
   runsDir: join(dirname(plansDir), "artifacts", "runs"),
   previewTarget: null,
+  toursDir: null,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 
@@ -1249,6 +1313,11 @@ export function createPantryHandler(opts: PantryOptions) {
   // invisible and started being aimed at the reviewed project's root instead.
   const fontsRoot = resolve(join(grainRoot, "fonts"));
   const componentCss = createStyleBundle(bunRuntime, join(grainRoot, "components"));
+  // The two GRAIN sheets the tour layer needs on a foreign host: the token vocabulary CRUMB's card is
+  // written against, and the spotlight's own geometry. Read from `grainRoot` rather than resolved at
+  // module scope so a host that overrides grain's location gets its own copy of both.
+  const GRAIN_VARIABLES_CSS = join(grainRoot, "styles", "variables.css");
+  const GRAIN_AI_CSS = join(grainRoot, "ai", "ai.css");
 
   // Every MILL collection this install serves (framework docs + host docs); /standards is appended
   // below for the router but stays a surface, not a brain doc collection. buildDocCollections is the
@@ -1309,6 +1378,44 @@ export function createPantryHandler(opts: PantryOptions) {
   }
   const reviewClientTag = `<script src="${PANTRY_PREFIX}/pantry-review-client.js" defer></script>`;
 
+  // --- Tier 1: PANTRY carries CRUMB into a project that has never heard of it (P4) ---------------
+  // Tier 0 needs nothing here: the app runs in the frame and a `verify:` line is something a human
+  // performs. Tier 1 is the step up to ADDRESSABILITY — a step names a `data-surface` and the lamp
+  // lights it — and that needs a tour client in the page. On a GRAIN host the host already puts one
+  // there. On anything else, PANTRY does, from its own prefix, and the reviewed project still ships
+  // nothing and installs nothing.
+  //
+  // Three tags rather than the one P0 promised, and worth saying plainly instead of letting the
+  // count drift: the stylesheet, the prefix, and the client. The prefix is set from an inline script
+  // rather than by rewriting the `<html>` tag, which keeps the injection to ONE insertion point —
+  // still just before `</body>` — instead of teaching the proxy to edit the document element too.
+  //
+  // **The token sheet goes first, and finding out why took a walk.** `crumb.css` is written against
+  // GRAIN's token vocabulary, so on a host that defines none of those names the card renders with no
+  // background, no border and no radius: transparent text lying over the app, which a reviewer reads
+  // as broken rather than as unstyled. GRAIN's `variables.css` is the fix and it is a safe one for a
+  // reason worth stating rather than assuming — it declares custom properties and `@font-face` and
+  // NOTHING else, no element rules at all, so every name it defines is a name the reviewed app never
+  // reads. That is also the honest answer to the theme-leak question for a non-GRAIN target: there is
+  // nothing to leak into. A GRAIN target is the case where the question stays open, and a GRAIN
+  // target gets none of these tags anyway.
+  const crumbPrefix = `${PANTRY_PREFIX}/crumb`;
+  const crumbTags = config.toursDir
+    ? `<link rel="stylesheet" href="${PANTRY_PREFIX}/tour.css">`
+      + `<script>document.documentElement.dataset.crumbPrefix="${crumbPrefix}"</script>`
+      + `<script type="module" src="${PANTRY_PREFIX}/crumb-live.js"></script>`
+    : "";
+  const crumbRoutes = config.toursDir ? createCrumbRoutes({ toursDir: config.toursDir, prefix: "/crumb" }) : null;
+  if (previewTarget && crumbTags) {
+    console.log(`[pantry] tours served at ${crumbPrefix} from ${config.toursDir} · injected into pages that do not run CRUMB themselves`);
+  }
+  // Decided per PAGE, not per boot, because "does this project run CRUMB" is a fact about the
+  // document rather than about the config: one route of a host can mount it and another not. Two
+  // clients on one page would drive the same `crumb:active` key from two places, and the symptom is a
+  // flickering tour rather than a duplicated script.
+  const injectInto = (html: string): string =>
+    crumbTags && !pageAlreadyRunsCrumb(html) ? crumbTags + reviewClientTag : reviewClientTag;
+
   // PANTRY's own routing, taking the path with any reserved prefix ALREADY stripped. Returns null for
   // "not one of mine" so the caller decides what that means: a 404 with the proxy off, and a pass to
   // the target with it on.
@@ -1335,6 +1442,33 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(rebaseBoardLive(await bunRuntime.readFile(BOARD_LIVE_JS), base), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-review-client.js")  // the one tag injected into a proxied page (preview.ts)
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-review-client.js")), { headers: { "Content-Type": "text/javascript" } });
+    // CRUMB's browser half, served by PANTRY so a non-GRAIN project needs neither (P4). The client's
+    // one absolute import is the spotlight, which PANTRY already serves at /scripts/ — rebased here
+    // because under the prefix that path would otherwise be fired at the reviewed app's root.
+    if (crumbRoutes && path === "/crumb-live.js")
+      return new Response(rebaseCrumbLive(await bunRuntime.readFile(CRUMB_LIVE_JS), base), { headers: { "Content-Type": "text/javascript" } });
+    // ONE stylesheet for the whole tour layer, composed here and in this order, because that order is
+    // the cascade and splitting it across three links would put the cascade in the injection string.
+    //
+    // The composition is the finding rather than the plumbing. `crumb.css` alone renders a card with
+    // no background, no border and no radius on a host that defines none of GRAIN's tokens, and
+    // `ai.css` alone is what the lamp's geometry lives in — without it the lamp is a static div in
+    // the body flow, sitting hundreds of pixels from the element it claims to be lighting while every
+    // other part of the walk looks correct. Both were found by looking at the screen; neither is
+    // visible from the code, which says only that a stylesheet was served.
+    //
+    // Safe on a foreign app because the unsafe part is REMOVED rather than asserted to be absent.
+    // The first version of this comment claimed all three files were scoped to names the reviewed app
+    // does not use, and a reviewer found `html[data-xray] [data-surface]` sitting in `ai.css` — where
+    // `data-surface` is the one attribute PANTRY asks a project to add. `spotlightRulesOnly` drops
+    // every rule that reaches for `html`, `body` or a `data-` attribute, so what is served is the
+    // lamp and nothing else. `variables.css` and `crumb.css` go through whole: the first is custom
+    // properties and `@font-face`, the second is `.crumb-*` classes, and both are checked by test.
+    if (crumbRoutes && path === "/tour.css") {
+      const [tokens, ai, card] = await Promise.all([GRAIN_VARIABLES_CSS, GRAIN_AI_CSS, CRUMB_CSS].map((f) => bunRuntime.readFile(f)));
+      const composed = [tokens, spotlightRulesOnly(ai!), card].join("\n");
+      return new Response(rebasePantryCss(composed, base), { headers: { "Content-Type": "text/css" } });
+    }
     if (path === "/pantry-cmdk.js")   // ⌘K palette (piece 9b) — reads its index from /knowledge.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-cmdk.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-review.js")  // the review shell's rail (P1) — reads the project's own tours
@@ -1458,8 +1592,10 @@ export function createPantryHandler(opts: PantryOptions) {
     }
     // The review shell (P1). It exists only while the proxy does, because the frame it draws has
     // nothing to point at otherwise.
-    if (previewTarget && path === "/review")
-      return html(pantryPage("Review", reviewBody(previewTarget, surfaces), surfaces, { review: true, fullBleed: true }));
+    if (previewTarget && path === "/review") {
+      const tours = await resolveToursSource(previewTarget, !!crumbRoutes);
+      return html(pantryPage("Review", reviewBody(previewTarget, surfaces, tours), surfaces, { review: true, fullBleed: true }));
+    }
 
     if (path === "/about") return html(page("About", aboutBody()));
     if (surfaces.docs && path === "/docs") return html(page("Docs", docsBody(docCollections)));
@@ -1478,7 +1614,12 @@ ${body}`));
     if (catalog && path === "/catalog")
       return html(await catalog.html());
 
-    // --- mounted layers: PROOF board (/plans*), then MILL (docs + standards) ---
+    // --- mounted layers: CRUMB tour data, PROOF board (/plans*), then MILL (docs + standards) ---
+    // CRUMB serves the tour DATA that the injected client fetches (/crumb/tours.json and
+    // /crumb/tours/<id>.json). It is crumb's own `createCrumbRoutes` over crumb's own loader — the
+    // plan's "one parser, never a second" rule kept by importing the parser rather than by having
+    // none, which is what P1 could get away with when the project always had its own.
+    if (crumbRoutes) { const c = await crumbRoutes(path); if (c) return c; }
     if (surfaces.plans) { const r = await proofRoutes(path); if (r) return fixProofResponse(r); }
     const m = await millRoutes(path); if (m) return m;
     return null;   // not one of PANTRY's — the caller decides (404, or the preview target)
@@ -1506,7 +1647,7 @@ ${body}`));
       return rebasePantryResponse(res, base, inner);
     }
 
-    return proxyToPreview(req, url, previewTarget, { inject: reviewClientTag });
+    return proxyToPreview(req, url, previewTarget, { inject: injectInto });
   };
 }
 

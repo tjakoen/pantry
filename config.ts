@@ -81,6 +81,17 @@ export interface PantryConfig {
    *  it always has. Present → PANTRY's own routes move under /__pantry and the target owns the root,
    *  which is what lets the app's root-relative URLs keep resolving untouched. */
   previewTarget?: string;
+  /** the CRUMB tour folder PANTRY serves ITSELF, so a review can be walked on a project that has
+   *  never heard of CRUMB (plans/pantry-review-layer.md P4, Tier 1); default "./content/tours" when
+   *  that folder exists, and nothing when it does not.
+   *
+   *  **These are the REVIEWING repo's tours, not the reviewed project's.** That is the point rather
+   *  than a limitation: the plan's argument for hosting a review outside the project is that the
+   *  evidence keeps working when the project is not running, and it is also what lets a review be
+   *  written for a repo nobody wants to add a dependency to. A GRAIN host that mounts CRUMB itself
+   *  still wins — the review rail asks the project first and only falls back here — so turning this
+   *  on never takes a project's own tours away from it. */
+  toursDir?: string;
   /** turn individual surfaces off; default every surface on */
   surfaces?: Partial<PantrySurfaces>;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
@@ -118,6 +129,10 @@ export interface ResolvedPantryConfig {
   /** the validated preview-proxy origin, or null when the proxy is off (the default, and the result
    *  of a target that failed validation — a bad value degrades the surface, it never boots a relay) */
   previewTarget: string | null;
+  /** the tour folder PANTRY serves under its own prefix (absolute), or null when there is none.
+   *  Resolved by existence like docsDirs, so a repo with no tours simply has no mount rather than a
+   *  route that 404s on every request. */
+  toursDir: string | null;
   surfaces: PantrySurfaces;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
@@ -162,6 +177,16 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
 
   const decisionsDir = raw.decisionsDir ? abs(cwd, raw.decisionsDir) : join(plansDir, "decisions");
 
+  // An explicit toursDir is honoured whether or not it exists, but a missing one is said out loud.
+  // The mount costs the reviewed project a stylesheet, a client and a no-store on every page, and a
+  // folder that will only ever answer an empty list is not worth any of that silently.
+  const toursDir = raw.toursDir
+    ? abs(cwd, raw.toursDir)
+    : (existsSync(join(cwd, "content", "tours")) ? join(cwd, "content", "tours") : null);
+  if (raw.toursDir && !existsSync(toursDir!)) {
+    console.warn(`[pantry] toursDir ${toursDir} does not exist — the tour mount will serve an empty manifest, and pages will still carry the tour client`);
+  }
+
   return {
     cwd,
     projectName: raw.projectName ?? basename(cwd) ?? "project",
@@ -177,6 +202,11 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     // default under artifactsDir (not cwd) so the ledger rides along with the evidence it cites
     runsDir: raw.runsDir ? abs(cwd, raw.runsDir) : join(artifactsDir, "runs"),
     previewTarget: preview.origin,
+    // An EXPLICIT toursDir is honoured whether or not it exists yet, because a host that named one
+    // has said what it means; the DEFAULT is existence-gated, because auto-mounting a folder nobody
+    // asked for is only defensible while the folder is really there. A missing explicit one warns
+    // above rather than being silently equivalent to having none.
+    toursDir,
     surfaces: { ...ALL_ON, ...raw.surfaces },
     standardsSource: raw.standardsSource,
   };
