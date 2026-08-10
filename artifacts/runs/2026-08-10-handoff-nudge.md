@@ -21,9 +21,11 @@ gates:
   - bash tools/review-gate.sh against the committed tree (portfolio) | silent on nudge 4, lint gate level at 494, exit 0
   - bun cli.ts doctor (pantry, first pass, this report present) | see Gate output
   - bun cli.ts doctor (pantry, second pass) | see Gate output
-  - live watch, spawned session 9f587e3b ticking a real phase box | NUDGE DID NOT FIRE, marker absent
+  - live watch 1, spawned session 9f587e3b ticking a real phase box | NUDGE DID NOT FIRE, marker absent
   - gate self-test after the fix, 13 cases including the replayed failure | all pass, exit 0 every time
   - time bash tools/review-gate.sh (portfolio, whole gate) | 0.71s total, lint gate dominates
+  - live watch 2, spawned session 1d0228b0 closing CRUMB P3 as f2d272d | NUDGE FIRED, marker gained it
+  - hook reach test, marker line removed then turn ended | fired again, text never entered the model's context
 diffstat: 1 file changed, 84 insertions(+), 1 deletion(-) in the portfolio (tools/review-gate.sh),
   committed as 52a848d, then 70 insertions(+), 14 deletions(-) to the same file as ce083eb after the
   gate was watched and did not fire. 8 untracked files deleted (6 PNG, 1 JSON, 1 README). 1 file
@@ -137,6 +139,39 @@ consistent; the tests were written by the person holding the wrong assumption. O
 stake in it. Which is LOOP section 4a's evidence requirement in its strongest form so far: a gate
 nobody has watched fire has not been tested, it has been described.
 
+## The second watch, and the question that dissolved
+
+The fixed gate was put in front of another blind session (`1d0228b0`, closing CRUMB P3 in the same
+plans board). **It fired.** `f2d272d` landed in `.git/handoff-nudged` and the commit-side trigger
+caught exactly the case that had been invisible before, which is `ce083eb` proved in the wild rather
+than against a replayed fixture.
+
+The session did not run `/handoff`, and that is not a failure on its part. Its transcript carries the
+nudge once, as a `hook_success` attachment on its LAST line. **A Stop hook fires when the agent
+stops.** At exit 0 the output is recorded for a person to read and never enters the model's context,
+so there is no turn left in which the session could act, and the message it could not read was
+phrased as an instruction to it.
+
+Measured from the other end as well, rather than argued from documentation: this session removed
+`f2d272d` from the marker, ended its turn, and confirmed both halves at once. The marker had the line
+back, so the gate fired. The text was absent from the next turn's context, so nothing reached the
+model.
+
+So the question the watch was built to answer, whether a session acts on the nudge, has no answer
+because it cannot arise. **The audience was always the human**, which is what the original ask said
+in the first place ("nothing tells a HUMAN to run /handoff") and what the code had quietly drifted
+away from while nobody re-read the sentence. The wording addresses a person now (`60bc56d`), and the
+reasoning lives in the hook rather than only here, because the next person to write a Stop hook in
+this estate will otherwise make the same assumption.
+
+Exit 2 is the only path to the model and it blocks the stop. That trades an advisory gate for one
+that can trap an unattended run in a loop it cannot leave, so it stays at 0. This is a limit of the
+mechanism rather than of this gate, and it applies to nudges 0 through 3 exactly as much.
+
+**Nudge 2 was correct by staying silent**, worth recording because silence and breakage look
+identical from outside: the session wrote its tour in the same turn as the rendered change, which is
+the "already toured this turn" case the trigger is written to skip.
+
 ## Gate output
 
 ```
@@ -232,11 +267,9 @@ in the handoff.
   and it was not answered, because the instruction named this file.
 - **No source code in pantry was read for defects or changed.** The only pantry file this run wrote
   is this report.
-- **The thing the watch was actually for was NOT measured.** The question was whether a session,
-  told nothing, would run `/handoff` on being nudged. The nudge never fired, so the answer is still
-  unknown. What got measured instead is that the trigger was wrong, which is more useful and is not
-  the same result. The next session that closes a phase with the fixed gate in place is the real
-  test, and it has not happened yet.
+- **The thing the first watch was for turned out not to be a measurable question.** Whether a
+  session, told nothing, would run `/handoff` on being nudged. A second watch answered it by making
+  it moot: see the section below.
 - **The 30-commit bound was not removed.** A close that scrolls past it is never nudged, which the
   second reviewer raised and which stands as a known hole. Raising the number trades one arbitrary
   bound for another; the actual fix is the owner's push.
