@@ -210,13 +210,19 @@ export const TOURS_PROBE_TIMEOUT_MS = 1_000;
 // card and the lamp inside the frame, which is the call the plan left open and the owner settled on
 // 2026-08-10 — the standalone path for a GRAIN host with no PANTRY alongside stays intact.
 function reviewBody(previewTarget: string, surfaces: PantrySurfaces, tours: ToursSource): string {
+  // Root-relative, and NOT carrying the prefix themselves. PANTRY rebases its own root-absolute
+  // hrefs on the way out (`rebasePantryResponse`), so a link written with the prefix already on it
+  // gets the prefix a second time and every cockpit link in this rail 404s at
+  // `/__pantry/__pantry/plans`. Shipped that way since P1 and found by a reviewer reading the live
+  // HTML: the header nav two inches above uses root-relative hrefs and was always right, which is
+  // exactly why nobody noticed this half was not.
   const railLinks = [
-    surfaces.plans && [`${PANTRY_PREFIX}/plans`, "Plans"],
-    surfaces.runs && [`${PANTRY_PREFIX}/runs`, "Runs"],
-    surfaces.decisions && [`${PANTRY_PREFIX}/decisions`, "Decisions"],
-    surfaces.decisions && [`${PANTRY_PREFIX}/answers`, "Answers"],
-    surfaces.artifacts && [`${PANTRY_PREFIX}/artifacts`, "Artifacts"],
-    surfaces.timeline && [`${PANTRY_PREFIX}/timeline`, "Timeline"],
+    surfaces.plans && ["/plans", "Plans"],
+    surfaces.runs && ["/runs", "Runs"],
+    surfaces.decisions && ["/decisions", "Decisions"],
+    surfaces.decisions && ["/answers", "Answers"],
+    surfaces.artifacts && ["/artifacts", "Artifacts"],
+    surfaces.timeline && ["/timeline", "Timeline"],
   ].filter(Boolean) as [string, string][];
 
   // The tours mount, resolved server-side and stamped. `none` is a real answer and gets an empty

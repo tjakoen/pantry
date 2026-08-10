@@ -404,6 +404,18 @@ describe("resolveToursSource — a status line is not a manifest", () => {
     expect(await resolveToursSource("http://localhost:1", false, fake)).toBe("none");
   });
 
+  // Every cockpit link in the rail carried the prefix already, and PANTRY rebases its own
+  // root-absolute hrefs on the way out, so every one of them 404'd at /__pantry/__pantry/…. It had
+  // been that way since P1; the header nav beside it was always right, which is why it survived.
+  test("the rail's cockpit links are rebased exactly once", async () => {
+    const handler = createPantryHandler({ plansDir: PLANS, config: configWith(origin, TOURS) });
+    const html = await (await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/review`))).text();
+    expect(html).not.toContain(`${PANTRY_PREFIX}${PANTRY_PREFIX}`);
+    for (const surface of ["plans", "runs", "decisions", "answers", "artifacts"]) {
+      expect(html).toContain(`href="${PANTRY_PREFIX}/${surface}"`);
+    }
+  });
+
   test("the review shell stamps the resolved source, so the client discovers nothing", async () => {
     const handler = createPantryHandler({ plansDir: PLANS, config: configWith(origin, TOURS) });
     const html = await (await handler(new Request(`http://localhost:4400${PANTRY_PREFIX}/review`))).text();
