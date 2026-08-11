@@ -126,7 +126,10 @@ From a session:
 
 ```
 bunx pantry answers                  what has been answered, unread first — read this on WAKE
-bunx pantry answers wait <ref>       block until that question is answered (only while you are alive)
+bunx pantry answers wait <tour>      block until that review card is FINISHED, and get back whatever
+                                     asks it answered (only while you are alive). A <tour>#<ask>
+                                     target waits on that one ask, which is what a decision request's
+                                     ref is; name the TOUR when you are waiting on a walk.
 bunx pantry answers ack <id>         record that you acted on one
 bunx pantry answers record --ref <id> --question "…" --choice "…"
                                      write down an answer that arrived by paste, so one channel stays one

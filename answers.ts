@@ -354,6 +354,105 @@ export function answersFor(log: AnswerLog, ref: string): AnswerEntry[] {
 }
 
 /**
+ * What a wait TARGET matches.
+ *
+ * A ref is `<tour>#<ask>` and a decision card has several of them, so a wait that names one ask blocks
+ * on a question the reviewer may never reach. Measured rather than imagined: a run sat nine and a half
+ * minutes on `review-answer-channel#reads-right` while `#keep-both` — the ask the owner actually
+ * answered — was already on disk two lines above it.
+ *
+ * So a target with no `#` names the TOUR and matches every ask under it. It still matches its own
+ * exact ref too, because a decision request's ref has no `#` either and `pantry answers wait
+ * 2026-08-11-loop-hygiene-thresholds` has to keep meaning the one thing it has always meant. A target
+ * WITH a `#` is the single-ask form, unchanged: it matches that ask and nothing else.
+ */
+export function matchesWaitTarget(ref: string, target: string): boolean {
+  if (target.includes("#")) return ref === target;
+  return ref === target || ref.startsWith(`${target}#`);
+}
+
+/** A bound on the settle below, so a writer that keeps appending cannot hold a run open forever. Ten
+ *  rounds is far more asks than any card carries; it is a backstop, not a budget. */
+const MAX_SETTLE_ROUNDS = 10;
+
+/** Two reads of the log, same entries? Ids and order both, because either one changing means the
+ *  window is still moving. */
+const sameEntries = (a: AnswerEntry[], b: AnswerEntry[]): boolean =>
+  a.length === b.length && a.every((e, i) => e.id === b[i].id);
+
+/**
+ * Wait for the answers to `target` — the tour form, and the one a run should use.
+ *
+ * **What a wait is satisfied BY (owner's call, 2026-08-11).** A wait names the tour, and it ends when
+ * the card is FINISHED, unblocking on whatever asks were actually answered rather than on every ask
+ * the tour declares. The two readings this is not are rejected for opposite reasons: "any answer to
+ * the tour" moves a run on after half a card answered over two sittings, and "every declared ask"
+ * deadlocks on a question the reviewer deliberately skipped.
+ *
+ * **Why that is observable at all**, rather than a rule this file can only hope holds: finishing a
+ * card writes every answered ask in one go, so the finish is a batch of entries sharing a `<tour>#`
+ * prefix and a skipped ask is simply absent from it. The batch IS the signal.
+ *
+ * **The settle, and why it is not paranoia.** Those entries are one POST each — the log's unit is a
+ * decision, not a card — so a poll that lands mid-batch sees a card half written and would hand back
+ * one answer out of two. After the first match this therefore re-reads until the set stops changing.
+ * The settle sleeps past the deadline on purpose: abandoning a batch halfway is the exact failure the
+ * tour form exists to remove, and a quarter of a second is not the part of a fifteen-minute wait
+ * anyone was economizing on. It runs for the tour form ONLY: a single-ask target matches one ref, and
+ * one ref is never a batch, so there is nothing there to settle and nothing to wait for.
+ *
+ * Returns every matching unacked answer, oldest first, or an empty array on timeout — a run that
+ * waited and got nothing says so in its report rather than crashing.
+ */
+export async function waitForAnswers(
+  logPath: string,
+  target: string,
+  opts: { timeoutMs?: number; pollMs?: number; settleMs?: number; after?: Date; now?: () => number } = {},
+): Promise<AnswerEntry[]> {
+  // Every bound is finite-checked. A NaN timeout made the loop's deadline comparison false forever
+  // and Bun.sleep(NaN) return immediately, which is a hot spin that never ends and never errors.
+  const timeoutMs = Number.isFinite(opts.timeoutMs) ? Math.max(0, opts.timeoutMs!) : 15 * 60_000;
+  const pollMs = Number.isFinite(opts.pollMs) ? Math.max(1, opts.pollMs!) : 2_000;
+  // Only the tour form can match a batch, so only the tour form settles. A `<tour>#<ask>` wait that
+  // sat through a settle window would be paying for a batch it cannot have.
+  const settleMs = target.includes("#")
+    ? 0
+    : Number.isFinite(opts.settleMs) ? Math.max(0, opts.settleMs!) : 250;
+  const after = opts.after?.getTime();
+  const clock = opts.now ?? Date.now;
+  const deadline = clock() + timeoutMs;
+
+  const matching = async (): Promise<AnswerEntry[]> => {
+    const log = await readAnswerLog(logPath);
+    const acked = new Set(log.entries.filter(isAck).map((a) => a.for));
+    return log.entries.filter(isAnswer).filter((a) =>
+      matchesWaitTarget(a.request.ref, target)
+      && !acked.has(a.id)
+      && (after === undefined || Date.parse(a.at) >= after));
+  };
+
+  for (;;) {
+    let hits = await matching();
+    if (hits.length) {
+      for (let round = 0; settleMs > 0 && round < MAX_SETTLE_ROUNDS; round++) {
+        await Bun.sleep(settleMs);
+        const again = await matching();
+        // Identity, not count, and a reviewer's second pass over the file is why. The log only ever
+        // grows, but what this reads is the log MINUS what has been acked, and that view can shrink:
+        // an ack landing in the same window as a new entry leaves the count identical and the set
+        // different. Comparing counts would then return the acked entry and drop the new one — the
+        // same "acted on half a card" failure, arrived at from the other side.
+        if (sameEntries(again, hits)) break;
+        hits = again;
+      }
+      return hits;
+    }
+    if (clock() >= deadline) return [];
+    await Bun.sleep(Math.min(pollMs, Math.max(1, deadline - clock())));
+  }
+}
+
+/**
  * Wait for an unacked answer to `ref`.
  *
  * The polling is the honest shape here, and worth naming rather than apologizing for: nothing
@@ -369,28 +468,18 @@ export function answersFor(log: AnswerLog, ref: string): AnswerEntry[] {
  * lines up. Acks are already the record of what has been consumed, so they are what this reads too,
  * and a stale answer is one somebody acked rather than one that arrived early. `after` survives as an
  * option for a caller that genuinely wants a fresh answer and not merely an unconsumed one.
+ *
+ * **The first answer, not the whole batch.** This is `waitForAnswers` with the settle turned off, kept
+ * for a caller that wants one entry and wants it the moment it lands. A run waiting on a review walk
+ * wants the other one.
  */
 export async function waitForAnswer(
   logPath: string,
   ref: string,
   opts: { timeoutMs?: number; pollMs?: number; after?: Date; now?: () => number } = {},
 ): Promise<AnswerEntry | null> {
-  // Every bound is finite-checked. A NaN timeout made the loop's deadline comparison false forever
-  // and Bun.sleep(NaN) return immediately, which is a hot spin that never ends and never errors.
-  const timeoutMs = Number.isFinite(opts.timeoutMs) ? Math.max(0, opts.timeoutMs!) : 15 * 60_000;
-  const pollMs = Number.isFinite(opts.pollMs) ? Math.max(1, opts.pollMs!) : 2_000;
-  const after = opts.after?.getTime();
-  const clock = opts.now ?? Date.now;
-  const deadline = clock() + timeoutMs;
-  for (;;) {
-    const log = await readAnswerLog(logPath);
-    const acked = new Set(log.entries.filter(isAck).map((a) => a.for));
-    const hit = answersFor(log, ref).find((a) =>
-      !acked.has(a.id) && (after === undefined || Date.parse(a.at) >= after));
-    if (hit) return hit;
-    if (clock() >= deadline) return null;
-    await Bun.sleep(Math.min(pollMs, Math.max(1, deadline - clock())));
-  }
+  const hits = await waitForAnswers(logPath, ref, { ...opts, settleMs: 0 });
+  return hits[0] ?? null;
 }
 
 /** One entry as a human line, for the CLI and for a handoff that has to quote one. */

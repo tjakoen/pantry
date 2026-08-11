@@ -10,8 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   answers, answersFor, appendAck, appendAnswer, AnswerRejected, assertWritableLogPath, formatAnswerLog,
-  isLoopbackRequest, makeEntryId, normalizeAnswer, readAnswerLog, unacked, waitForAnswer,
-  MAX_FIELD_CHARS, type AnswerInput,
+  isLoopbackRequest, makeEntryId, matchesWaitTarget, normalizeAnswer, readAnswerLog, unacked,
+  waitForAnswer, waitForAnswers, MAX_FIELD_CHARS, type AnswerInput,
 } from "./answers.ts";
 
 const NOW = new Date("2026-08-10T12:00:00.000Z");
@@ -243,6 +243,118 @@ describe("waiting is the optimization, not the contract", () => {
     // A NaN POLL with a real timeout: if either bound were NaN this would never return.
     expect(await waitForAnswer(log, "nothing", { timeoutMs: 40, pollMs: Number.NaN })).toBeNull();
     expect(Date.now() - started).toBeLessThan(5_000);
+  });
+});
+
+// The bug these were written from is a real run, not a hypothetical: a session waited on
+// `review-answer-channel#reads-right` for nine and a half minutes while the owner's answer to
+// `#keep-both` — the other ask on the same card — sat on disk the whole time.
+describe("a wait names the tour, and ends when the card is finished", () => {
+  const ask = (ref: string, choice: string): AnswerInput =>
+    goodInput({ request: { source: "tour", ref, question: `Which, for ${ref}?` }, choice });
+
+  test("the target discriminates on the `#`, and a bare decision ref still means itself", () => {
+    expect(matchesWaitTarget("review-x#a", "review-x")).toBe(true);
+    expect(matchesWaitTarget("review-x#a", "review-x#a")).toBe(true);
+    expect(matchesWaitTarget("review-x#a", "review-x#b")).toBe(false);
+    // A decision request's ref has no `#` and no children; naming it must not start matching by prefix
+    // against the next ref that happens to begin with the same letters.
+    expect(matchesWaitTarget("run-ledger-store", "run-ledger-store")).toBe(true);
+    expect(matchesWaitTarget("run-ledger-store-v2", "run-ledger-store")).toBe(false);
+  });
+
+  test("the tour form returns every ask the card actually answered", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    await appendAnswer(log, ask("review-answer-channel#keep-both", "Keep both"), NOW);
+    await appendAnswer(log, ask("review-answer-channel#reads-right", "Yes"), NOW);
+    const hits = await waitForAnswers(log, "review-answer-channel", { timeoutMs: 200, pollMs: 10, settleMs: 5 });
+    expect(hits.map((h) => h.request.ref)).toEqual([
+      "review-answer-channel#keep-both",
+      "review-answer-channel#reads-right",
+    ]);
+  });
+
+  // The rejected reading "every ask the tour declares", stated as a test because it is the one that
+  // would still be blocking right now.
+  test("an ask the reviewer skipped does not hold the run — the batch is what was answered", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    await appendAnswer(log, ask("review-answer-channel#keep-both", "Keep both"), NOW);
+    const hits = await waitForAnswers(log, "review-answer-channel", { timeoutMs: 200, pollMs: 10, settleMs: 5 });
+    expect(hits).toHaveLength(1);
+    expect(hits[0].request.ref).toBe("review-answer-channel#keep-both");
+  });
+
+  // The regression itself. Waiting on the ask nobody answered is still a timeout, which is correct and
+  // is exactly why naming the tour is the thing to reach for.
+  test("the single-ask form is unchanged: naming the unanswered ask still times out", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    await appendAnswer(log, ask("review-answer-channel#keep-both", "Keep both"), NOW);
+    expect(await waitForAnswers(log, "review-answer-channel#reads-right", { timeoutMs: 30, pollMs: 10, settleMs: 5 }))
+      .toEqual([]);
+    const one = await waitForAnswers(log, "review-answer-channel#keep-both", { timeoutMs: 200, pollMs: 10, settleMs: 5 });
+    expect(one).toHaveLength(1);
+  });
+
+  // One POST per ask means a poll can land between two of them. Without the settle this returns one
+  // answer out of two and the run acts on half a decision.
+  test("a batch still landing is waited out, not read halfway", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    const pending = waitForAnswers(log, "review-x", { timeoutMs: 3_000, pollMs: 10, settleMs: 60 });
+    setTimeout(() => { void appendAnswer(log, ask("review-x#one", "A"), new Date()); }, 20);
+    setTimeout(() => { void appendAnswer(log, ask("review-x#two", "B"), new Date()); }, 60);
+    expect((await pending).map((h) => h.request.ref)).toEqual(["review-x#one", "review-x#two"]);
+  });
+
+  test("an acked ask is not re-served to a later wait, tour form included", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    const first = await appendAnswer(log, ask("review-x#one", "A"), NOW);
+    await appendAck(log, { for: first.id }, NOW);
+    await appendAnswer(log, ask("review-x#two", "B"), NOW);
+    const hits = await waitForAnswers(log, "review-x", { timeoutMs: 200, pollMs: 10, settleMs: 5 });
+    expect(hits.map((h) => h.request.ref)).toEqual(["review-x#two"]);
+  });
+
+  // The settle compares the entries, not how many there are. What it watches is the log MINUS the
+  // acked, and that view can shrink: an ack and a new answer landing in the same window leave the
+  // count alone and change the set. A count comparison returns the acked one and drops the new one.
+  test("an ack landing mid-settle does not freeze the stale set in place", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    const first = await appendAnswer(log, ask("review-x#one", "A"), NOW);
+    const pending = waitForAnswers(log, "review-x", { timeoutMs: 3_000, pollMs: 10, settleMs: 60 });
+    setTimeout(() => {
+      void (async () => {
+        await appendAck(log, { for: first.id }, new Date());
+        await appendAnswer(log, ask("review-x#two", "B"), new Date());
+      })();
+    }, 20);
+    expect((await pending).map((h) => h.request.ref)).toEqual(["review-x#two"]);
+  });
+
+  // A single ask matches one ref, and one ref is never a batch. Settling it would buy nothing and
+  // cost the wait its whole settle window; with a five-second one this returns in milliseconds.
+  test("the single-ask form does not settle, because it has no batch to wait for", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    await appendAnswer(log, ask("review-x#one", "A"), NOW);
+    const started = Date.now();
+    const hits = await waitForAnswers(log, "review-x#one", { timeoutMs: 2_000, pollMs: 10, settleMs: 5_000 });
+    expect(hits).toHaveLength(1);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  test("waitForAnswer keeps returning the first one, for a caller that wants exactly that", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    await appendAnswer(log, ask("review-x#one", "A"), NOW);
+    await appendAnswer(log, ask("review-x#two", "B"), NOW);
+    const hit = await waitForAnswer(log, "review-x", { timeoutMs: 200, pollMs: 10 });
+    expect(hit?.request.ref).toBe("review-x#one");
   });
 });
 

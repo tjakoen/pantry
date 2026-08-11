@@ -23,7 +23,8 @@
 //                               reviewer. Borrows the HOST's Playwright; ships none.
 //   pantry answers              the append-only answer log (DECISIONS §4): what has been answered and
 //                               what no session has acted on yet. READ THIS ON WAKE.
-//   pantry answers wait <ref>   block until that question is answered (only useful while awake)
+//   pantry answers wait <tour>  block until that review card is FINISHED, and return whatever asks it
+//                               answered. A `<tour>#<ask>` target still waits on that one ask alone.
 //   pantry answers ack <id>     record that a session acted on an answer
 //   pantry answers record …     write down an answer that arrived by paste, so one channel stays one
 // Config + plans are read from the caller's cwd (the host); bundled assets + framework docs resolve
@@ -41,7 +42,7 @@ import { syncSkills, listSkills, formatSkillsSync, formatSkillsList } from "./sk
 import { mergeGraphs, formatGraphMergeReport, scopeRadius, formatScopeRadius } from "./graph.ts";
 import {
   answers, appendAck, appendAnswer, formatAnswer, formatAnswerLog, normalizeAnswer, readAnswerLog,
-  unacked, waitForAnswer,
+  unacked, waitForAnswers,
 } from "./answers.ts";
 
 const abs = (dir: string) => (isAbsolute(dir) ? dir : join(process.cwd(), dir));
@@ -260,23 +261,34 @@ async function main() {
       return;
     }
 
+    // A target is a TOUR or one ask of one (`<tour>#<ask>`), and which of those you name is the whole
+    // difference between a run that moves when the review is done and a run that blocks on a question
+    // the reviewer chose to skip. Naming the tour is the one to reach for; the single-ask form stays
+    // because a decision request's ref has no `#` and waiting on one of those is the same command.
     if (sub === "wait") {
-      if (!arg) { console.error("usage: pantry answers wait <ref> [--timeout <seconds>]"); process.exit(1); }
+      if (!arg) { console.error("usage: pantry answers wait <tour|ref> [--timeout <seconds>]"); process.exit(1); }
       // Falling back is right; falling back silently is not. A wait that runs fifteen minutes on a
       // typo looks identical to a wait that was asked for.
       if (flags.timeout !== undefined && numberFlag(flags.timeout, -1) === -1) {
         console.error(`[pantry] --timeout ${JSON.stringify(flags.timeout)} is not a positive number of seconds; using 900.`);
       }
       const timeoutMs = numberFlag(flags.timeout, 900) * 1000;
-      console.error(`[pantry] waiting for an answer to "${arg}" (up to ${Math.round(timeoutMs / 1000)}s) — ${logPath}`);
-      const hit = await waitForAnswer(logPath, arg, { timeoutMs });
-      if (!hit) {
+      // Said differently for the two shapes, because what the run is blocked on differs and a log line
+      // that hid that difference is how the wrong target went unnoticed for nine minutes.
+      const waitingFor = arg.includes("#")
+        ? `an answer to "${arg}"`
+        : `"${arg}" to be finished (any ask under it)`;
+      console.error(`[pantry] waiting for ${waitingFor} (up to ${Math.round(timeoutMs / 1000)}s) — ${logPath}`);
+      const hits = await waitForAnswers(logPath, arg, { timeoutMs });
+      if (hits.length === 0) {
         // A timeout is not a crash, and it is not silence either. The run should say in its report
         // that it asked and was not answered, so the exit code makes that visible to a wrapper too.
         console.error(`[pantry] no answer to "${arg}" within the timeout. Say so in the run report; the answer will still be here on the next wake.`);
         process.exit(2);
       }
-      console.log(formatAnswer(hit));
+      // Every ask the card answered, in the order it was written. A run reads all of them or it is
+      // acting on part of a decision.
+      console.log(hits.map((h) => formatAnswer(h)).join("\n\n"));
       return;
     }
 
@@ -320,7 +332,7 @@ async function main() {
       }
     }
 
-    console.error(`pantry answers: unknown subcommand "${sub}"\nusage: pantry answers [list|wait <ref>|ack <id>|record --ref … --question … --choice …]`);
+    console.error(`pantry answers: unknown subcommand "${sub}"\nusage: pantry answers [list|wait <tour|ref>|ack <id>|record --ref … --question … --choice …]`);
     process.exit(1);
   }
 
