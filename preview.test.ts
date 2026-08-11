@@ -460,6 +460,67 @@ describe("createPantryHandler — the reserved prefix", () => {
     expect((await off(new Request("http://localhost:4400/review"))).status).toBe(404);
   });
 
+  // The bug this pins is not "the outcome is unsaid" — it WAS said, in a 14px muted line at the top
+  // of the pane, six hundred pixels from the card at the bottom of the frame. The first human to
+  // press Record read that as silence. Both halves are asserted because either alone regresses
+  // quietly: the receipt element, and the fact that data-kind is styled at all.
+  test("the record outcome is said where the reviewer is looking, and success and failure do not look identical", async () => {
+    const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    const html = await (await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/review`))).text();
+    for (const hook of ["data-receipt", "data-receipt-eyebrow", "data-receipt-message", "data-receipt-log", "data-receipt-close"]) {
+      expect(html).toContain(hook);
+    }
+    // Inside the pane, so it overlays the frame rather than reflowing the app under review.
+    expect(html.indexOf("data-receipt")).toBeGreaterThan(html.indexOf("pantry-review__frame"));
+    // Root-absolute, so PANTRY's own rebase moves it under the prefix like every other link here —
+    // an un-rebased /answers would be fired at the reviewed app, which has never heard of it.
+    expect(html).toContain(`href="${PANTRY_PREFIX}/answers" target="_blank"`);
+
+    // `data-kind` was set on the bar's status from the first version and styled NOWHERE, so an error
+    // and a success rendered as the same grey sentence. A rule keyed on it is the regression guard;
+    // the palette is closed (GRAIN collapses success and danger to --ink), so the rule is a
+    // treatment rather than a hue and the eyebrow carries the word.
+    const css = await Bun.file(join(import.meta.dir, "pantry.css")).text();
+    expect(css).toContain('.pantry-review__receipt[data-kind="error"]');
+    expect(css).toContain(".pantry-review__receipteyebrow");
+    expect(css).not.toContain("--color-success");
+  });
+
+  // Finishing the card IS the answer. The Record button existed only because CRUMB owns the card and
+  // PANTRY owns the chrome, and the first person to walk this finished the card and lost what they
+  // typed — the boundary reached the reviewer's hands, which is the one place it was never meant to.
+  test("there is no Record button, and its styles went with it", async () => {
+    const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    const html = await (await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/review`))).text();
+    expect(html).not.toContain("data-record>");
+    expect(html).not.toContain("Record answer</button>");
+    expect(html).toContain("data-record-status");            // the echo stays; only the button went
+    // A dead class in a stylesheet is what the next person restores a button to match.
+    const css = await Bun.file(join(import.meta.dir, "pantry.css")).text();
+    expect(css).not.toContain(".pantry-review__record {");
+    const client = await Bun.file(join(import.meta.dir, "pantry-review.js")).text();
+    expect(client).not.toContain("recordBtn");
+    // The write is now driven by the card closing, and the handoff link opens the walk it names.
+    expect(client).toContain("recordAnswer(finished)");
+    expect(client).toContain('.get("tour")');
+  });
+
+  // The rail's step statuses come from the tour FILE, which was written before the walk and knows
+  // nothing about an answer that arrived afterwards. Reading the log too is what stops it saying
+  // "2 of 3 awaiting you" about a review that was answered and acked an hour ago.
+  test("the rail has somewhere for a closed review to go", async () => {
+    const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
+    const html = await (await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/review`))).text();
+    expect(html).toContain("data-closed-group");
+    expect(html).toContain("data-closed-title");
+    expect(html).toContain("data-closed>");
+    // Folded, not deleted: "where did the one I answered go" is the next question.
+    expect(html).toContain("<details class=\"pantry-review__group\" data-closed-group hidden>");
+    const client = await Bun.file(join(import.meta.dir, "pantry-review.js")).text();
+    expect(client).toContain("loadAnswerIndex");
+    expect(client).toContain(`${"`"}\${pantryBase}/answers.json${"`"}`);
+  });
+
   test("the Review entry is in the nav only when the proxy is on", async () => {
     const on = createPantryHandler({ plansDir: PLANS, config: configWith(origin) });
     expect(await (await on(new Request(`http://localhost:4400${PANTRY_PREFIX}/`))).text())

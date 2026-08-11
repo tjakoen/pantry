@@ -262,6 +262,12 @@
 .pantry-decision-record { font-weight: 600; background: color-mix(in srgb, var(--ink) 12%, transparent); }
 .pantry-decision-record:disabled { opacity: 0.5; cursor: progress; }
 .pantry-decision-hint { margin: var(--space-2, 0.5rem) 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
+/* The paste-back, folded. Owner's call 2026-08-11: keep it, collapse it. Folded rather than demoted
+   in place, because two buttons side by side is what made the durable channel and the transient one
+   read as equals no matter which one carried more weight. */
+.pantry-decision-paste { margin-top: var(--space-4, 1rem); border-top: var(--hairline, 1px) solid var(--rule); padding-top: var(--space-3, 0.75rem); }
+.pantry-decision-paste > summary { cursor: pointer; font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-decision-paste > summary:hover { color: var(--ink); }
 .pantry-decision-status { margin: var(--space-2, 0.5rem) 0 0; font-size: var(--text-sm); }
 .pantry-decision-status[data-kind="ok"] { color: var(--ink); }
 .pantry-decision-status[data-kind="error"] { color: var(--ink); font-weight: 600; }
@@ -432,18 +438,24 @@
 /* needs-verification is the status that most needs to be seen, so it is the one that gets weight */
 .pantry-review__step[data-status="needs-verification"] .pantry-review__status { color: var(--ink); }
 
-.pantry-review__pane { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+/* position: relative so the receipt can overlay the frame. The pane, not the frame, because an
+   absolutely-positioned child of an iframe is not a thing. */
+.pantry-review__pane { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+/* One row, and it stays one row. The controls do not shrink; only the two text spans do, because a
+   long URL or a long status wrapping the buttons onto a second line relaid out the chrome around the
+   app being reviewed. */
 .pantry-review__bar {
-  display: flex; align-items: center; gap: var(--space-3, 0.75rem);
+  display: flex; align-items: center; gap: var(--space-3, 0.75rem); flex-wrap: nowrap;
   padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
   border-bottom: var(--hairline, 1px) solid var(--rule);
 }
+.pantry-review__bar > button, .pantry-review__bar > a { flex: none; }
 .pantry-review__toggle {
   cursor: pointer; background: transparent; color: var(--ink-muted); font: inherit; font-size: var(--text-sm);
   border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem); padding: 0.2rem 0.6rem;
 }
 .pantry-review__toggle:hover { color: var(--ink); border-color: var(--ink-muted); }
-.pantry-review__url { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pantry-review__url { flex: 0 1 auto; min-width: 0; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pantry-review__open { margin-left: auto; color: var(--ink-muted); text-decoration: none; font-size: var(--text-sm); }
 .pantry-review__open:hover { color: var(--ink); }
 
@@ -454,6 +466,9 @@
    only state that gets any weight. Reviewed fades; pending does not. */
 .pantry-review__tour[data-state="pending"] { border-color: var(--ink-muted); }
 .pantry-review__tour[data-state="reviewed"] { color: var(--ink-muted); }
+/* Answered and not yet acked: off the reviewer's queue, still on the AI's. Neither pending's weight
+   nor reviewed's fade, because it is neither. */
+.pantry-review__tour[data-state="answered"] { border-style: dashed; border-color: var(--ink-muted); }
 .pantry-review__tour[data-state="reviewed"] .pantry-review__tourmeta { color: var(--ink-faint); }
 .pantry-review__group summary { cursor: pointer; }
 
@@ -476,16 +491,45 @@
 .pantry-nav__themebtn:hover { color: var(--ink); border-color: var(--ink-muted); }
 .pantry-review__themed { font-size: var(--text-sm); color: var(--ink-faint); white-space: nowrap; }
 
-/* The record button sits in the bar and is hidden until the walk reaches a decision card, so it reads
-   as "there is something to do here now" rather than as another permanent control. */
-.pantry-review__record {
-  font-family: var(--font-base); font-size: var(--text-sm); font-weight: 600; color: var(--ink);
-  background: color-mix(in srgb, var(--ink) 12%, transparent);
-  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
-  padding: var(--space-1, 0.25rem) var(--space-4, 1rem); cursor: pointer; white-space: nowrap;
-}
-.pantry-review__record:hover { border-color: var(--ink-muted); }
-.pantry-review__record:disabled { opacity: 0.5; cursor: progress; }
-.pantry-review__record[hidden] { display: none; }
-.pantry-review__recordstatus { font-size: var(--text-sm); color: var(--ink-muted); white-space: nowrap; }
+/* There is no .pantry-review__record rule because there is no record button: finishing the card is
+   the answer. The styles for it were deleted with it rather than left behind, since a dead class in a
+   stylesheet is the thing the next person restores a button to match. */
+/* The bar keeps its echo, and it stays quiet: it is the second place the outcome is said, not the
+   first. `nowrap` is deliberate here because the bar is one line — the FULL text goes to the receipt
+   below, which wraps. */
+.pantry-review__recordstatus { flex: 0 1 auto; min-width: 0; font-size: var(--text-sm); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pantry-review__recordstatus[hidden] { display: none; }
+
+/* The receipt. Bottom-centre of the pane, over the frame, because that is where the card the
+   reviewer just answered is. Full ink on a solid panel: this is the one moment in the review the
+   chrome is allowed to be louder than the app. */
+.pantry-review__receipt {
+  position: absolute; z-index: 5;
+  left: 50%; transform: translateX(-50%);
+  bottom: var(--space-4, 1rem);
+  max-width: min(40rem, calc(100% - 2 * var(--space-4, 1rem)));
+  display: flex; flex-direction: column; gap: var(--space-2, 0.5rem);
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  background: var(--panel, var(--paper-2)); color: var(--ink);
+  border: 2px solid var(--ink); border-radius: var(--radius, 0.5rem);
+}
+.pantry-review__receipt[hidden] { display: none; }
+/* The outcome, in words rather than in hue — GRAIN collapses success and danger to ink, so a
+   coloured border would be inventing a token the palette closed on purpose. */
+.pantry-review__receipteyebrow {
+  margin: 0; font-size: var(--text-sm); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
+}
+.pantry-review__receiptmsg { margin: 0; font-size: var(--text-base, 1rem); line-height: 1.45; color: var(--ink); }
+/* A failure gets the quieter frame and the louder word. The reviewer has to read it either way, so
+   the difference that carries is the eyebrow, not the box. */
+.pantry-review__receipt[data-kind="error"] { border-style: dashed; }
+.pantry-review__receiptacts { display: flex; align-items: center; gap: var(--space-3, 0.75rem); }
+.pantry-review__receiptlink { color: var(--ink); font-size: var(--text-sm); }
+.pantry-review__receiptlink[hidden] { display: none; }
+.pantry-review__receiptclose {
+  margin-left: auto; cursor: pointer; background: transparent; color: var(--ink-muted);
+  font: inherit; font-size: var(--text-sm);
+  border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem); padding: 0.2rem 0.6rem;
+}
+.pantry-review__receiptclose:hover { color: var(--ink); border-color: var(--ink-muted); }

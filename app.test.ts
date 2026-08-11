@@ -262,6 +262,13 @@ The context to decide.`);
     expect(detail).toContain("decision-generate");      // the button the client wires
     expect(detail).toContain("/pantry-decisions.js");   // the client script is loaded
     expect(detail).toContain(`data-decision-file`);     // the file path the prompt names
+    // Owner's call 2026-08-11, given through this page's own question in the review tour: keep the
+    // paste-back, collapse it. Both halves are asserted — that it is still THERE, and that it is
+    // folded — because "collapse" done as "delete" is the easy misread, and DECISIONS §2 wants the
+    // chat path to survive.
+    expect(detail).toContain("pantry-decision-paste");
+    expect(detail).toContain("<summary>Or paste it back into chat</summary>");
+    expect(detail.indexOf("decision-record")).toBeLessThan(detail.indexOf("decision-generate"));
 
     // a missing id is a 404, not a crash
     expect((await get(handler, "/decisions/nope")).status).toBe(404);

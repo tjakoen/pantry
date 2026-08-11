@@ -22,8 +22,10 @@
   const stepsGroup = shell.querySelector("[data-steps-group]");
   const stepList = shell.querySelector("[data-steps]");
   const sourceNote = shell.querySelector("[data-tour-source]");
-  const recordBtn = shell.querySelector("[data-record]");
   const recordStatus = shell.querySelector("[data-record-status]");
+  const closedList = shell.querySelector("[data-closed]");
+  const closedGroup = shell.querySelector("[data-closed-group]");
+  const closedTitle = shell.querySelector("[data-closed-title]");
 
   // The frame's target is set here rather than in the markup. PANTRY rebases every root-absolute URL
   // in its own HTML onto the reserved prefix, which is correct for every link on this page and
@@ -105,11 +107,59 @@
       cardToggle.hidden = !has;
       if (has) applyFold();
       syncActiveTour();
-      syncRecord();
+      syncCard();
+      // THE WRITE. Closing the card is the answer — there is no Record button to press, because the
+      // one that existed was a boundary (CRUMB owns the card, PANTRY owns the chrome) turned into a
+      // step the reviewer had to know about, and the first person to walk this finished the card and
+      // lost what they typed.
+      //
+      // Delayed and then re-checked rather than fired on the transition, because CRUMB rebuilds the
+      // dialog on every step and a rebuild is momentarily indistinguishable from a close. Writing on
+      // a rebuild would append a half-filled answer mid-walk, which the append-only log has no way to
+      // take back.
+      if (cardWasLive && !has && unrecordedAtCard > 0) {
+        const finished = liveCard;
+        clearTimeout(leaveTimer);
+        const lost = unrecordedAtCard;
+        leaveTimer = setTimeout(() => {
+          if (readCard()) return; // it was a rebuild, not a close
+          if (performance.now() < abandonedUntil) {
+            // Said rather than silent: the reviewer typed something and it is gone, and the one thing
+            // worse than losing it is not being told.
+            return report(
+              "Not recorded",
+              `You closed the card with ${lost} question${lost === 1 ? "" : "s"} answered. Closing is not finishing, so nothing was written. Finish the card to record; start the tour again from the rail.`,
+              "error",
+              false,
+            );
+          }
+          void recordAnswer(finished);
+        }, 900);
+      }
+      if (has) clearTimeout(leaveTimer);
+      cardWasLive = has;
+      if (!has) { unrecordedAtCard = 0; liveCard = null; }
     };
     // `open` is an ATTRIBUTE, so a childList-only observer never sees a dialog close. That is exactly
     // the mutation that has to be noticed here, and watching for it costs one filtered attribute.
     new MutationObserver(seen).observe(doc.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["open"] });
+    // Typing an answer is NOT a mutation. A textarea's value and a radio's checked state are
+    // properties, not attributes, so an observer watching the DOM sees a reviewer fill in the whole
+    // card and reports nothing changed. Found by walking it: the leave-without-recording warning
+    // above was written, was correct, and never fired once, because the count it reads was only ever
+    // refreshed by mutations. Capture phase, because the card may stop these from bubbling.
+    doc.addEventListener("input", syncCard, true);
+    doc.addEventListener("change", syncCard, true);
+    // Closing is not finishing, and the difference has to be caught HERE because from the outside
+    // both look like the same dialog going away. CRUMB marks its exits: `data-crumb="end"` is the ×
+    // and Exit tour, `data-crumb="next"` is Finish. Writing on an × would append a draft somebody
+    // changed their mind about, to a log with no way to retract it.
+    doc.addEventListener("click", (e) => {
+      const t = e.target;
+      if (t && t.closest && t.closest('[data-crumb="end"]')) abandonedUntil = performance.now() + 3000;
+    }, true);
+    // Escape closes a <dialog> without any button being pressed at all, which is the same intent.
+    doc.addEventListener("keydown", (e) => { if (e.key === "Escape") abandonedUntil = performance.now() + 3000; }, true);
     seen();
   };
   frame.addEventListener("load", watchCard);
@@ -125,15 +175,55 @@
     const api = client();
     try { return api && api.readPromptCard ? api.readPromptCard() : null; } catch { return null; }
   };
-  function syncRecord() {
-    if (!recordBtn) return;
-    recordBtn.hidden = !readCard();
+  // Kept WHILE the card is live, because the moment it closes readCard() returns null and the answers
+  // are gone with it — nothing else in the chain remembers what was typed. A COPY, not the object
+  // CRUMB handed over, since that one belongs to a dialog which is about to be torn down.
+  function syncCard() {
+    const card = readCard();
+    if (!card) return;
+    liveCard = { tour: card.tour, composed: card.composed, asks: { ...(card.asks || {}) } };
+    unrecordedAtCard = Object.keys(liveCard.asks)
+      .filter((id) => liveCard.asks[id])
+      .filter((id) => !recorded.has(`${liveCard.tour}#${id}`)).length;
   }
   function sayRecord(message, kind) {
     if (!recordStatus) return;
     recordStatus.hidden = !message;
     recordStatus.textContent = message;
     recordStatus.dataset.kind = kind || "";
+  }
+
+  // ── the receipt ───────────────────────────────────────────────────────────
+  // The bar's status line was the only place an outcome was said, and it is at the top of the pane
+  // while the card being answered is at the bottom of the frame. The first human to press Record read
+  // that as silence and had to ask whether anything had been written, which for the one control that
+  // writes is the worst thing it could have read as. So the outcome is said twice: quietly in the
+  // bar, and here, over the frame, next to the card.
+  //
+  // `data-kind` was already being SET on the bar's status and styled nowhere, so success and failure
+  // rendered identically. That is fixed by saying the outcome in words rather than by reaching for a
+  // colour: GRAIN collapses --color-success and --color-danger to --ink deliberately, so a green
+  // receipt would be a token this palette closed on purpose.
+  const receipt = shell.querySelector("[data-receipt]");
+  const receiptEyebrow = shell.querySelector("[data-receipt-eyebrow]");
+  const receiptMessage = shell.querySelector("[data-receipt-message]");
+  const receiptLog = shell.querySelector("[data-receipt-log]");
+  const receiptClose = shell.querySelector("[data-receipt-close]");
+  if (receiptClose) receiptClose.addEventListener("click", () => { if (receipt) receipt.hidden = true; });
+
+  // One call says it in both places, because the two drifting apart is how the bar came to disagree
+  // with what actually happened.
+  function report(eyebrow, message, kind, showLog) {
+    // The bar gets the SHORT form. It got the full sentence first, and a bar is one line of flex: the
+    // sentence pushed "Hide rail" and "Open full" onto a second row and relaid out the chrome every
+    // time an outcome was reported. The detail belongs where there is room to wrap.
+    sayRecord(eyebrow, kind);
+    if (!receipt) return;
+    receipt.hidden = false;
+    receipt.dataset.kind = kind || "";
+    if (receiptEyebrow) receiptEyebrow.textContent = eyebrow;
+    if (receiptMessage) receiptMessage.textContent = message;
+    if (receiptLog) receiptLog.hidden = !showLog;
   }
 
   // The question and its options come from the TOUR FILE, the answers from the card on screen. A
@@ -145,16 +235,27 @@
   // twice with no way to tell which was the retry.
   const recorded = new Set();
 
-  async function recordAnswer() {
-    const card = readCard();
-    if (!card) return sayRecord("No decision card on screen.", "error");
+  // The last state of the live card, how many of its asks are still unwritten, and whether a card was
+  // live at the previous mutation. Together they are what lets finishing the card BE the answer: the
+  // write happens when the card closes, from a copy taken while it was still open.
+  let liveCard = null;
+  let unrecordedAtCard = 0;
+  let cardWasLive = false;
+  let leaveTimer = 0;
+  // A deadline rather than a boolean, so a stale flag cannot silently swallow the NEXT card's answer.
+  let abandonedUntil = 0;
+
+  // Takes the card as DATA rather than reading it, because by the time this runs the card is closing
+  // or already closed. Everything it needs was copied in syncCard while the dialog was still open.
+  async function recordAnswer(card) {
+    if (!card) return;                                    // nothing was open; nothing to say
     if (!card.tour) {
       // Distinct from "you answered nothing", because they need opposite responses from the reviewer.
-      return sayRecord("PANTRY cannot tell which tour this card belongs to, so it will not guess. Reload the frame and start the tour from the rail.", "error");
+      return report("Not recorded", "PANTRY cannot tell which tour that card belonged to, so it will not guess. Reload the frame and start the tour from the rail.", "error", false);
     }
     const tour = await loadTour(card.tour);
     if (!tour || !tour.prompt) {
-      return sayRecord(`Could not read the tour file for "${card.tour}", so the questions are unknown. Nothing was recorded.`, "error");
+      return report("Not recorded", `Could not read the tour file for "${card.tour}", so the questions are unknown. Nothing was recorded.`, "error", false);
     }
     // One POST per ask, because each ask IS a decision and the log's unit is a decision, not a card.
     // Bundling them would give the next session one entry it has to take apart, and an ack that
@@ -162,10 +263,9 @@
     const answered = (tour.prompt.asks || [])
       .filter((a) => card.asks[a.id])
       .filter((a) => !recorded.has(`${card.tour}#${a.id}`));
-    if (answered.length === 0) {
-      return sayRecord(recorded.size ? "Everything answered here is already recorded." : "Nothing answered on this card yet.", "error");
-    }
-    recordBtn.disabled = true;
+    // Silence on purpose. Finishing a card you chose not to answer is a normal way to end a walk, and
+    // a box telling you so every time is how a reviewer learns to ignore the box that matters.
+    if (answered.length === 0) return;
     // Settled, not all-or-nothing. `Promise.all` rejects on the first throw and discards what the
     // others did, which for an append-only log means answers that ARE on disk get reported as a
     // failure and then written again on the retry.
@@ -194,13 +294,27 @@
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
       }
     }));
-    recordBtn.disabled = false;
     const ok = outcomes.filter((r) => r.ok).length;
     const failed = outcomes.filter((r) => !r.ok);
-    if (failed.length === 0) return sayRecord(`Recorded ${ok} answer${ok === 1 ? "" : "s"}.`, "ok");
-    // Say what DID land. A bare error after a partial write is the message that makes someone press
-    // the button again.
-    sayRecord(`${ok} recorded, ${failed.length} failed: ${failed[0].error}. Press Record again to retry only the ones that failed.`, "error");
+    // What the reviewer wants to know is not the row count, it is whether they are done. So the
+    // receipt says what the write MEANT: a session is waiting on this and can now move.
+    if (failed.length === 0) {
+      return report(
+        "Recorded",
+        `Recorded ${ok} answer${ok === 1 ? "" : "s"} to the append-only log. A session waiting on this walk is unblocked; one that is asleep reads it on wake. You are done here.`,
+        "ok",
+        true,
+      );
+    }
+    // Say what DID land, and say what to do about the rest. There is no button to press again now, so
+    // the instruction has to be the one that actually works: walk it again. Only the failures will be
+    // written the second time, because `recorded` remembers what already landed.
+    report(
+      failed.length === outcomes.length ? "Not recorded" : "Partly recorded",
+      `${ok} recorded, ${failed.length} failed: ${failed[0].error}. Start the tour again from the rail and finish it; only the ones that failed will be written.`,
+      "error",
+      ok > 0,
+    );
   }
 
   // The rail is served under the reserved prefix, so its own pathname carries the base. Derived from
@@ -216,8 +330,6 @@
     const body = await res.json().catch(() => ({}));
     return res.ok ? { ok: true, id: body.id } : { ok: false, error: body.error || `HTTP ${res.status}` };
   }
-
-  if (recordBtn) recordBtn.addEventListener("click", recordAnswer);
 
   // ── which tour is actually running ────────────────────────────────────────
   // Read from CRUMB's own record rather than inferred from the rail's last click. The rail is not
@@ -282,19 +394,47 @@
     return { li, btn, meta };
   }
 
-  function renderTours(list, tours, withState) {
+  // What the ANSWER LOG knows about a tour, which is the half the tour file cannot know: the statuses
+  // in the file were written before the walk, and no answer arriving afterwards ever edits them. A
+  // rail reading only the file says "2 of 3 awaiting you" about a review that was answered an hour
+  // ago and acked since, which is the rail lying rather than being out of date.
+  //
+  // Matched on the ref's tour prefix rather than by loading every tour's asks, because the ref format
+  // is `<tour>#<ask>` and it is written here, in this file, three functions up.
+  async function loadAnswerIndex() {
+    const empty = { answered: new Set(), unread: new Set() };
+    try {
+      const res = await fetch(`${pantryBase}/answers.json`, { headers: { accept: "application/json" } });
+      if (!res.ok) return empty;                         // decisions surface off: no index, no marks
+      const payload = await res.json();
+      const tourOf = (e) => String((e && e.request && e.request.ref) || "").split("#")[0];
+      const index = { answered: new Set(), unread: new Set() };
+      for (const e of payload.answers || []) { const id = tourOf(e); if (id) index.answered.add(id); }
+      for (const e of payload.unread || []) { const id = tourOf(e); if (id) index.unread.add(id); }
+      return index;
+    } catch { return empty; }
+  }
+
+  function renderTours(list, tours, withState, answers) {
     list.replaceChildren(...tours.map((t) => {
       const { li, btn, meta } = tourButton(t, (id) => { showSteps(id); startTour(id); });
       if (!withState) return li;
+      // The answer state is known up front and does not wait on the per-tour fetch below, so a rail
+      // that fails to load a tour file still says which reviews have been answered.
+      const answered = answers && answers.answered.has(t.id);
+      const waitingOnAI = answered && answers.unread.has(t.id);
       // The state costs one fetch per tour and is worth it: a rail that lists reviews without
       // saying which are outstanding is a list of files, not a queue.
       void (async () => {
         const tour = await loadTour(t.id);
-        const state = tour && reviewState(tour.steps);
+        const fileState = tour && reviewState(tour.steps);
+        // The answer wins over the file. Both are true statements about different moments, and the
+        // one the reviewer needs is the later one.
+        const state = waitingOnAI ? "answered, waiting on the AI" : answered ? "answered" : fileState;
         if (!state) return;
-        btn.dataset.state = state === "reviewed" ? "reviewed" : "pending";
+        btn.dataset.state = waitingOnAI ? "answered" : answered ? "reviewed" : state === "reviewed" ? "reviewed" : "pending";
         meta.textContent = `${t.steps} step${t.steps === 1 ? "" : "s"} · ${state}`;
-        if (state !== "reviewed") li.dataset.pending = "true";
+        if (!answered && state !== "reviewed") li.dataset.pending = "true";
       })();
       return li;
     }));
@@ -365,6 +505,18 @@
     } catch { /* the rail is a convenience; the walk itself lives in the frame */ }
   }
 
+  // ── the walk a handoff asked for ──────────────────────────────────────────
+  // `?tour=<id>` opens the rail already walking it. Without this, a session that says "review this
+  // change" can only hand over a URL to the review page plus a sentence about which entry to click,
+  // and the sentence is the part that goes stale — a tour renamed in the file is a rail entry the
+  // reviewer cannot find, with nothing failing anywhere to say so.
+  //
+  // Deliberately NOT validated against the manifest first. An unknown id lands the frame on the app
+  // with no tour running, which is what a bad link should look like; waiting for the manifest just to
+  // refuse would make the good case slower to serve the bad one.
+  const wantedTour = new URLSearchParams(window.location.search).get("tour");
+  if (wantedTour) { void showSteps(wantedTour); startTour(wantedTour); }
+
   (async () => {
     try {
       const ours = toursAreOurs;
@@ -380,10 +532,21 @@
       // throw here and be reported by the catch below as a manifest that could not be read, which is
       // a message about the wrong thing entirely.
       if (ours && sourceNote) sourceNote.textContent = "Tours served by PANTRY, from the reviewing repo. The project itself carries none.";
-      const reviews = tours.filter((t) => t.mode === "dev");
+      const answers = await loadAnswerIndex();
+      const allReviews = tours.filter((t) => t.mode === "dev");
       const demos = tours.filter((t) => t.mode !== "dev");
+      // Closed = answered AND acked. Answered-but-unacked stays in the list, because it is still
+      // waiting on someone; it is simply waiting on the AI rather than on the reviewer, and the rail
+      // says which.
+      const closed = allReviews.filter((t) => answers.answered.has(t.id) && !answers.unread.has(t.id));
+      const reviews = allReviews.filter((t) => !closed.includes(t));
       if (reviews.length === 0) empty(ours ? "No review tours in PANTRY's tours folder. The demo tours below are product walkthroughs." : "No review tours in this project. The demo tours below are product walkthroughs.");
-      else renderTours(tourList, reviews, true);
+      else renderTours(tourList, reviews, true, answers);
+      if (closed.length > 0 && closedList && closedGroup) {
+        renderTours(closedList, closed, true, answers);
+        if (closedTitle) closedTitle.textContent = `Closed (${closed.length})`;
+        closedGroup.hidden = false;
+      }
       if (demos.length > 0) {
         renderTours(demoList, demos, false);
         demosGroup.hidden = false;

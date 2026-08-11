@@ -251,6 +251,16 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces, tours: Tour
            PANTRY and a reviewer who goes looking for the file in the project will not find it. -->
       <p class="pantry-review__note" data-tour-source></p>
     </section>
+    <!-- A review that has been answered AND acked is done, and leaving it in the list above with
+         "2 of 3 awaiting you" beside it is the rail lying: the step statuses come from the tour FILE,
+         which knows nothing about the answer that arrived after it was written. Folded rather than
+         deleted, because "where did the one I answered go" is the next question, and a list that
+         empties into nowhere is worse than one that never emptied. -->
+    <details class="pantry-review__group" data-closed-group hidden>
+      <summary class="pantry-review__grouptitle" data-closed-title>Closed</summary>
+      <ol class="pantry-review__tours" data-closed></ol>
+      <p class="pantry-review__note">Answered, and a session has acked the answer. Nothing here is waiting on you or on the AI.</p>
+    </details>
     <!-- A demo tour is product work: it shows someone round the app. A review tour is dev work: it
          asks someone to check a change. They share a file format and nothing else, and mixing them
          in one list makes the rail read as a menu rather than a queue. Demos are kept, because a
@@ -277,11 +287,12 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces, tours: Tour
            it is also the sort of thing that makes a reviewer file a bug against a screen they
            themselves restyled, so it is stated rather than left to be discovered. -->
       <span class="pantry-review__themed" data-themed hidden></span>
-      <!-- The one control that writes anything. Hidden until the walk actually reaches a decision
-           card, because a button offering to record an answer to nothing is how a reviewer learns to
-           ignore the bar. It lives out here rather than inside the card for the reason P1 settled:
-           CRUMB draws the card, PANTRY draws the chrome, and neither reaches into the other. -->
-      <button class="pantry-review__record" type="button" data-record hidden>Record answer</button>
+      <!-- There is no Record button any more, and its absence is the point. It existed because CRUMB
+           owns the card and PANTRY owns the chrome, so the card's own Finish could not write and a
+           second button out here had to. That is an implementation boundary showing up in the
+           reviewer's hands: the first person to walk this answered the card, pressed Finish, and lost
+           what they typed. Finishing the card IS the answer now, and this span is where the outcome
+           is echoed. The boundary is unchanged — PANTRY still only watches the card close. -->
       <span class="pantry-review__recordstatus" data-record-status role="status" hidden></span>
       <a class="pantry-review__open" target="_blank" rel="noopener" data-frame-open>Open full</a>
     </div>
@@ -290,6 +301,28 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces, tours: Tour
          is right for every link here and exactly wrong for this one: rebasing it would frame PANTRY
          inside PANTRY instead of the project. Caught by walking the shell, not by reading it. -->
     <iframe class="pantry-review__frame" data-src="/" title="The project being reviewed, served under PANTRY's origin" data-frame></iframe>
+    <!-- The receipt for the one control that writes. It is NOT the bar's status line moved: the bar
+         keeps its compact echo, and this is the thing a reviewer actually sees, because the bar is at
+         the top of the pane and the card they just answered is at the bottom of the frame, six
+         hundred pixels away. Measured, not guessed: the first human to press Record read the bar as
+         silence and asked whether anything had been written.
+         Hueless on purpose. GRAIN collapses --color-success and --color-danger to --ink, so an
+         outcome cannot be signalled by colour here; it is signalled by an eyebrow that says the
+         outcome in words, and success and failure differ in what they say rather than in hue.
+         It overlays the frame rather than sitting in the pane's flow so that appearing does not
+         reflow the app being reviewed, which would be a layout change PANTRY caused and the reviewer
+         would then report. -->
+    <div class="pantry-review__receipt" data-receipt hidden role="status" aria-live="polite">
+      <p class="pantry-review__receipteyebrow" data-receipt-eyebrow></p>
+      <p class="pantry-review__receiptmsg" data-receipt-message></p>
+      <div class="pantry-review__receiptacts">
+        <!-- Root-absolute, so PANTRY's own rebase puts it under the reserved prefix like every other
+             link on this page. New tab because the reviewer is mid-walk: sending them to the log in
+             this tab would end the review to prove the review was recorded. -->
+        <a class="pantry-review__receiptlink" href="/answers" target="_blank" rel="noopener" data-receipt-log hidden>Read it in the answer log</a>
+        <button class="pantry-review__receiptclose" type="button" data-receipt-close>Dismiss</button>
+      </div>
+    </div>
   </div>
 </div>`;
 }
@@ -653,15 +686,25 @@ ${resolvedBanner}
   <textarea id="decision-notes" class="pantry-decision-notes" rows="4" placeholder="Anything the AI should know beyond the chosen option — constraints, a different option entirely, follow-ups."></textarea>
   <div class="pantry-decision-actions">
     <button type="button" class="pantry-decision-record" id="decision-record">Record answer</button>
-    <button type="button" class="pantry-decision-generate" id="decision-generate">Generate prompt</button>
   </div>
-  <p class="pantry-decision-hint">Recording appends to the answer log the next session reads on wake. Generating a prompt is the paste-back, for when someone is already in the chat.</p>
+  <p class="pantry-decision-hint">Recording appends to the answer log the next session reads on wake.</p>
   <p class="pantry-decision-status" id="decision-status" role="status" hidden></p>
-  <div class="pantry-decision-output" hidden>
-    <label class="pantry-decision-notes-label" for="decision-prompt">Prompt — copy this into chat</label>
-    <textarea id="decision-prompt" class="pantry-decision-prompt" rows="10" readonly></textarea>
-    <button type="button" class="pantry-decision-copy" id="decision-copy">Copy</button>
-  </div>
+  <!-- The paste-back, kept and folded. Settled by the owner 2026-08-11, answering this page's own
+       question through the review tour: "keep the paste prompt, but collapse it". Both paths still
+       exist because they are for different moments — DECISIONS §2 puts the chat above every surface
+       below it, and pasting is right when someone is already in it — but two equal buttons made the
+       durable channel and the transient one look like a choice of taste rather than a default and an
+       escape hatch. -->
+  <details class="pantry-decision-paste">
+    <summary>Or paste it back into chat</summary>
+    <p class="pantry-decision-hint">For when the run is in front of you right now. The log is not written this way, so the answer lives only as long as that chat does.</p>
+    <button type="button" class="pantry-decision-generate" id="decision-generate">Generate prompt</button>
+    <div class="pantry-decision-output" hidden>
+      <label class="pantry-decision-notes-label" for="decision-prompt">Prompt — copy this into chat</label>
+      <textarea id="decision-prompt" class="pantry-decision-prompt" rows="10" readonly></textarea>
+      <button type="button" class="pantry-decision-copy" id="decision-copy">Copy</button>
+    </div>
+  </details>
 </div>
 <script src="/pantry-decisions.js" defer></script>`;
 }
