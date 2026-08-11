@@ -142,7 +142,18 @@ OK
 
 ## What needs human eyes
 
-The success receipt has been seen by a person exactly once, in a screenshot, on a scratch log. The
-next walk of `review-answer-channel` is the one that puts the new flow in front of the owner:
-finishing the card should write both answers with nothing to press, and `#reads-right` is still
-unanswered on the real log. `?tour=review-answer-channel` is the URL.
+**Closed while this report was being written.** The owner walked the new flow at `07:05:25Z` and it
+wrote itself: no button pressed, the answer on the real log
+(`a-20260811T070525Z-bf1a8ef6`). Record-on-finish is proved with a person in it, which is the only
+way it could have been.
+
+That answer also corrected this run's own copy. The reason for keeping the paste path was written
+here as "for when someone is already in the chat"; the owner's is "so that if the FINISH doesn't
+work, copy and pasting is still an option". Those are different claims, and the second is the one
+that makes it a fallback. The decision page says so now, and the claim is true rather than
+aspirational: the generate path composes the prompt in the browser and issues no request, so it
+survives a recorder that is broken. Acked as `k-20260811T070659Z-58fe7a56`, committed in `df1eb47`.
+
+Still open: `review-answer-channel#reads-right` has never been answered on the real log — both walks
+answered `#keep-both` only. Nothing is blocked on it; the tour's step statuses stay unverified until
+someone answers it.
