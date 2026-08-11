@@ -697,7 +697,12 @@ ${resolvedBanner}
        escape hatch. -->
   <details class="pantry-decision-paste">
     <summary>Or paste it back into chat</summary>
-    <p class="pantry-decision-hint">For when the run is in front of you right now. The log is not written this way, so the answer lives only as long as that chat does.</p>
+    <!-- Two reasons, and the SECOND one is why this is folded rather than deleted. The owner gave it
+         on the second walk: "so that if the FINISH doesn't work, copy and pasting is still an
+         option". A fallback that is only there when the primary path works is not a fallback, so
+         this stays reachable with the recorder broken, which is also why it composes the prompt in
+         the browser and needs nothing from the server to do it. -->
+    <p class="pantry-decision-hint">For when the run is in front of you right now — and for when recording does not work, since this path needs nothing from the server. The log is not written this way, so the answer lives only as long as that chat does.</p>
     <button type="button" class="pantry-decision-generate" id="decision-generate">Generate prompt</button>
     <div class="pantry-decision-output" hidden>
       <label class="pantry-decision-notes-label" for="decision-prompt">Prompt — copy this into chat</label>
