@@ -1,0 +1,46 @@
+name: CI
+
+# PANTRY had no CI at all until 2026-08-13, which the loop audit filed as F5 and rated the most
+# uncomfortable half of that finding. This is the repo that decides whether the other repos are
+# honest: `pantry doctor` is the mechanical tier of the estate loop, and doctor.test.ts alone is 50KB
+# of assertions about what counts as a wired repo. None of it ran anywhere but a laptop. A checker
+# whose own tests are unverified is the one place a silent failure costs the most, because everything
+# downstream reads its verdict as fact.
+#
+# Three steps and no more. Typecheck, tests, lint count. There is no e2e suite here and this file does
+# not pretend otherwise; the doctor already says so in every repo it runs in.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: typecheck, tests, lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+      # Not --frozen-lockfile. The layer pins here resolve through git rather than the registry and
+      # the lockfile has gone stale against them before; a resolution failure should read as a
+      # dependency problem in the log rather than as a lockfile mismatch that hides it.
+      - run: bun install
+      - run: bun run check
+      - run: bun test
+      # oxlint exits nonzero when it finds anything at all, including warnings, and this repo carries
+      # some. Blocking a push over a style warning is the gate that gets muted within a week, and the
+      # owner's 2026-08-13 call put the loop's only teeth on the human-lane path deny rather than
+      # here. So the output is captured and shown, and the step passes either way.
+      - name: lint, reported not enforced
+        run: bun run lint || true

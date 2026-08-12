@@ -1,7 +1,7 @@
 {
   "name": "@tjakoen/pantry",
   "version": "0.1.0",
-  "description": "PANTRY — the installable developer-docs + AI cockpit: composes BATCH+GRAIN+MILL+PROOF into one server you bunx into any project.",
+  "description": "PANTRY \u2014 the installable developer-docs + AI cockpit: composes BATCH+GRAIN+MILL+PROOF into one server you bunx into any project.",
   "type": "module",
   "bin": {
     "pantry": "./cli.ts"
@@ -51,6 +51,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "test": "bun test",
+    "coverage": "bun test --coverage",
     "lint": "oxlint",
     "deps:refresh": "bun add tjakoen.github.io@github:tjakoen/tjakoen.github.io#$(git ls-remote https://github.com/tjakoen/tjakoen.github.io.git main | cut -c1-7) && bun update @tjakoen/batch @tjakoen/grain @tjakoen/mill @tjakoen/proof"
   },
