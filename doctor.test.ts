@@ -124,6 +124,21 @@ describe("pantry doctor — kit compliance (error tier)", () => {
     expect(r.ok).toBe(false);
   });
 
+  // The test above drives VOICE.md, which was in the very first version of CANON_STANDARDS. That is
+  // why the set could sit eight names long against a canon of fifteen for three weeks without a
+  // single test going red: every test named a standard from the front of the list. This one names a
+  // late arrival on purpose, so a set that falls behind the canon again fails here rather than in an
+  // audit.
+  test("a standard added after the set was written is still caught as a fork", async () => {
+    await compliantKit();
+    await mkdir(join(dir, "standards"));
+    await writeFile(join(dir, "standards", "TREE.md"), "# forked");
+    const r = await run();
+    expect(byId(r, "no-forked-standards").ok).toBe(false);
+    expect(byId(r, "no-forked-standards").detail).toContain("TREE.md");
+    expect(r.ok).toBe(false);
+  });
+
   test("standardsSource: canon skips the fork check even with canon files present", async () => {
     await compliantKit();
     await mkdir(join(dir, "standards"));

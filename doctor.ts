@@ -102,9 +102,22 @@ export interface DoctorOptions {
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
 // means the repo forked what it should reference by URL (LOOP.md §3). A symlink (e.g. AGENTS.md) is
 // not a fork; only real files count.
+//
+// This set has to hold EVERY standard the canon repo publishes, because a name missing from it is a
+// fork this check waves through in silence. The 2026-08-17 audit found it eight names long against
+// a canon of fifteen, so seven standards had never been checkable. Add the name here in the same
+// commit that adds the standard, and see the fork test in doctor.test.ts, which now drives a name
+// from the back half of this list for exactly that reason.
 const CANON_STANDARDS = new Set([
   "AI-DEVELOPMENT.md",
   "AI-REPO-STANDARD.md",
+  "AUDIT-STANDARD.md",
+  "CONFORMANCE.md",
+  "DECISIONS.md",
+  "GRAPH.md",
+  "KICKSTART.md",
+  "TOUR-STANDARD.md",
+  "TREE.md",
   "SESSION-LOOP.md",
   "LOOP.md",
   "VOICE.md",
