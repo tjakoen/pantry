@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 import { runDoctor, formatDoctorReport, type DoctorReport } from "./doctor.ts";
 import type { GitRunner } from "./timeline.ts";
 
@@ -38,6 +39,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   previewCommandCwd: dir,
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
+  contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
   ...over,
 });
@@ -51,8 +53,11 @@ async function compliantKit() {
   await mkdir(join(dir, "e2e"));
 }
 
+// runContext is off by default here for the same reason runDrift and runDeps are: left on, it reads
+// the real ~/.claude of whoever runs the suite, so every unrelated test would carry that machine's
+// front door into its result. The context tests below turn it back on against a temp config dir.
 const run = (over: Partial<ResolvedPantryConfig> = {}, more = {}): Promise<DoctorReport> =>
-  runDoctor({ cwd: dir, now: NOW, config: cfg(over), runDrift: false, runDeps: false, ...more });
+  runDoctor({ cwd: dir, now: NOW, config: cfg(over), runDrift: false, runDeps: false, runContext: false, ...more });
 
 const byId = (r: DoctorReport, id: string) => r.checks.find((c) => c.id === id)!;
 
@@ -1114,5 +1119,71 @@ describe("formatDoctorReport", () => {
     const out = formatDoctorReport(await run());
     expect(out).toContain("[FAIL] CLAUDE.md present");
     expect(out.trim().endsWith("FAIL")).toBe(true);
+  });
+});
+
+describe("pantry doctor — cold-start context (what a session pays before any work)", () => {
+  // A second temp dir standing in for ~/.claude, so nothing here reads the real machine.
+  let harness: string;
+  let memoryDir: string;
+  beforeEach(async () => {
+    harness = await mkdtemp(join(tmpdir(), "pantry-harness-"));
+    memoryDir = join(harness, "projects", dir.replace(/[^a-zA-Z0-9]/g, "-"), "memory");
+    await mkdir(memoryDir, { recursive: true });
+  });
+  afterEach(async () => {
+    await rm(harness, { recursive: true, force: true });
+  });
+
+  const ctx = (over: Partial<ResolvedPantryConfig> = {}) =>
+    run(over, { runContext: true, harnessConfigDir: harness });
+
+  test("a small front door passes and still says what it measured", async () => {
+    await compliantKit();
+    const r = await ctx();
+    const c = byId(r, "context-budget");
+    expect(c.ok).toBe(true);
+    expect(c.severity).toBe("warn"); // warn severity, passing — due work is never an error
+    expect(c.detail).toContain("inside the 20,000 budget");
+  });
+
+  test("crossing the budget warns without failing the report", async () => {
+    await compliantKit();
+    await writeFile(join(memoryDir, "MEMORY.md"), "x".repeat(25_000));
+    const r = await ctx();
+    expect(byId(r, "context-budget").ok).toBe(false);
+    expect(byId(r, "context-budget").detail).toContain("over the 20,000 budget");
+    expect(r.ok).toBe(true); // a heavy front door is due work, not a broken kit
+  });
+
+  test("the detail names the biggest single file, because a total alone is not actionable", async () => {
+    await compliantKit();
+    await writeFile(join(memoryDir, "MEMORY.md"), "x".repeat(25_000));
+    expect(byId(await ctx(), "context-budget").detail).toContain("MEMORY.md is 25,000 of it");
+  });
+
+  test("an @-import is counted against the repo that imports it", async () => {
+    await compliantKit();
+    await writeFile(join(dir, "CLAUDE.md"), "# CLAUDE\n\n@IMPORTED.md\n");
+    await writeFile(join(dir, "IMPORTED.md"), "y".repeat(30_000));
+    const c = byId(await ctx(), "context-budget");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("IMPORTED.md is 30,000 of it");
+  });
+
+  test("a muted budget reports info and never warns", async () => {
+    await compliantKit();
+    await writeFile(join(memoryDir, "MEMORY.md"), "x".repeat(99_000));
+    const c = byId(await ctx({ contextBudgetChars: Infinity }), "context-budget");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("muted");
+  });
+
+  test("a repo with no front door at all reads info, not a warn about nothing", async () => {
+    await mkdir(join(dir, "plans"));
+    const c = byId(await ctx(), "context-budget");
+    expect(c.severity).toBe("info");
+    expect(c.detail).toContain("nothing loads at cold start");
   });
 });

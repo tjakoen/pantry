@@ -25,6 +25,7 @@ import { buildRunsPayload, type RunsPayload } from "./runs.ts";
 import { answers, readAnswerLog, unacked } from "./answers.ts";
 import { affectedBy, loadGraph } from "./graph.ts";
 import { commitsSince, daysBetween, isSet, plural, readHygieneState, type HygieneThresholds } from "./hygiene.ts";
+import { readContext } from "./context.ts";
 import type { GitRunner } from "./timeline.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
@@ -88,6 +89,14 @@ export interface DoctorOptions {
   /** override the host's loop-hygiene lines (tests, and a one-off run); anything omitted falls back
    *  to the resolved config, which falls back to the estate default. See hygiene.ts. */
   hygiene?: Partial<HygieneThresholds>;
+  /** fold the cold-start context measurement in as a warn check; default true (set false in hermetic
+   *  unit tests that do not want doctor reading the real harness config dir) */
+  runContext?: boolean;
+  /** the harness config dir the context check reads (tests); default ~/.claude */
+  harnessConfigDir?: string;
+  /** override the host's cold-start ceiling (tests, and a one-off run); falls back to the resolved
+   *  config, which falls back to the estate default. See context.ts. */
+  contextBudgetChars?: number;
 }
 
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
@@ -296,6 +305,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   const runDeps = opts.runDeps ?? true;
   const runSkills = opts.runSkills ?? true;
   const runSymbols = opts.runSymbols ?? true;
+  const runContext = opts.runContext ?? true;
   const git = opts.gitRunner ?? defaultGitRunner;
 
   const checks: DoctorCheck[] = [];
@@ -314,6 +324,40 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     label: "CLAUDE.md present",
     detail: claudeMd ? "found" : "missing — the cold-start front door (LOOP.md §3)",
   });
+
+  // What a session pays before it does any work. This is a WARN and never an error: a heavy front
+  // door is due work, not a broken kit, and the one thing that would guarantee it gets muted is
+  // failing CI over it. The detail always names the total and the largest single file, because "you
+  // are over budget" is not actionable and "the memory index is 15,221 of it" is.
+  if (runContext) {
+    const budget = opts.contextBudgetChars ?? config.contextBudgetChars;
+    if (!Number.isFinite(budget)) {
+      checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: "muted by this repo's pantry.config (contextBudgetChars)" });
+    } else {
+      try {
+        const reading = await readContext(cwd, { configDir: opts.harnessConfigDir });
+        if (reading.empty) {
+          checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: "nothing loads at cold start — no CLAUDE.md, no memory index" });
+        } else {
+          const biggest = reading.entries[0];
+          const share = `${basename(biggest.label)} is ${biggest.chars.toLocaleString("en-US")} of it`;
+          const size = `${reading.chars.toLocaleString("en-US")} chars over ${plural(reading.entries.length, "file")}`;
+          const over = reading.chars > budget;
+          checks.push({
+            id: "context-budget",
+            severity: "warn",
+            ok: !over,
+            label: "cold-start context",
+            detail: over
+              ? `${size}, over the ${budget.toLocaleString("en-US")} budget — ${share}`
+              : `${size}, inside the ${budget.toLocaleString("en-US")} budget — ${share}`,
+          });
+        }
+      } catch (err) {
+        checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: `context check skipped: ${err instanceof Error ? err.message : String(err)}` });
+      }
+    }
+  }
 
   // AGENTS.md must be a SYMLINK to CLAUDE.md — a real copy drifts.
   const agentsPath = join(cwd, "AGENTS.md");

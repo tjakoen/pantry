@@ -14,6 +14,7 @@ import {
 import { createPantryHandler } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 
 const TAG = `<script src="${PANTRY_PREFIX}/pantry-review-client.js" defer></script>`;
 
@@ -316,6 +317,7 @@ describe("createPantryHandler — the reserved prefix", () => {
     decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), artifactsDir: join(import.meta.dir, "artifacts"),
     runsDir: join(import.meta.dir, "artifacts", "runs"), previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
     hygiene: DEFAULT_HYGIENE,
+    contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
     surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true },
   });
 

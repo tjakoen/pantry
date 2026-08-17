@@ -27,6 +27,7 @@ import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 import { isInside } from "./paths.ts";
 import {
   PANTRY_PREFIX, pageAlreadyRunsCrumb, proxyToPreview, rebaseCrumbLive, rebasePantryCss, spotlightRulesOnly,
@@ -1338,6 +1339,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   previewCommandCwd: dirname(plansDir),
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
+  contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

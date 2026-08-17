@@ -8,6 +8,7 @@ import { mkdtemp, mkdir } from "node:fs/promises";
 import { createPantryHandler, homeBody } from "./app.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 import type { DoctorReport } from "./doctor.ts";
 import { PROOF_EXAMPLE as EXAMPLE } from "./fixtures.ts";
 
@@ -26,6 +27,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   previewCommandCwd: EXAMPLE,
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
+  contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
 });
 

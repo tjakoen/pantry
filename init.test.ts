@@ -12,6 +12,7 @@ import { runPantryInit } from "./init.ts";
 import { runDoctor } from "./doctor.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 
 let dir: string;
 beforeEach(async () => {
@@ -37,6 +38,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   previewCommandCwd: dir,
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
+  contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

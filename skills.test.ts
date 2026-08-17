@@ -13,6 +13,7 @@ import { syncSkills, listSkills, slugFor, renderSkill, resolveCanonDir, formatSk
 import { runDoctor } from "./doctor.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 
 let host: string;
 let canon: string;
@@ -54,6 +55,7 @@ const cfg = (): ResolvedPantryConfig => ({
   previewCommandCwd: host,
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
+  contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
   surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
 });
 

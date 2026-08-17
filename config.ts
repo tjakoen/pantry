@@ -10,6 +10,7 @@ import { isAbsolute, join, basename } from "node:path";
 import { existsSync } from "node:fs";
 import { resolvePreviewTarget } from "./preview.ts";
 import { DEFAULT_HYGIENE, type HygieneThresholds } from "./hygiene.ts";
+import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 
 export interface PantrySurfaces {
   plans: boolean;
@@ -118,6 +119,12 @@ export interface PantryConfig {
    *  and says so in its detail line, which is how a repo where a pile-up is normal opts out without
    *  learning to skim a warn. See hygiene.ts's HygieneThresholds. */
   hygiene?: Partial<Record<keyof HygieneThresholds, number | null>>;
+  /** the cold-start ceiling in characters: how much a session in this repo loads before it does any
+   *  work (CLAUDE.md and its imports, the agent memory index, the machine-wide front door) before
+   *  `pantry doctor` warns. Omitted takes the estate default; null mutes the check and says so, which
+   *  is how a repo whose front door is deliberately large opts out rather than learning to skim a
+   *  warn. Same asymmetry as `hygiene`. See context.ts's DEFAULT_CONTEXT_BUDGET. */
+  contextBudgetChars?: number | null;
   /** set to "canon" in the ONE repo that is the home of the cross-repo standards (the portfolio):
    *  it legitimately carries real canon-named files in `standards/`, so `pantry doctor`'s
    *  forked-standards check skips it. Every other repo references the standards by URL (LOOP.md §3),
@@ -167,6 +174,9 @@ export interface ResolvedPantryConfig {
   /** every hygiene line filled: the host's value where it gave one, the estate default otherwise, and
    *  Infinity where the host muted a check. Resolved here so no check has to merge defaults itself. */
   hygiene: HygieneThresholds;
+  /** the cold-start ceiling in characters: the host's number where it gave one, the estate default
+   *  where it said nothing, and Infinity where the host muted the check. */
+  contextBudgetChars: number;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
 }
@@ -247,6 +257,13 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     toursDir,
     surfaces: { ...ALL_ON, ...raw.surfaces },
     hygiene: resolveHygiene(raw.hygiene),
+    // Same asymmetry as resolveHygiene, and for the same reason: an absent key has not opted out, a
+    // key that is present and unusable has.
+    contextBudgetChars: !("contextBudgetChars" in raw)
+      ? DEFAULT_CONTEXT_BUDGET
+      : typeof raw.contextBudgetChars === "number" && Number.isFinite(raw.contextBudgetChars) && raw.contextBudgetChars > 0
+        ? raw.contextBudgetChars
+        : Infinity,
     standardsSource: raw.standardsSource,
   };
 }
