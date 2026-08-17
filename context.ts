@@ -15,6 +15,16 @@
 // answer, and the check does not need that precision to do its job: cold-start cost is compared
 // against itself over time, and roughly four characters to the token is enough for a person reading
 // the number to know what it means. Anything the count is wrong by, it is wrong by consistently.
+// Strictly it is bytes, since it reads stat sizes rather than decoding: 177 of 19,693 in the
+// portfolio on 2026-08-18, all of it non-ASCII punctuation, which is under a tenth of a percent.
+//
+// WHAT THIS DELIBERATELY DOES NOT COUNT, verified 2026-08-18. A session also loads whatever the
+// harness injects at SessionStart, which in the portfolio came to 4,221 characters across three
+// hooks, plus the skills listing and the tool schemas. Those are real cost and none of them is the
+// repo's to fix, so folding them in would turn this row red on a machine-wide bill a session cannot
+// pay down, which is how a check gets muted. This measures the front door a repo owns. It is a trend
+// line for the part that can be acted on, not the whole of what a session pays, and the budget below
+// is set against that narrower thing.
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve, dirname } from "node:path";
@@ -47,16 +57,18 @@ export interface ContextOptions {
 /**
  * The estate-wide budget, in characters.
  *
- * **This number is a first guess, not a measurement, and it is the one thing in this module that is
- * an opinion.** It is derived from what the portfolio has actually carried: 14,163 characters on
- * 2026-08-05 read as comfortable, and 24,243 on 2026-08-17 read as bloated to the person who found
- * it. 20,000 sits between them, roughly 5,000 tokens, and it is deliberately set where the repo it
- * was written in passes rather than fails — a check that is red the day it ships gets muted inside a
- * week (LOOP.md §7), and this one has no debt to work off, only a ceiling to stay under.
+ * **An owner decision as of 2026-08-18, not a measurement.** It is derived from what the portfolio
+ * has actually carried: 14,163 characters on 2026-08-05 read as comfortable, and 24,243 on
+ * 2026-08-17 read as bloated to the person who found it. 20,000 sits between them, roughly 5,000
+ * tokens, and it is deliberately set where the repo it was written in passes rather than fails — a
+ * check that is red the day it ships gets muted inside a week (LOOP.md §7), and this one has no debt
+ * to work off, only a ceiling to stay under. It shipped as a first guess and went to the owner as
+ * plans/decisions/2026-08-17-context-budget.md, which came back as option A: keep it, and treat it
+ * as agreed. That file also records what this budget is deliberately not about.
  *
- * Treat it the way `auditActivityCommits` is treated: a number to retune once a second repo has been
- * measured, not a law. Set `contextBudgetChars` in pantry.config to move it per host, or to null to
- * mute the check where a large front door is the deliberate choice.
+ * Still a number to retune once a second repo has been measured, not a law. Set
+ * `contextBudgetChars` in pantry.config to move it per host, or to null to mute the check where a
+ * large front door is the deliberate choice.
  */
 export const DEFAULT_CONTEXT_BUDGET = 20_000;
 
