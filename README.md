@@ -1,6 +1,7 @@
 # 🧺 PANTRY: the dev-docs cockpit
 
 [![Made with Claude](https://img.shields.io/badge/Made_with-Claude-D97757?logo=anthropic&logoColor=white)](https://tjakoen.github.io/notes/ten-times-zero)
+[![CI](https://github.com/tjakoen/pantry/actions/workflows/ci.yml/badge.svg)](https://github.com/tjakoen/pantry/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue)](LICENSE)
 [![Status](https://img.shields.io/badge/status-in_progress-blue)](PLAN.md)
 
