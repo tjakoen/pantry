@@ -33,6 +33,11 @@ bunx pantry serve            # renders your plans + docs + reference + catalog
 That's the whole install. The full story, written for an AI agent to follow step by step (with a
 manual checklist as the fallback), is in [INSTALL.md](INSTALL.md).
 
+> Run those in order. PANTRY is not on the public registry, and the unscoped `pantry` and `proof`
+> names there belong to unrelated packages. The first line is what puts the real binaries in your
+> project, and every `bunx` after it resolves them locally. A bare `bunx pantry` on a machine that
+> skipped that step fetches someone else's package.
+
 ## What it mounts
 
 ```
