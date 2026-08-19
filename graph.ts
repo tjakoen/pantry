@@ -184,6 +184,117 @@ export async function loadGraph(graphPath: string | null): Promise<{ nodes?: unk
   }
 }
 
+// ── What graphify has already reconciled ─────────────────────────────────────────────────────────
+//
+// The freshness check in doctor.ts used to ask git "did a code file change since the graph was built".
+// That is the wrong question, and it was measured wrong on 2026-08-19. `graphify update` re-extracts,
+// compares the TOPOLOGY, and when nothing moved it leaves graph.json and GRAPH_REPORT.md untouched. So
+// the built-from commit recorded in the report stays where it was while the graph is genuinely current.
+// The portfolio's only code change since its recorded commit was three deleted comment lines; graphify
+// answered "No code-graph topology changes detected; outputs left untouched", and doctor went on warning
+// and naming a remedy that could not clear it. A check whose remedy does nothing teaches people to skip
+// the report, and the session-start report is the one thing every session reads first.
+//
+// Only graphify can answer the topology question, and doctor may not run it: the doctor is read-only and
+// side-effect free, and a check that shells out to a build tool is neither. But graphify leaves its
+// answer on disk. Every successful run, the no-change one included, writes `graphify-out/manifest.json`:
+// one entry per file it looked at, carrying the MD5 of the content it hashed. See graphify's
+// detect.py save_manifest and watch.py, where every abort path returns BEFORE the manifest is written.
+// A manifest entry matching the file on disk is therefore graphify's own record that it has reconciled
+// the graph against exactly that content.
+//
+// Two properties this leans on, both load-bearing, neither to be softened:
+//   - It fails CLOSED. An absent manifest, a legacy entry carrying no hash, a file graphify never saw, a
+//     file deleted since, or a hash algorithm that changes under us: every one reads as "cannot confirm",
+//     which the caller turns into a warn. Nothing here can quietly call a stale graph fresh, and that is
+//     the only failure mode that costs anything. If graphify stops writing MD5 the check goes loudly
+//     noisy rather than silently wrong.
+//   - Every warn it produces is clearable by the remedy the warn names. `graphify update .` rewrites the
+//     manifest whether or not it rewrites the graph, so a file reported unreconciled becomes reconciled
+//     the moment the named command runs. That is the property the git-diff version did not have.
+
+/** The hash graphify recorded for a file, keyed by path relative to `root`. Null when there is no
+ *  readable manifest at all, which every caller reads as "cannot confirm" rather than "nothing moved".
+ *
+ *  Three on-disk entry shapes, all three produced by some version of graphify's `_normalise_entry`: a
+ *  bare mtime number (legacy, carries no hash), `{mtime, hash}` (older), and `{mtime, ast_hash,
+ *  semantic_hash}` (current). Despite the name, `ast_hash` is an MD5 of the file bytes rather than of a
+ *  parsed tree, so a comment-only edit does change it. An entry with no hash is dropped rather than
+ *  kept, so it reads as a file we cannot confirm. */
+export async function loadGraphManifest(graphDir: string, root: string): Promise<Map<string, string> | null> {
+  const manifestPath = join(graphDir, "manifest.json");
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await Bun.file(manifestPath).text());
+  } catch {
+    return null; // absent or unparseable — the caller warns rather than guessing
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+
+  const out = new Map<string, string>();
+  for (const [key, entry] of Object.entries(raw as Record<string, unknown>)) {
+    if (!entry || typeof entry !== "object") continue; // bare-mtime legacy entry — no hash to compare
+    const e = entry as { ast_hash?: unknown; hash?: unknown };
+    const hash = typeof e.ast_hash === "string" && e.ast_hash ? e.ast_hash
+      : typeof e.hash === "string" && e.hash ? e.hash
+        : null;
+    if (!hash) continue;
+    out.set(manifestKeyToRelative(key, root), hash);
+  }
+  return out;
+}
+
+/** graphify stores keys relative to the project root in forward-slash form, and falls back to absolute
+ *  for anything outside it (and for manifests written by older versions). git diff hands us
+ *  root-relative paths, so both forms are normalised onto that. */
+function manifestKeyToRelative(key: string, root: string): string {
+  if (!key.startsWith("/")) return key;
+  const prefix = root.endsWith("/") ? root : `${root}/`;
+  return key.startsWith(prefix) ? key.slice(prefix.length) : key;
+}
+
+/** MD5 of a file's bytes, or null when it cannot be read (deleted since the diff, most often). Matches
+ *  what graphify's `_stat_and_hash` records, so the two are comparable. MD5 is doing integrity work
+ *  here and no security work at all: the question is only whether these bytes are the bytes graphify
+ *  hashed, and the answer has to match graphify's choice of algorithm to mean anything. */
+async function fileMd5(path: string): Promise<string | null> {
+  try {
+    const bytes = await Bun.file(path).arrayBuffer();
+    return new Bun.CryptoHasher("md5").update(bytes).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+export type ReconcileVerdict =
+  /** no readable manifest, so nothing can be confirmed either way */
+  | { kind: "no-manifest" }
+  /** the manifest answered: these are the files it does NOT vouch for (empty means all of them check out) */
+  | { kind: "checked"; unreconciled: string[] };
+
+/**
+ * Which of `files` graphify has NOT already reconciled the graph against. Root-relative paths in, the
+ * same paths out, so a caller can name them in a warning. Pure read: opens the manifest and the files
+ * themselves, spawns nothing, writes nothing.
+ */
+export async function unreconciledFiles(graphDir: string, root: string, files: string[]): Promise<ReconcileVerdict> {
+  const manifest = await loadGraphManifest(graphDir, root);
+  if (!manifest) return { kind: "no-manifest" };
+
+  const unreconciled: string[] = [];
+  await Promise.all(files.map(async (f) => {
+    const recorded = manifest.get(f);
+    // Not in the manifest at all means graphify has never hashed it: a file added since the last run, or
+    // one deleted since (save_manifest prunes entries whose file is gone). Both are unconfirmable, and
+    // both clear on the next `graphify update .`.
+    if (!recorded) { unreconciled.push(f); return; }
+    const actual = await fileMd5(join(root, f));
+    if (actual !== recorded) unreconciled.push(f);
+  }));
+  unreconciled.sort();
+  return { kind: "checked", unreconciled };
+}
+
 /** One sibling repo whose graph is going into the merge. */
 export interface SiblingGraph {
   /** the sibling directory's basename, e.g. "grain" */

@@ -376,7 +376,7 @@ describe("pantry doctor — staleness (graph, e2e)", () => {
     expect(c.detail).toContain("18017a67");
   });
 
-  test("behind HEAD, a non-doc file moved → warn, not ok, \"code moved since\"", async () => {
+  test("behind HEAD, a non-doc file moved and no manifest vouches for it → warn, not ok", async () => {
     await compliantKit();
     const graphDir = join(dir, "graphify-out");
     await mkdir(graphDir);
@@ -388,7 +388,9 @@ describe("pantry doctor — staleness (graph, e2e)", () => {
     const c = byId(r, "graphify-freshness");
     expect(c.ok).toBe(false);
     expect(c.severity).toBe("warn");
-    expect(c.detail).toContain("code moved since");
+    expect(c.detail).toContain("graphify has not extracted since");
+    expect(c.detail).toContain("doctor.ts");
+    expect(c.detail).toContain("run graphify update .");
   });
 
   test("behind HEAD, only a doc file changed → ok, \"docs only, graph still current\"", async () => {
@@ -418,7 +420,9 @@ describe("pantry doctor — staleness (graph, e2e)", () => {
     const r = await run({ graphPath: graph }, { gitRunner });
     const c = byId(r, "graphify-freshness");
     expect(c.ok).toBe(false);
-    expect(c.detail).toContain("code moved since");
+    // the doc file is filtered out before the manifest is consulted, so only the code file is named
+    expect(c.detail).toContain("drift.ts");
+    expect(c.detail).not.toContain("README.md");
   });
 
   test("behind HEAD, diff returns no files at all → ok, docs-only wording", async () => {
@@ -448,6 +452,141 @@ describe("pantry doctor — staleness (graph, e2e)", () => {
     expect(c.ok).toBe(false);
     expect(c.severity).toBe("warn");
     expect(c.detail).toContain("unreachable");
+  });
+
+  // ── the graph is not the files (regression, measured 2026-08-19) ───────────────────────────────
+  //
+  // The check above used to stop at "did a code file change", and that question has a different answer
+  // from the one anybody cares about. graphify re-extracts on every run and compares TOPOLOGY; when
+  // nothing moved it leaves its outputs alone, which leaves the recorded built-from commit behind HEAD
+  // on a graph that is genuinely current. Measured against the portfolio: the one code change since the
+  // recorded commit was three deleted comment lines, graphify answered "No code-graph topology changes
+  // detected; outputs left untouched", and doctor warned anyway and told the reader to run the command
+  // that had just declined to do anything.
+  //
+  // What settles it is graphify's own manifest, which records the MD5 of every file it has hashed into
+  // the current graph. These tests build that manifest the way graphify does, from the real bytes on
+  // disk, so they measure the actual comparison rather than agreeing with the helper about itself.
+  //
+  // The load-bearing pair is the first two: the SAME comment-only edit, and the verdict flips purely on
+  // whether graphify has already seen it. If it ever stops flipping, the check has become either a
+  // rubber stamp or the old false alarm.
+  const md5 = async (path: string) => new Bun.CryptoHasher("md5").update(await Bun.file(path).arrayBuffer()).digest("hex");
+
+  /** A graphify-shaped manifest: keys relative to the host root, entries carrying the ast_hash field
+   *  (which, despite the name, holds an MD5 of the file bytes). */
+  const writeManifest = async (graphDir: string, entries: Record<string, string>) =>
+    writeFile(join(graphDir, "manifest.json"), JSON.stringify(
+      Object.fromEntries(Object.entries(entries).map(([f, h]) => [f, { mtime: 1, ast_hash: h, semantic_hash: "" }])),
+      null, 2,
+    ));
+
+  /** The measured scenario, as a fixture: a report behind HEAD, one changed code file, and a manifest
+   *  whose state the caller decides. Returns the freshness check. */
+  const freshnessWith = async (opts: { source: string; manifest?: Record<string, string> }) => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    await writeFile(join(dir, "preview-view.ts"), opts.source);
+    if (opts.manifest) await writeManifest(graphDir, opts.manifest);
+    const gitRunner = fakeGraphifyGit("deadbeef", "preview-view.ts\n");
+    return byId(await run({ graphPath: graph }, { gitRunner }), "graphify-freshness");
+  };
+
+  const WITH_COMMENT = "// the handover, read once and then cleared\nexport function view() { return 1; }\n";
+  const COMMENT_GONE = "export function view() { return 1; }\n";
+
+  test("a comment-only change graphify has already re-extracted → ok, graph reads current", async () => {
+    // graphify ran after the edit, found no topology change, left graph.json alone and stamped the
+    // manifest. The recorded commit is stale; the graph is not. This is the live false positive.
+    const c = await freshnessWith({
+      source: COMMENT_GONE,
+      manifest: { "preview-view.ts": await new Bun.CryptoHasher("md5").update(COMMENT_GONE).digest("hex") },
+    });
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("graph still current");
+    expect(c.detail).not.toContain("run graphify update .");
+  });
+
+  test("the same comment-only change, before graphify has seen it → warn, because nothing vouches for it", async () => {
+    // Same edit, same file, and the verdict flips: the manifest still carries the pre-edit hash, so the
+    // graph is unconfirmed. Proves the check reads graphify's record rather than the shape of the edit,
+    // and that an unverifiable graph is still a warn rather than a pass.
+    const c = await freshnessWith({
+      source: COMMENT_GONE,
+      manifest: { "preview-view.ts": await new Bun.CryptoHasher("md5").update(WITH_COMMENT).digest("hex") },
+    });
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("preview-view.ts");
+  });
+
+  test("a real topology change graphify has not extracted → still warn", async () => {
+    // A genuinely stale graph: a new exported function, and a manifest that predates it. The remedy the
+    // warn names does clear this one, which is the whole difference from the old check.
+    const c = await freshnessWith({
+      source: `${WITH_COMMENT}export function alsoView() { return view() + 1; }\n`,
+      manifest: { "preview-view.ts": await new Bun.CryptoHasher("md5").update(WITH_COMMENT).digest("hex") },
+    });
+    expect(c.ok).toBe(false);
+    expect(c.severity).toBe("warn");
+    expect(c.detail).toContain("graphify has not extracted since");
+  });
+
+  test("a code file graphify has never hashed (added since) → warn", async () => {
+    const c = await freshnessWith({ source: COMMENT_GONE, manifest: { "somewhere-else.ts": "0".repeat(32) } });
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("preview-view.ts");
+  });
+
+  test("a legacy manifest entry carrying no hash → warn, never a pass on a bare mtime", async () => {
+    // Older graphify wrote a bare mtime number. It cannot answer the question, so it must not be read
+    // as a yes: fail closed is the one posture that keeps a stale graph from reading fresh.
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    await writeFile(join(dir, "preview-view.ts"), COMMENT_GONE);
+    await writeFile(join(graphDir, "manifest.json"), JSON.stringify({ "preview-view.ts": 1699999999.5 }));
+    const gitRunner = fakeGraphifyGit("deadbeef", "preview-view.ts\n");
+    const c = byId(await run({ graphPath: graph }, { gitRunner }), "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("preview-view.ts");
+  });
+
+  test("a code file deleted since the graph was built → warn (a deletion is topology)", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    // in the diff, gone from disk, and pruned from the manifest by graphify's own save
+    await writeManifest(graphDir, { "kept.ts": await md5(join(dir, "CLAUDE.md")) });
+    const gitRunner = fakeGraphifyGit("deadbeef", "gone.ts\n");
+    const c = byId(await run({ graphPath: graph }, { gitRunner }), "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("gone.ts");
+  });
+
+  test("many unreconciled files → the detail names a few and counts the rest", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    await writeManifest(graphDir, {});
+    const gitRunner = fakeGraphifyGit("deadbeef", "a.ts\nb.ts\nc.ts\nd.ts\ne.ts\n");
+    const c = byId(await run({ graphPath: graph }, { gitRunner }), "graphify-freshness");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("5 file(s)");
+    expect(c.detail).toContain("+2 more");
   });
 
   test("an abbreviated report sha matches a full HEAD sha it's a prefix of → ok", async () => {

@@ -17,6 +17,8 @@ import {
   affectedBy,
   scopeRadius,
   formatScopeRadius,
+  loadGraphManifest,
+  unreconciledFiles,
   type GraphifyRunResult,
 } from "./graph.ts";
 
@@ -375,5 +377,108 @@ describe("scopeRadius — label collisions are reported, not inherited", () => {
     const r = await scopeRadius(p, ["solo.ts"]);
     expect(r.ambiguous).toEqual([]);
     expect(formatScopeRadius(r)).not.toContain("AMBIGUOUS");
+  });
+});
+
+// ── graphify's manifest, read as the record of what it has already reconciled ─────────────────────
+//
+// The doctor's freshness check leans on this to tell "a code file changed" apart from "the graph moved"
+// (the long note in graph.ts has the measurement). Every case below asks the same thing: when the answer
+// is anything other than a confident yes, does it come back as a no. A wrong no costs one command; a
+// wrong yes hands a session a stale map and says nothing.
+describe("graphify manifest", () => {
+  let host: string;
+  let graphDir: string;
+  beforeEach(async () => {
+    host = await mkdtemp(join(tmpdir(), "pantry-manifest-"));
+    graphDir = join(host, "graphify-out");
+    await mkdir(graphDir);
+  });
+  afterEach(async () => {
+    await rm(host, { recursive: true, force: true });
+  });
+
+  const md5 = (s: string) => new Bun.CryptoHasher("md5").update(s).digest("hex");
+  const writeManifest = (raw: unknown) => writeFile(join(graphDir, "manifest.json"), JSON.stringify(raw));
+
+  test("no manifest at all resolves to no-manifest, never to an empty pass", async () => {
+    expect(await loadGraphManifest(graphDir, host)).toBeNull();
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "no-manifest" });
+  });
+
+  test("an unparseable manifest resolves to no-manifest rather than throwing", async () => {
+    await writeFile(join(graphDir, "manifest.json"), "{ not json");
+    expect(await loadGraphManifest(graphDir, host)).toBeNull();
+  });
+
+  test("a manifest that is a JSON array, not an object, resolves to no-manifest", async () => {
+    await writeManifest(["a.ts"]);
+    expect(await loadGraphManifest(graphDir, host)).toBeNull();
+  });
+
+  test("a matching ast_hash vouches for the file", async () => {
+    await writeFile(join(host, "a.ts"), "export const a = 1;\n");
+    await writeManifest({ "a.ts": { mtime: 1, ast_hash: md5("export const a = 1;\n"), semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "checked", unreconciled: [] });
+  });
+
+  test("a stale ast_hash does not", async () => {
+    await writeFile(join(host, "a.ts"), "export const a = 2;\n");
+    await writeManifest({ "a.ts": { mtime: 1, ast_hash: md5("export const a = 1;\n"), semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "checked", unreconciled: ["a.ts"] });
+  });
+
+  test("an older manifest's `hash` field is read the same way as `ast_hash`", async () => {
+    await writeFile(join(host, "a.ts"), "export const a = 1;\n");
+    await writeManifest({ "a.ts": { mtime: 1, hash: md5("export const a = 1;\n") } });
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "checked", unreconciled: [] });
+  });
+
+  test("an absolute key (legacy, or written by a caller with no root) is re-anchored onto the host", async () => {
+    await writeFile(join(host, "a.ts"), "export const a = 1;\n");
+    await writeManifest({ [join(host, "a.ts")]: { mtime: 1, ast_hash: md5("export const a = 1;\n"), semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "checked", unreconciled: [] });
+  });
+
+  test("a bare-mtime entry carries no hash, so it vouches for nothing", async () => {
+    await writeFile(join(host, "a.ts"), "export const a = 1;\n");
+    await writeManifest({ "a.ts": 1699999999.5 });
+    expect(await loadGraphManifest(graphDir, host)).toEqual(new Map());
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "checked", unreconciled: ["a.ts"] });
+  });
+
+  test("an empty-string hash vouches for nothing either", async () => {
+    await writeFile(join(host, "a.ts"), "export const a = 1;\n");
+    await writeManifest({ "a.ts": { mtime: 1, ast_hash: "", semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, ["a.ts"])).toEqual({ kind: "checked", unreconciled: ["a.ts"] });
+  });
+
+  test("a file the manifest has never seen is unreconciled", async () => {
+    await writeFile(join(host, "b.ts"), "export const b = 1;\n");
+    await writeManifest({ "a.ts": { mtime: 1, ast_hash: md5("x"), semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, ["b.ts"])).toEqual({ kind: "checked", unreconciled: ["b.ts"] });
+  });
+
+  test("a file gone from disk is unreconciled, even when the manifest still lists it", async () => {
+    await writeManifest({ "gone.ts": { mtime: 1, ast_hash: md5("anything"), semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, ["gone.ts"])).toEqual({ kind: "checked", unreconciled: ["gone.ts"] });
+  });
+
+  test("asking about nothing is a clean yes, not a no", async () => {
+    await writeManifest({ "a.ts": { mtime: 1, ast_hash: md5("x"), semantic_hash: "" } });
+    expect(await unreconciledFiles(graphDir, host, [])).toEqual({ kind: "checked", unreconciled: [] });
+  });
+
+  test("the unreconciled list is sorted and mixes matched with unmatched correctly", async () => {
+    await writeFile(join(host, "a.ts"), "a\n");
+    await writeFile(join(host, "b.ts"), "b\n");
+    await writeFile(join(host, "c.ts"), "c\n");
+    await writeManifest({
+      "a.ts": { mtime: 1, ast_hash: md5("a\n"), semantic_hash: "" },
+      "b.ts": { mtime: 1, ast_hash: md5("STALE"), semantic_hash: "" },
+      "c.ts": { mtime: 1, ast_hash: md5("c\n"), semantic_hash: "" },
+    });
+    const v = await unreconciledFiles(graphDir, host, ["c.ts", "b.ts", "a.ts", "z.ts"]);
+    expect(v).toEqual({ kind: "checked", unreconciled: ["b.ts", "z.ts"] });
   });
 });

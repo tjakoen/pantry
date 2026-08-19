@@ -23,7 +23,7 @@ import { listSkills } from "./skills.ts";
 import { checkHookDrift } from "./hooks.ts";
 import { buildRunsPayload, type RunsPayload } from "./runs.ts";
 import { answers, readAnswerLog, unacked } from "./answers.ts";
-import { affectedBy, loadGraph } from "./graph.ts";
+import { affectedBy, loadGraph, unreconciledFiles } from "./graph.ts";
 import { commitsSince, daysBetween, isSet, plural, readHygieneState, type HygieneThresholds } from "./hygiene.ts";
 import { readContext } from "./context.ts";
 import type { GitRunner } from "./timeline.ts";
@@ -184,13 +184,48 @@ async function mergedGraphIsStale(config: ResolvedPantryConfig): Promise<boolean
   }
 }
 
-/** Did anything the graph extracts from change between `from` and HEAD? Null when git cannot answer —
- *  the commit is unreachable after a history rewrite, say — which the caller reads as "don't guess". */
-async function codeChangedSince(from: string, cwd: string, git: GitRunner): Promise<boolean | null> {
+/** What moved between the commit the graph was built from and HEAD, as far as the graph is concerned.
+ *
+ *  Three questions in order, each cheaper than the one after it. Did git answer at all (an unreachable
+ *  commit after a history rewrite is a "do not guess"). Did any file the graph extracts from change.
+ *  And, for the ones that did, has graphify already reconciled the graph against them.
+ *
+ *  That third question is the fix for the 2026-08-19 bug and the reason this is not a boolean. A code
+ *  file changing is not the same event as the graph going stale: graphify re-extracts, compares
+ *  topology, and leaves its outputs alone when nothing moved, which leaves the recorded built-from
+ *  commit behind HEAD on a graph that is current. `unreconciledFiles` reads graphify's own manifest to
+ *  tell the two apart, and fails closed when it cannot (see the long note above it in graph.ts). */
+type GraphMovement =
+  /** git could not answer, so nothing is claimed */
+  | { kind: "unknown" }
+  /** nothing the graph extracts from changed; prose and pictures moved, at most */
+  | { kind: "none" }
+  /** code changed, and graphify has already hashed every changed file into the current graph */
+  | { kind: "reconciled"; files: string[] }
+  /** code changed and at least one file is not vouched for; the graph may or may not be stale, and
+   *  "may" is a warn here, because an unverifiable graph has never been allowed to read as a pass */
+  | { kind: "unreconciled"; files: string[] };
+
+async function graphMovementSince(from: string, cwd: string, graphDir: string, git: GitRunner): Promise<GraphMovement> {
   const out = await git(["diff", "--name-only", `${from}..HEAD`], cwd);
-  if (out === null) return null;
-  const changed = out.split("\n").map((l) => l.trim()).filter(Boolean);
-  return changed.some((f) => !NON_INVALIDATING.test(f));
+  if (out === null) return { kind: "unknown" };
+  const changed = out.split("\n").map((l) => l.trim()).filter(Boolean).filter((f) => !NON_INVALIDATING.test(f));
+  if (changed.length === 0) return { kind: "none" };
+
+  const verdict = await unreconciledFiles(graphDir, cwd, changed);
+  // No manifest is not "nothing moved". It is the same "cannot confirm" the unreachable-commit branch
+  // gets, so it takes the same warn, with every changed file named as unvouched-for.
+  if (verdict.kind === "no-manifest") return { kind: "unreconciled", files: changed };
+  return verdict.unreconciled.length === 0
+    ? { kind: "reconciled", files: changed }
+    : { kind: "unreconciled", files: verdict.unreconciled };
+}
+
+/** At most `limit` names, with the remainder counted rather than printed. A warn that lists forty files
+ *  is a warn nobody finishes reading. */
+function nameSome(files: string[], limit = 3): string {
+  const shown = files.slice(0, limit).join(", ");
+  return files.length > limit ? `${shown} +${files.length - limit} more` : shown;
 }
 
 // Newest audit REPORT (not the AUDIT.md runbook) across the few dirs a report is likely to land in.
@@ -560,24 +595,27 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
         // Compare on the shorter of the two, so an abbreviated report hash matches a full HEAD.
         const n = Math.min(builtFrom.length, head.length);
         const atHead = builtFrom.slice(0, n) === head.slice(0, n);
-        // Behind HEAD is only stale if CODE moved in between; doc commits leave the graph current.
-        const codeMoved = atHead ? false : await codeChangedSince(builtFrom, cwd, git);
+        // Behind HEAD is only stale if the GRAPH moved in between. Doc commits leave it current, and so
+        // do code commits graphify has already re-extracted and found topologically identical.
+        const moved: GraphMovement = atHead ? { kind: "none" } : await graphMovementSince(builtFrom, cwd, config.graphDir, git);
         const shortHead = head.slice(0, builtFrom.length);
         checks.push({
           id: "graphify-freshness",
           severity: "warn",
-          // Explicitly `=== false`: an unreachable built-from commit (null) is a warn, not a pass. We
-          // could not verify it, and silently calling an unverifiable graph fresh is the exact failure
-          // the mtime check was making.
-          ok: codeMoved === false,
+          // Only the two verified-current outcomes pass. Unknown and unreconciled both warn, because we
+          // could not confirm the graph, and silently calling an unverifiable graph fresh is the exact
+          // failure the mtime check was making.
+          ok: moved.kind === "none" || moved.kind === "reconciled",
           label: "graphify freshness",
           detail: atHead
             ? `graph built from HEAD (${builtFrom})`
-            : codeMoved === null
+            : moved.kind === "unknown"
               ? `graph built from ${builtFrom}, unreachable from HEAD (${shortHead}) — run graphify update .`
-              : codeMoved
-                ? `graph built from ${builtFrom}, code moved since — run graphify update .`
-                : `graph built from ${builtFrom}, HEAD is ${shortHead} (docs only, graph still current)`,
+              : moved.kind === "unreconciled"
+                ? `graph built from ${builtFrom}, ${moved.files.length} file(s) graphify has not extracted since (${nameSome(moved.files)}) — run graphify update .`
+                : moved.kind === "reconciled"
+                  ? `graph built from ${builtFrom}, HEAD is ${shortHead} (${moved.files.length} code file(s) changed since, all already extracted, graph still current)`
+                  : `graph built from ${builtFrom}, HEAD is ${shortHead} (docs only, graph still current)`,
         });
       } else {
         const age = daysBetween(now, st.mtime);
