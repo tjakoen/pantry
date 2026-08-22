@@ -32,7 +32,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   graphPath: null,
   graphDir: join(dir, "graphify-out"),
   decisionsDir: join(dir, "plans", "decisions"), answersLog: join(dir, "plans", "decisions", "answers.jsonl"),
-  artifactsDir: join(dir, "artifacts"),
+  sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(dir, "artifacts"),
   runsDir: join(dir, "artifacts", "runs"),
   previewTarget: null,
   previewCommand: null,
@@ -40,7 +40,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true },
   ...over,
 });
 
@@ -1339,5 +1339,45 @@ describe("pantry doctor — cold-start context (what a session pays before any w
     const c = byId(await ctx(), "context-budget");
     expect(c.severity).toBe("info");
     expect(c.detail).toContain("nothing loads at cold start");
+  });
+});
+
+// C0 of the control center. The failure this check exists for is not a broken PANTRY, it is a hook
+// nobody mounted, which renders as a calm empty page unless something says so out loud.
+describe("session events", () => {
+  const logPath = () => join(dir, "sessions.jsonl");
+  const writeLog = (lines: unknown[]) => writeFile(logPath(), lines.map((l) => JSON.stringify(l)).join("\n") + "\n");
+  const at = (msAgo: number) => new Date(NOW.getTime() - msAgo).toISOString();
+
+  test("no log at all is an info naming where events would appear", async () => {
+    await compliantKit();
+    const c = byId(await run({ sessionsLog: join(dir, "nothing-here.jsonl") }), "session-events");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("nothing has observed this repo");
+  });
+
+  test("counts the sessions recorded here and how many are alive", async () => {
+    await compliantKit();
+    await writeLog([
+      { kind: "start", at: at(600_000), session: "s1", cwd: dir },
+      { kind: "tool", at: at(30_000), session: "s1", cwd: dir, tool: "Edit" },
+      { kind: "start", at: at(7_200_000), session: "s2", cwd: dir },
+    ]);
+    const c = byId(await run({ sessionsLog: logPath() }), "session-events");
+    expect(c.severity).toBe("info");
+    expect(c.detail).toContain("2 session(s) recorded here, 1 alive now");
+  });
+
+  // The one state that IS a defect: the emitter and the reader disagreeing about the schema.
+  test("a line the reader cannot parse warns, and still never fails the build", async () => {
+    await compliantKit();
+    await writeFile(logPath(), '{"kind":"start","at":"' + at(1_000) + '","session":"s1","cwd":"' + dir + '"}\nnot json at all\n');
+    const r = await run({ sessionsLog: logPath() });
+    const c = byId(r, "session-events");
+    expect(c.severity).toBe("warn");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("could not parse");
+    expect(r.ok).toBe(true);
   });
 });

@@ -164,11 +164,11 @@ const configWith = (previewTarget: string | null, toursDir: string | null): Reso
   cwd: import.meta.dir, projectName: "test-project", plansDir: PLANS, docsDirs: [],
   graphPath: null, graphDir: join(import.meta.dir, "graphify-out"),
   decisionsDir: join(PLANS, "decisions"), answersLog: join(PLANS, "decisions", "answers.jsonl"),
-  artifactsDir: join(import.meta.dir, "artifacts"), runsDir: join(import.meta.dir, "artifacts", "runs"),
+  sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(import.meta.dir, "artifacts"), runsDir: join(import.meta.dir, "artifacts", "runs"),
   previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true },
+  surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true, control: true },
 });
 
 // The stand-in for a non-GRAIN project: a plain page, no CRUMB, and one route that DOES load a tour

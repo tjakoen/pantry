@@ -26,6 +26,7 @@ import { createCrumbRoutes } from "@tjakoen/crumb/routes.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
+import { buildSessionsPayload, resolveSessionsLog } from "./sessions.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
 import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 import { isInside } from "./paths.ts";
@@ -1332,6 +1333,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   plansDir, docsDirs: [], graphPath: null, graphDir: join(dirname(plansDir), "graphify-out"),
   decisionsDir: join(plansDir, "decisions"),
   answersLog: join(plansDir, "decisions", "answers.jsonl"),
+  sessionsLog: resolveSessionsLog(dirname(plansDir)),
   artifactsDir: join(dirname(plansDir), "artifacts"),
   runsDir: join(dirname(plansDir), "artifacts", "runs"),
   previewTarget: null,
@@ -1340,7 +1342,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true },
 });
 
 export function createPantryHandler(opts: PantryOptions) {
@@ -1559,6 +1561,12 @@ export function createPantryHandler(opts: PantryOptions) {
       return Response.json(await buildMapPayload(config, new Date().toISOString()));
     if (path === "/map")
       return html(page("Mindmap", mapBody(await buildMapPayload(config, new Date().toISOString()))));
+
+    // --- the control center (C0): the machine twin only. One row per session the harness emitter
+    // saw in this project, folded from an append-only log PANTRY reads and never writes. The page
+    // that joins these rows to the plan board is C1; until then this is the record and nothing else.
+    if (surfaces.control && path === "/sessions.json")
+      return Response.json(await buildSessionsPayload(config, new Date().toISOString()));
 
     // --- the decision inbox (piece 11d): human /decisions + /decisions/<id>, machine twin /decisions.json.
     // Same model (buildDecisionsPayload over the host's plans/decisions), so the cards and the payload

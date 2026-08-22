@@ -11,6 +11,7 @@ import { existsSync } from "node:fs";
 import { resolvePreviewTarget } from "./preview.ts";
 import { DEFAULT_HYGIENE, type HygieneThresholds } from "./hygiene.ts";
 import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
+import { resolveSessionsLog } from "./sessions.ts";
 
 export interface PantrySurfaces {
   plans: boolean;
@@ -32,6 +33,10 @@ export interface PantrySurfaces {
    *  missing. Human index + detail alongside the machine twin, all three off together when this is
    *  false. Model-free, read-only. Default on. */
   runs: boolean;
+  /** the control center (/control, /sessions.json) — the plan board joined to what is moving right
+   *  now. Reads a session event log the HARNESS writes; PANTRY only ever reads it. Default on, and
+   *  an absent log degrades the surface to "nothing has been observed here" rather than an error. */
+  control: boolean;
 }
 
 /** What a host project may put in `pantry.config.(ts|json)`. Every field is optional. */
@@ -67,6 +72,10 @@ export interface PantryConfig {
    *  MACHINE instead, which is the trade for a session that works across repos and wants exactly one
    *  path to watch. Both are supported on purpose, and neither is a mode with its own code. */
   answersLog?: string;
+  /** where the harness hook appends session events; default is OUTSIDE the repo, beside the agent
+   *  memory under the harness config dir (see sessions.ts for why). Set this only to move the log,
+   *  never expecting PANTRY to write it: the emitter is a hook, and this stays a read. */
+  sessionsLog?: string;
   /** where runs deposit evidence — screenshots, audit reports, diffs — that PANTRY serves read-only;
    *  default ./artifacts. Absent → the /artifacts surface degrades to guidance. */
   artifactsDir?: string;
@@ -153,6 +162,9 @@ export interface ResolvedPantryConfig {
   /** the append-only answer log (absolute); default <decisionsDir>/answers.jsonl. The one path PANTRY
    *  writes to — resolved here so no request ever names it. */
   answersLog: string;
+  /** the session event log (absolute); default <configDir>/projects/<slug>/sessions.jsonl. Read
+   *  only, and read from outside the repo on purpose. */
+  sessionsLog: string;
   /** the artifacts folder (absolute); default <cwd>/artifacts */
   artifactsDir: string;
   /** the run-report folder (absolute); default <artifactsDir>/runs */
@@ -181,7 +193,7 @@ export interface ResolvedPantryConfig {
   standardsSource?: "canon";
 }
 
-const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true };
+const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 
@@ -241,6 +253,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     decisionsDir,
     // default beside the decision requests, for the same reason: the answer belongs with the question
     answersLog: raw.answersLog ? abs(cwd, raw.answersLog) : join(decisionsDir, "answers.jsonl"),
+    sessionsLog: resolveSessionsLog(cwd, raw.sessionsLog),
     artifactsDir,
     // default under artifactsDir (not cwd) so the ledger rides along with the evidence it cites
     runsDir: raw.runsDir ? abs(cwd, raw.runsDir) : join(artifactsDir, "runs"),

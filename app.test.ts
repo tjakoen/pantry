@@ -20,7 +20,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   graphPath: null,
   graphDir: join(EXAMPLE, "graphify-out"),
   decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"),
-  artifactsDir: join(EXAMPLE, "artifacts"),
+  sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(EXAMPLE, "artifacts"),
   runsDir: join(EXAMPLE, "artifacts", "runs"),
   previewTarget: null,
   previewCommand: null,
@@ -28,7 +28,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true, ...surfaces },
 });
 
 const get = async (handler: (r: Request) => Promise<Response>, path: string) =>

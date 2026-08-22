@@ -48,7 +48,7 @@ const cfg = (): ResolvedPantryConfig => ({
   graphPath: null,
   graphDir: join(host, "graphify-out"),
   decisionsDir: join(host, "plans", "decisions"), answersLog: join(host, "plans", "decisions", "answers.jsonl"),
-  artifactsDir: join(host, "artifacts"),
+  sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(host, "artifacts"),
   runsDir: join(host, "artifacts", "runs"),
   previewTarget: null,
   previewCommand: null,
@@ -56,7 +56,7 @@ const cfg = (): ResolvedPantryConfig => ({
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true },
 });
 
 describe("pantry skills sync — the generated view", () => {

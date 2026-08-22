@@ -23,6 +23,7 @@ import { listSkills } from "./skills.ts";
 import { checkHookDrift } from "./hooks.ts";
 import { buildRunsPayload, type RunsPayload } from "./runs.ts";
 import { answers, readAnswerLog, unacked } from "./answers.ts";
+import { readSessionLog, summarizeSessions } from "./sessions.ts";
 import { affectedBy, loadGraph, unreconciledFiles } from "./graph.ts";
 import { commitsSince, daysBetween, isSet, plural, readHygieneState, type HygieneThresholds } from "./hygiene.ts";
 import { readContext } from "./context.ts";
@@ -1011,6 +1012,36 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     }
   } catch (err) {
     checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `answer-log check skipped: ${err instanceof Error ? err.message : String(err)}` });
+  }
+
+  // ── Session events: is anything observing this repo at all? (C0) ─────────
+  //
+  // The control center reads a log the HARNESS writes, so the failure mode is not a broken PANTRY,
+  // it is a hook that was never mounted, and the surface would render a calm empty page either way.
+  // That is the silent-degrade shape AUDIT-STANDARD §6 names, and the guard against it is that the
+  // payload carries `present` and the page has to say "nothing has observed this repo" out loud.
+  //
+  // INFO and not warn, even when nothing is mounted, and the reason is the baseline rule (LOOP §2):
+  // PANTRY ships into other people's projects where this emitter will never exist, and a check that
+  // is red forever in the normal case is a check everyone learns to skip. The one thing that does
+  // earn a warn is malformed lines, because those mean the emitter and this reader disagree about
+  // the schema, which is a defect rather than a state.
+  try {
+    if (!existsSync(config.sessionsLog)) {
+      checks.push({ id: "session-events", severity: "info", ok: true, label: "session events", detail: `nothing has observed this repo — events appear at ${config.sessionsLog} once the harness emitter is mounted` });
+    } else {
+      const log = await readSessionLog(config.sessionsLog);
+      const rows = summarizeSessions(log, now.toISOString(), config.cwd);
+      const alive = rows.filter((r) => r.state === "alive").length;
+      const detail = `${rows.length} session(s) recorded here, ${alive} alive now`;
+      if (log.malformed > 0) {
+        checks.push({ id: "session-events", severity: "warn", ok: false, label: "session events", detail: `${detail}, and ${log.malformed} line(s) this reader could not parse — the emitter and sessions.ts disagree about the schema` });
+      } else {
+        checks.push({ id: "session-events", severity: "info", ok: true, label: "session events", detail });
+      }
+    }
+  } catch (err) {
+    checks.push({ id: "session-events", severity: "info", ok: true, label: "session events", detail: `session-event check skipped: ${err instanceof Error ? err.message : String(err)}` });
   }
 
   // ── Scope growth, diagnosed rather than just reported (S4) ───────────────

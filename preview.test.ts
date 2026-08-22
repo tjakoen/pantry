@@ -314,11 +314,11 @@ describe("createPantryHandler — the reserved prefix", () => {
   const configWith = (previewTarget: string | null, toursDir: string | null = null): ResolvedPantryConfig => ({
     cwd: import.meta.dir, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [],
     graphPath: null, graphDir: join(import.meta.dir, "graphify-out"),
-    decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), artifactsDir: join(import.meta.dir, "artifacts"),
+    decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(import.meta.dir, "artifacts"),
     runsDir: join(import.meta.dir, "artifacts", "runs"), previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
     hygiene: DEFAULT_HYGIENE,
     contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-    surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true },
+    surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true, control: true },
   });
 
   test("with NO target the root is PANTRY's own home, exactly as it always was", async () => {

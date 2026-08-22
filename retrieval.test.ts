@@ -15,10 +15,10 @@ import { PROOF_EXAMPLE as EXAMPLE } from "./fixtures.ts";
 const AT = "2026-07-10T00:00:00.000Z";
 
 const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): ResolvedPantryConfig => ({
-  cwd: EXAMPLE, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, graphDir: join(EXAMPLE, "graphify-out"), decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), artifactsDir: join(EXAMPLE, "artifacts"), runsDir: join(EXAMPLE, "artifacts", "runs"), previewTarget: null, previewCommand: null, previewCommandCwd: EXAMPLE, toursDir: null,
+  cwd: EXAMPLE, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, graphDir: join(EXAMPLE, "graphify-out"), decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(EXAMPLE, "artifacts"), runsDir: join(EXAMPLE, "artifacts", "runs"), previewTarget: null, previewCommand: null, previewCommandCwd: EXAMPLE, toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true, ...surfaces },
 });
 
 // A ContentSource-backed collection with a fixed slug list (one nonconforming, to prove filtering).
@@ -143,7 +143,7 @@ describe("renderLlmsTxt — the session context pack (same brain, human projecti
   test("the runs surface off → the ledger is not read at all", async () => {
     const runsDir = join(tmpdir(), `pantry-retr-runs-off-${Date.now()}`);
     await Bun.write(join(runsDir, "2026-08-07-a.md"), `---\ntitle: thin\n---\nbody`);
-    const k = await buildKnowledge({ ...configWith({ runs: false }), runsDir }, [], AT);
+    const k = await buildKnowledge({ ...configWith({ runs: false, control: true }), runsDir }, [], AT);
     expect(k.incompleteRuns).toBe(0);
     expect(k.surfaces.some((s) => s.route === "/runs.json")).toBe(false);
   });

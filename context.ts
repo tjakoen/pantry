@@ -113,13 +113,19 @@ async function walk(path: string, source: ContextEntry["source"], seen: Set<stri
 }
 
 /**
- * Where the agent's memory for a project lives. Claude Code names the directory after the project
- * path with every non-alphanumeric character replaced by a dash, so the mapping is reproducible from
- * cwd alone and needs no lookup. Documented rather than discovered: the same rule is what lets a
- * session find its own transcript.
+ * Where the harness keeps everything it holds about one project: the agent memory, the transcripts,
+ * and (once the emitter is mounted) the session event log. Claude Code names the directory after the
+ * project path with every non-alphanumeric character replaced by a dash, so the mapping is
+ * reproducible from cwd alone and needs no lookup. This is the ONE copy of that rule in PANTRY.
  */
+export function harnessProjectDir(cwd: string, configDir: string): string {
+  return join(configDir, "projects", resolve(cwd).replace(/[^a-zA-Z0-9]/g, "-"));
+}
+
+/** The memory index inside that directory. Kept as its own function because callers ask for the file
+ *  far more often than for the folder it sits in. */
 export function memoryIndexPath(cwd: string, configDir: string): string {
-  return join(configDir, "projects", resolve(cwd).replace(/[^a-zA-Z0-9]/g, "-"), "memory", "MEMORY.md");
+  return join(harnessProjectDir(cwd, configDir), "memory", "MEMORY.md");
 }
 
 /**

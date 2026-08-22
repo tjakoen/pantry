@@ -31,7 +31,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   graphPath: null,
   graphDir: join(dir, "graphify-out"),
   decisionsDir: join(dir, "plans", "decisions"), answersLog: join(dir, "plans", "decisions", "answers.jsonl"),
-  artifactsDir: join(dir, "artifacts"),
+  sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(dir, "artifacts"),
   runsDir: join(dir, "artifacts", "runs"),
   previewTarget: null,
   previewCommand: null,
@@ -39,7 +39,7 @@ const doctorCfg = (): ResolvedPantryConfig => ({
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true },
 });
 
 const runDoctorHere = () => runDoctor({ cwd: dir, config: doctorCfg(), runDrift: false });

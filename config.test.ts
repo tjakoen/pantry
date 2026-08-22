@@ -91,7 +91,7 @@ describe("zero config — `bunx pantry` in a bare project", () => {
     const config = await loadPantryConfig(await host());
     expect(config.surfaces).toEqual({
       plans: true, docs: true, reference: true, catalog: true, standards: true,
-      decisions: true, artifacts: true, timeline: true, runs: true,
+      decisions: true, artifacts: true, timeline: true, runs: true, control: true,
     });
   });
 });
@@ -418,7 +418,7 @@ describe("surfaces and standardsSource — what the host may turn off", () => {
     expect(surfaces.runs).toBe(true);
     expect(surfaces.decisions).toBe(true);
     expect(Object.keys(surfaces).toSorted()).toEqual(
-      ["artifacts", "catalog", "decisions", "docs", "plans", "reference", "runs", "standards", "timeline"],
+      ["artifacts", "catalog", "control", "decisions", "docs", "plans", "reference", "runs", "standards", "timeline"],
     );
   });
 
