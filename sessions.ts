@@ -25,9 +25,12 @@
 // cannot see is a lie with a spinner on it.
 import { existsSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
-import { basename, isAbsolute, join, resolve } from "node:path";
+import { basename, isAbsolute, join, resolve, sep } from "node:path";
 import { homedir } from "node:os";
+import { loadPlans } from "@tjakoen/proof/loader.ts";
+import type { PlanOwner, PlanStatus } from "@tjakoen/proof/core/types.ts";
 import { harnessProjectDir } from "./context.ts";
+import { buildDecisionsPayload } from "./decisions.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
 /** The three moments the emitter records. Anything else in the log is malformed, by design: a
@@ -350,3 +353,356 @@ export async function buildSessionsPayload(config: ResolvedPantryConfig, nowIso:
  *  do not each grow their own copy. */
 export const resolveSessionsLog = (cwd: string, given?: string): string =>
   given ? (isAbsolute(given) ? given : join(cwd, given)) : defaultSessionsLog(cwd);
+
+// ── C1: the join, the lamps, and the payload behind /control ─────────────────────────────────────
+//
+// C0 above answers "which sessions have been here". C1 answers the question a person actually has,
+// which is where the project is: every plan with an open step, the sessions attached to each, what
+// is waiting on a human, and whether the loop ran at all. The control center is a projection of the
+// PLAN with sessions as an attribute of a row. It is deliberately not a list of sessions: a list of
+// sessions is a monitor, it duplicates the editor, and it goes stale the moment nobody watches it.
+//
+// Everything here is a read, and it reads the same files every other surface reads, which is what
+// makes the page replayable for a session that ended last week rather than a live view nobody is
+// sitting in front of.
+
+/** How many open steps a plan row shows before it says how many it left out. A plan with forty open
+ *  boxes is a plan nobody is reading on this page, and a wall of them buries the row that matters. */
+export const MAX_OPEN_TASKS_SHOWN = 8;
+
+/**
+ * Does a file this session wrote fall under one of a plan's declared areas?
+ *
+ * The plan frontmatter carries `touches`, a list of paths relative to the repo root, and a session
+ * row carries the absolute files it was seen writing. That overlap is the whole join, and it is
+ * honest precisely because it is narrow: it attaches a session to a plan on evidence rather than on
+ * a name that happens to match.
+ *
+ * THERE IS NO GLOB ENGINE HERE, on purpose. A trailing star is stripped and treated as the directory
+ * it sits in, and anything with a star in the middle, such as a doubled star between two segments,
+ * will simply not match. Bringing in a matcher would mean the page could claim to know every file a
+ * plan covers, and it cannot: the emitter only records write-shaped tools, and its path list is
+ * capped. So the page says the attachment list is evidence of work, never an inventory of it.
+ */
+export function planTouchesPath(touches: string[], repoRoot: string, absPath: string): boolean {
+  const target = resolve(absPath);
+  for (const entry of touches) {
+    if (typeof entry !== "string") continue;
+    const trimmed = entry.trim().replace(/\/?\*+$/, "");
+    if (!trimmed) continue;
+    const area = resolve(repoRoot, trimmed);
+    // The separator matters. Without it a plan touching "src" claims every file under "src2",
+    // which is the kind of wrong that nobody notices because the row still looks plausible.
+    if (target === area || target.startsWith(area + sep)) return true;
+  }
+  return false;
+}
+
+export type LampState = "lit" | "dark" | "unobserved";
+
+export interface LoopLamp {
+  id: string;
+  label: string;
+  state: LampState;
+  /** One sentence, and it is required for every state including the lit one. An unobserved lamp has
+   *  to say what WOULD observe it, otherwise it reads as a mechanism that failed rather than as one
+   *  nothing is watching. */
+  detail: string;
+  /** True when the evidence is repo-level rather than per-session, so a concurrent session in the
+   *  same tree could have caused it. The page must not present a shared lamp as proof. */
+  shared: boolean;
+  observedAt: string | null;
+}
+
+/**
+ * What a lamp is allowed to look at. Either a file under the harness config dir whose NAME carries
+ * the session id, which is per-session evidence and the only kind worth the word "lit", or a file in
+ * the repo whose modification time falls inside the session's window, which is weaker and says so.
+ */
+export interface LampProbe {
+  id: string;
+  label: string;
+  /** relative to the harness config dir, containing the literal token {session} */
+  session?: string;
+  /** relative to the repo root */
+  repo?: string;
+  /** what this lamp can honestly claim, carried into the detail so the page never has to invent it */
+  note: string;
+}
+
+/**
+ * The probe list, written out in full so a reader sees the whole truth in one place rather than
+ * discovering it a lamp at a time.
+ *
+ * THREE OF THE FOUR LAMPS THE PLAN NAMES CANNOT HONESTLY LIGHT TODAY, and that is recorded here
+ * rather than papered over. The session-start doctor prints into the transcript and writes nothing
+ * to disk, so nothing can observe whether it ran. The review gate and the handoff nudge share one
+ * marker file, so from disk alone they are one fact wearing two names, and both details say so
+ * instead of the page showing two independent lamps. Only the context trigger writes a file keyed by
+ * the session id, which makes it the one lamp on this machine that means what the word says.
+ *
+ * On a machine carrying none of this tooling every probe file is simply absent, so every lamp reads
+ * unobserved. That is the correct degrade for a package that ships into other people's projects: an
+ * unobserved lamp is a statement about the observer, and a dark one is a statement about the run.
+ */
+export const LOOP_LAMPS: LampProbe[] = [
+  {
+    id: "doctor",
+    label: "doctor at session start",
+    note: "The session-start doctor prints its report into the transcript and leaves nothing on disk, so nothing here can observe whether it ran. Read the top of the session to see it.",
+  },
+  {
+    id: "graphify",
+    label: "code graph rebuilt",
+    repo: "graphify-out",
+    note: "The graph output directory is shared by every session in this tree, so a rebuild seen inside this session's window may belong to a session running beside it.",
+  },
+  {
+    id: "gate",
+    label: "review gate",
+    repo: join(".git", "handoff-nudged"),
+    note: "The gate and the handoff nudge share one marker file in the git directory, so from disk alone they are a single fact. The marker also does not exist until the gate has fired here at least once.",
+  },
+  {
+    id: "handoff",
+    label: "handoff written",
+    repo: join(".git", "handoff-nudged"),
+    note: "This reads the same marker the review gate reads, because the gate is what writes it. A lit lamp here means the gate noticed something closed, not that a handoff was actually written.",
+  },
+  {
+    id: "context-trigger",
+    label: "context budget trigger",
+    session: join("state", "ctx-{session}"),
+    note: "The trigger writes a file named for the session, which is the one piece of per-session evidence on disk.",
+  },
+];
+
+/**
+ * Light the lamps for one session.
+ *
+ * THE LAMPS STAT, THEY NEVER READ. Existence and a modification time is the whole of what is taken
+ * from a probe file, and that is a privacy posture rather than an optimisation: these files belong
+ * to the harness and to other sessions, they are outside the repo being served, and a surface that
+ * opened them would be reading work nobody offered it.
+ *
+ * Any probe that cannot be checked, for a missing file or a refused permission or anything else,
+ * degrades to unobserved with the reason in its detail. One unreadable file costs one lamp and never
+ * the page.
+ */
+export async function readLoopLamps(
+  repoRoot: string,
+  session: SessionRow | null,
+  configDir: string = harnessConfigDir(),
+): Promise<LoopLamp[]> {
+  // The window is the session's own span, opened a little at both ends. A hook fires either side of
+  // the tool call that provoked it, and the emitter throttles the quiet events, so an exact-bounds
+  // test would leave the truest lamp on the page dark for a timing difference of seconds.
+  const from = session ? Date.parse(session.firstSeenAt) - ALIVE_WINDOW_MS : 0;
+  const to = session ? Date.parse(session.lastSeenAt) + ALIVE_WINDOW_MS : 0;
+
+  return Promise.all(LOOP_LAMPS.map(async (probe): Promise<LoopLamp> => {
+    const lamp: LoopLamp = {
+      id: probe.id, label: probe.label, state: "unobserved",
+      detail: probe.note, shared: probe.repo !== undefined, observedAt: null,
+    };
+
+    if (!session) {
+      lamp.detail = `No session is selected, so nothing here describes a run. ${probe.note}`;
+      return lamp;
+    }
+    if (!probe.session && !probe.repo) return lamp;
+
+    const target = probe.session
+      ? join(configDir, probe.session.replace("{session}", session.id))
+      : join(repoRoot, probe.repo!);
+
+    let mtime: Date;
+    try {
+      mtime = (await stat(target)).mtime;
+    } catch (err) {
+      const why = err instanceof Error && (err as NodeJS.ErrnoException).code === "ENOENT"
+        ? `Nothing has written ${target}.`
+        : `${target} could not be checked: ${err instanceof Error ? err.message : String(err)}.`;
+      lamp.detail = `${why} ${probe.note}`;
+      return lamp;
+    }
+
+    lamp.observedAt = mtime.toISOString();
+    const at = mtime.getTime();
+    if (at >= from && at <= to) {
+      lamp.state = "lit";
+      return lamp;
+    }
+    lamp.state = "dark";
+    lamp.detail = `Last touched ${lamp.observedAt}, which is outside this session's window, so it did not run here. ${probe.note}`;
+    return lamp;
+  }));
+}
+
+export interface ControlPlanRow {
+  id: string;
+  title: string;
+  status: PlanStatus;
+  track: string | null;
+  owner: PlanOwner;
+  /** the unticked step texts, capped */
+  openTasks: string[];
+  openTasksOmitted: number;
+  openCount: number;
+  doneCount: number;
+  touches: string[];
+  /** session ids attached by the path join, most recently seen first */
+  sessions: string[];
+}
+
+export interface ControlWaiting {
+  kind: "decision" | "blocked-plan";
+  id: string;
+  title: string;
+  detail: string;
+  href: string | null;
+}
+
+export interface ControlPayload {
+  generated: string;
+  project: string;
+  /** False when NOTHING has observed this repo: there is no session log at all. The page says this
+   *  out loud rather than rendering a calm empty board, which is the silent degrade the doctor row
+   *  exists to catch. */
+  present: boolean;
+  logPath: string;
+  /** C0's payload, reused whole, so the page and the machine twin cannot disagree about a session */
+  sessions: SessionsPayload;
+  /** the session the lamps describe, named on the page so a reader knows whose run they are reading */
+  lampSession: string | null;
+  lamps: LoopLamp[];
+  plans: ControlPlanRow[];
+  /** sessions still alive or idle here that attached to no plan at all */
+  unattached: SessionRow[];
+  waiting: ControlWaiting[];
+  /** Set when the plans directory could not be read, so a page never renders zero plans as if the
+   *  project had none. An empty board and an unreadable one are different claims. */
+  planError: string | null;
+}
+
+/** Left to right on the board, so the row a person needs first is the row they meet first. */
+const STATUS_ORDER: Record<string, number> = { doing: 0, blocked: 1, todo: 2, done: 3 };
+
+/**
+ * The control centre payload. Everything it knows comes from files already on disk, which is what
+ * lets it replay a session that ended last Tuesday rather than only describing the one in front of
+ * you. C2 puts a tail on this same renderer; nothing here assumes a live transport exists.
+ */
+export async function buildControlPayload(
+  config: ResolvedPantryConfig,
+  nowIso: string,
+  opts: { session?: string } = {},
+): Promise<ControlPayload> {
+  const sessions = await buildSessionsPayload(config, nowIso);
+  const repoRoot = config.cwd;
+
+  // The requested session, then the most recent one. A request that names a session this log has
+  // never seen must not silently become "the latest": the whole point of the parameter is replay,
+  // and quietly answering about a different run is worse than answering about none.
+  const asked = opts.session ? sessions.sessions.find((s) => s.id === opts.session) ?? null : null;
+  const missed = opts.session !== undefined && asked === null;
+  const lampRow = asked ?? sessions.sessions[0] ?? null;
+  const lamps = await readLoopLamps(repoRoot, lampRow);
+  if (missed) {
+    const instead = lampRow ? lampRow.id : "no session at all";
+    for (const l of lamps) l.detail = `This log has no session ${opts.session}, so these lamps describe ${instead}. ${l.detail}`;
+  }
+
+  let planError: string | null = null;
+  const planRows: ControlPlanRow[] = [];
+  try {
+    if (!existsSync(config.plansDir)) {
+      planError = `No plans directory at ${config.plansDir}, so this page cannot say what the project set out to do.`;
+    } else {
+      // The age of a plan is not shown here, and PROOF's default reads it by spawning git once per
+      // file. Passing a lastModified that answers null keeps a page load off the process table.
+      const loaded = await loadPlans(config.plansDir, async () => null);
+      for (const { plan } of loaded.plans) {
+        const openTasks = plan.tasks.filter((t) => !t.done);
+        if (openTasks.length === 0) continue;
+        const attached = sessions.sessions
+          .filter((row) => row.paths.some((p) => planTouchesPath(plan.touches, repoRoot, p)))
+          .map((row) => row.id);
+        planRows.push({
+          id: plan.id,
+          title: plan.title,
+          status: plan.status,
+          track: plan.track,
+          owner: plan.owner,
+          openTasks: openTasks.slice(0, MAX_OPEN_TASKS_SHOWN).map((t) => t.text),
+          openTasksOmitted: Math.max(0, openTasks.length - MAX_OPEN_TASKS_SHOWN),
+          openCount: openTasks.length,
+          doneCount: plan.tasks.length - openTasks.length,
+          touches: plan.touches,
+          sessions: attached,
+        });
+      }
+    }
+  } catch (err) {
+    planError = `The plans directory at ${config.plansDir} could not be read: ${err instanceof Error ? err.message : String(err)}.`;
+  }
+
+  planRows.sort((a, b) => {
+    if ((a.sessions.length > 0) !== (b.sessions.length > 0)) return a.sessions.length > 0 ? -1 : 1;
+    const byStatus = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+    return byStatus !== 0 ? byStatus : a.id.localeCompare(b.id);
+  });
+
+  const attachedIds = new Set(planRows.flatMap((p) => p.sessions));
+  const unattached = sessions.sessions.filter((s) => s.state !== "ended" && !attachedIds.has(s.id));
+
+  const waiting: ControlWaiting[] = [];
+  try {
+    const decisions = await buildDecisionsPayload(config, nowIso);
+    for (const d of decisions.decisions) {
+      if (d.status !== "open") continue;
+      waiting.push({
+        kind: "decision",
+        id: d.id,
+        title: d.title,
+        detail: d.unblocks ? `Unblocks ${d.unblocks}.` : "Waiting on an answer.",
+        href: `/decisions/${encodeURIComponent(d.id)}`,
+      });
+    }
+  } catch (err) {
+    // Reported rather than swallowed. A decision inbox that cannot be read is exactly the state
+    // where the page would otherwise say nothing is waiting on you, which is the worst thing it
+    // could say wrongly.
+    waiting.push({
+      kind: "decision",
+      id: "decisions-unreadable",
+      title: "The decision inbox could not be read",
+      detail: `${err instanceof Error ? err.message : String(err)}. Anything waiting on you is not listed below.`,
+      href: null,
+    });
+  }
+  for (const plan of planRows) {
+    if (plan.status !== "blocked") continue;
+    waiting.push({
+      kind: "blocked-plan",
+      id: plan.id,
+      title: plan.title,
+      detail: `Blocked with ${plan.openCount} step(s) still open.`,
+      href: `/plans/${encodeURIComponent(plan.id)}`,
+    });
+  }
+
+  return {
+    generated: nowIso,
+    project: config.projectName,
+    present: sessions.present,
+    logPath: sessions.logPath,
+    sessions,
+    lampSession: lampRow ? lampRow.id : null,
+    lamps,
+    plans: planRows,
+    unattached,
+    waiting,
+    planError,
+  };
+}

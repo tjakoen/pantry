@@ -6,7 +6,7 @@
 // claiming to be alive after an hour. Each of those is a sentence in the module header, and a
 // sentence with no test is a wish.
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -21,6 +21,11 @@ import {
   readSessionLog,
   resolveSessionsLog,
   summarizeSessions,
+  LOOP_LAMPS,
+  MAX_OPEN_TASKS_SHOWN,
+  buildControlPayload,
+  planTouchesPath,
+  readLoopLamps,
   type SessionEvent,
   type SessionLog,
 } from "./sessions.ts";
@@ -280,5 +285,208 @@ describe("what the second pass found", () => {
     expect(parseSessionEvent(emitted)).toEqual({
       kind: "tool", at: "2026-08-23T03:55:36Z", session: "s1", cwd: "/tmp/demo", tool: "Edit", path: "/tmp/demo/ok.ts",
     });
+  });
+});
+
+// ── C1: the join, the lamps, the page's payload ──────────────────────────────────────────────────
+
+describe("attaching a session to a plan", () => {
+  test("matches a file under a touched directory and the touched file itself", () => {
+    expect(planTouchesPath(["src"], "/repo", "/repo/src/a.ts")).toBe(true);
+    expect(planTouchesPath(["src/app.ts"], "/repo", "/repo/src/app.ts")).toBe(true);
+  });
+
+  test("does not match a sibling that merely shares the prefix", () => {
+    // Without the separator test a plan touching src claims every file under src2, and the row
+    // still looks plausible, which is why nobody would ever notice.
+    expect(planTouchesPath(["src"], "/repo", "/repo/src2/a.ts")).toBe(false);
+  });
+
+  test("strips a trailing star rather than pretending to be a glob engine", () => {
+    expect(planTouchesPath(["src/*"], "/repo", "/repo/src/a.ts")).toBe(true);
+    expect(planTouchesPath(["src/**/deep.ts"], "/repo", "/repo/src/x/deep.ts")).toBe(false);
+  });
+
+  test("resolves a touched path that climbs out of the repo, the way a cross-repo plan writes one", () => {
+    expect(planTouchesPath(["../pantry/app.ts"], "/repo/site", "/repo/pantry/app.ts")).toBe(true);
+  });
+});
+
+describe("the loop lamps", () => {
+  const rowFor = (id: string, first: string, last: string): SessionRow =>
+    summarizeSessions(logOf([start(id, first), tool(id, last)]), NOW)[0];
+
+  test("an absent probe is unobserved and never dark, because nothing looked", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-repo-"));
+    const cfg = await mkdtemp(join(tmpdir(), "pantry-lamp-cfg-"));
+    const lamps = await readLoopLamps(repo, rowFor("s1", ago(60_000), ago(10_000)), cfg);
+    for (const lamp of lamps) expect(lamp.state).toBe("unobserved");
+  });
+
+  test("every lamp is unobserved on a machine carrying none of this tooling", async () => {
+    // The degrade that matters for a package shipping into other people's projects: an unobserved
+    // lamp is a statement about the observer, a dark one is a statement about the run.
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-bare-"));
+    const cfg = await mkdtemp(join(tmpdir(), "pantry-lamp-bare-cfg-"));
+    const lamps = await readLoopLamps(repo, rowFor("s1", ago(60_000), ago(10_000)), cfg);
+    expect(lamps.every((l) => l.state === "unobserved")).toBe(true);
+    expect(lamps.every((l) => l.detail.trim().length > 0)).toBe(true);
+  });
+
+  test("a probe touched inside the session window lights, and says whether it is shared", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-lit-"));
+    await mkdir(join(repo, "graphify-out"));
+    const inside = new Date(Date.parse(ago(30_000)));
+    await utimes(join(repo, "graphify-out"), inside, inside);
+    const lamps = await readLoopLamps(repo, rowFor("s1", ago(60_000), ago(10_000)), join(repo, "nope"));
+    const graphify = lamps.find((l) => l.id === "graphify")!;
+    expect(graphify.state).toBe("lit");
+    expect(graphify.shared).toBe(true);
+    expect(graphify.observedAt).not.toBeNull();
+  });
+
+  test("a probe last touched outside the window is dark, which is a claim about the run", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-dark-"));
+    await mkdir(join(repo, "graphify-out"));
+    const longAgo = new Date(Date.parse(ago(30 * 24 * 3_600_000)));
+    await utimes(join(repo, "graphify-out"), longAgo, longAgo);
+    const lamps = await readLoopLamps(repo, rowFor("s1", ago(60_000), ago(10_000)), join(repo, "nope"));
+    expect(lamps.find((l) => l.id === "graphify")!.state).toBe("dark");
+  });
+
+  test("the session-keyed probe is the only one that is not shared", async () => {
+    const cfg = await mkdtemp(join(tmpdir(), "pantry-lamp-ctx-"));
+    await mkdir(join(cfg, "state"));
+    const marker = join(cfg, "state", "ctx-s1");
+    await writeFile(marker, "last_size=1\n");
+    const inside = new Date(Date.parse(ago(20_000)));
+    await utimes(marker, inside, inside);
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-ctx-repo-"));
+    const lamps = await readLoopLamps(repo, rowFor("s1", ago(60_000), ago(10_000)), cfg);
+    const ctx = lamps.find((l) => l.id === "context-trigger")!;
+    expect(ctx.state).toBe("lit");
+    expect(ctx.shared).toBe(false);
+  });
+
+  test("the doctor lamp is always unobserved, and its detail says what would observe it", async () => {
+    // The session-start doctor prints into the transcript and writes nothing. A lamp that went dark
+    // here would be accusing a mechanism that in fact ran.
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-doc-"));
+    const lamps = await readLoopLamps(repo, rowFor("s1", ago(60_000), ago(10_000)), repo);
+    const doctor = lamps.find((l) => l.id === "doctor")!;
+    expect(doctor.state).toBe("unobserved");
+    expect(doctor.detail).toContain("transcript");
+  });
+
+  test("the gate and the handoff read one marker, and both say so rather than posing as two facts", () => {
+    const gate = LOOP_LAMPS.find((l) => l.id === "gate")!;
+    const handoff = LOOP_LAMPS.find((l) => l.id === "handoff")!;
+    expect(gate.repo).toBe(handoff.repo);
+    expect(gate.note).toContain("share");
+    expect(handoff.note).toContain("same marker");
+  });
+
+  test("no session selected leaves every lamp unobserved instead of guessing", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "pantry-lamp-none-"));
+    const lamps = await readLoopLamps(repo, null, repo);
+    expect(lamps.every((l) => l.state === "unobserved")).toBe(true);
+    expect(lamps[0].detail).toContain("No session is selected");
+  });
+});
+
+describe("buildControlPayload", () => {
+  // A project on disk: a plans dir, a session log, and a repo root the touched paths resolve against.
+  const project = async (opts: { plans?: Record<string, string>; log?: (root: string) => string[] } = {}) => {
+    const root = await mkdtemp(join(tmpdir(), "pantry-control-"));
+    const plansDir = join(root, "plans");
+    if (opts.plans) {
+      await mkdir(plansDir);
+      for (const [name, body] of Object.entries(opts.plans)) await writeFile(join(plansDir, name), body);
+    }
+    const logPath = join(root, "sessions.jsonl");
+    if (opts.log) await writeFile(logPath, opts.log(root).join("\n"));
+    return {
+      root,
+      config: {
+        cwd: root, projectName: "demo", sessionsLog: logPath,
+        plansDir, decisionsDir: join(root, "decisions"),
+      } as never,
+    };
+  };
+
+  const plan = (title: string, extra: string, tasks: string) =>
+    `---\nid: p\nstatus: doing\nowner: ai\n${extra}---\n\n# ${title}\n\n${tasks}\n`;
+
+  test("says outright that nothing has observed this repo, rather than rendering a calm empty board", async () => {
+    const { config } = await project({ plans: { "a.md": plan("A", "touches:\n  - src\n", "- [ ] one") } });
+    const payload = await buildControlPayload(config, NOW);
+    expect(payload.present).toBe(false);
+    expect(payload.sessions.sessions).toEqual([]);
+    // The plan half is still honest without an emitter: those are files in the repo.
+    expect(payload.plans).toHaveLength(1);
+    expect(payload.lampSession).toBeNull();
+  });
+
+  test("attaches a session to a plan on the file it was seen writing, and leaves the rest unattached", async () => {
+    const { config } = await project({
+      plans: {
+        "a.md": plan("Touches src", "touches:\n  - src\n", "- [ ] one"),
+        "b.md": plan("Touches docs", "touches:\n  - docs\n", "- [ ] two"),
+      },
+      log: (root) => [
+        JSON.stringify({ kind: "start", at: ago(60_000), session: "s1", cwd: root }),
+        JSON.stringify({ kind: "tool", at: ago(20_000), session: "s1", cwd: root, tool: "Edit", path: join(root, "src", "a.ts") }),
+        JSON.stringify({ kind: "start", at: ago(30_000), session: "s2", cwd: root }),
+      ],
+    });
+    const payload = await buildControlPayload(config, NOW);
+    const bySrc = payload.plans.find((p) => p.title === "Touches src")!;
+    const byDocs = payload.plans.find((p) => p.title === "Touches docs")!;
+    expect(bySrc.sessions).toEqual(["s1"]);
+    expect(byDocs.sessions).toEqual([]);
+    // s2 wrote nothing, so it belongs to no plan and is shown rather than dropped.
+    expect(payload.unattached.map((s) => s.id)).toContain("s2");
+    // A plan something is working in sorts above one nothing is.
+    expect(payload.plans[0].title).toBe("Touches src");
+  });
+
+  test("a plan with every box ticked is not on the board at all", async () => {
+    const { config } = await project({ plans: { "a.md": plan("Done", "", "- [x] one\n- [x] two") } });
+    expect((await buildControlPayload(config, NOW)).plans).toEqual([]);
+  });
+
+  test("caps the open steps it shows and says how many it left out", async () => {
+    const many = Array.from({ length: MAX_OPEN_TASKS_SHOWN + 3 }, (_, i) => `- [ ] step ${i}`).join("\n");
+    const { config } = await project({ plans: { "a.md": plan("Many", "", many) } });
+    const [row] = (await buildControlPayload(config, NOW)).plans;
+    expect(row.openTasks).toHaveLength(MAX_OPEN_TASKS_SHOWN);
+    expect(row.openTasksOmitted).toBe(3);
+    expect(row.openCount).toBe(MAX_OPEN_TASKS_SHOWN + 3);
+  });
+
+  test("an unreadable plans directory is said out loud, not rendered as a project with no plans", async () => {
+    const { config } = await project();
+    const payload = await buildControlPayload(config, NOW);
+    expect(payload.planError).toContain("No plans directory");
+    expect(payload.plans).toEqual([]);
+  });
+
+  test("a requested session the log never saw falls back, and the lamps admit it", async () => {
+    // Replay is the whole point of the parameter. Quietly answering about a different run is worse
+    // than answering about none.
+    const { config } = await project({
+      log: (root) => [JSON.stringify({ kind: "start", at: ago(60_000), session: "s1", cwd: root })],
+    });
+    const payload = await buildControlPayload(config, NOW, { session: "never-existed" });
+    expect(payload.lampSession).toBe("s1");
+    expect(payload.lamps[0].detail).toContain("no session never-existed");
+  });
+
+  test("a blocked plan is something waiting on a human, beside the open decisions", async () => {
+    const { config } = await project({
+      plans: { "a.md": `---\nid: p\nstatus: blocked\nowner: ai\n---\n\n# Stuck\n\n- [ ] one\n` },
+    });
+    const payload = await buildControlPayload(config, NOW);
+    expect(payload.waiting.map((w) => w.kind)).toContain("blocked-plan");
   });
 });
