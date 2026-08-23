@@ -1342,7 +1342,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: false },
 });
 
 export function createPantryHandler(opts: PantryOptions) {
@@ -1565,8 +1565,16 @@ export function createPantryHandler(opts: PantryOptions) {
     // --- the control center (C0): the machine twin only. One row per session the harness emitter
     // saw in this project, folded from an append-only log PANTRY reads and never writes. The page
     // that joins these rows to the plan board is C1; until then this is the record and nothing else.
-    if (surfaces.control && path === "/sessions.json")
+    if (surfaces.control && path === "/sessions.json") {
+      // Loopback only, the same rule the answer WRITE takes, and for a read this time: a row names
+      // the operator's home directory, every session id and every file a session wrote. Bun.serve is
+      // started without a hostname, which binds every interface, so without this the surface is on
+      // the LAN. The plan said this must be loopback only; a sentence in a plan binds nothing.
+      if (!isLoopbackRequest(clientAddress)) {
+        return Response.json({ error: "The session log is readable from this machine only." }, { status: 403 });
+      }
       return Response.json(await buildSessionsPayload(config, new Date().toISOString()));
+    }
 
     // --- the decision inbox (piece 11d): human /decisions + /decisions/<id>, machine twin /decisions.json.
     // Same model (buildDecisionsPayload over the host's plans/decisions), so the cards and the payload

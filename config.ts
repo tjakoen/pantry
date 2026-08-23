@@ -34,8 +34,13 @@ export interface PantrySurfaces {
    *  false. Model-free, read-only. Default on. */
   runs: boolean;
   /** the control center (/control, /sessions.json) — the plan board joined to what is moving right
-   *  now. Reads a session event log the HARNESS writes; PANTRY only ever reads it. Default on, and
-   *  an absent log degrades the surface to "nothing has been observed here" rather than an error. */
+   *  now. Reads a session event log the HARNESS writes; PANTRY only ever reads it.
+   *
+   *  **The one surface that is OFF by default**, and the exception is deliberate rather than
+   *  cautious. Every other surface renders files that already live in the repo; a session row names
+   *  the operator's home directory, the ids of their sessions and every file each one wrote, none of
+   *  which is in the project at all. So the host opts in, and the route refuses anything that is not
+   *  loopback even then. */
   control: boolean;
 }
 
@@ -193,7 +198,9 @@ export interface ResolvedPantryConfig {
   standardsSource?: "canon";
 }
 
-const ALL_ON: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true };
+// Named for what it is rather than for what it used to be: every surface that renders the repo is
+// on, and the one that renders the operator's machine is off until the host says otherwise.
+const SURFACE_DEFAULTS: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: false };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 
@@ -268,7 +275,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
     // asked for is only defensible while the folder is really there. A missing explicit one warns
     // above rather than being silently equivalent to having none.
     toursDir,
-    surfaces: { ...ALL_ON, ...raw.surfaces },
+    surfaces: { ...SURFACE_DEFAULTS, ...raw.surfaces },
     hygiene: resolveHygiene(raw.hygiene),
     // Same asymmetry as resolveHygiene, and for the same reason: an absent key has not opted out, a
     // key that is present and unusable has.

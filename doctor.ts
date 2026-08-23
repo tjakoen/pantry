@@ -23,7 +23,7 @@ import { listSkills } from "./skills.ts";
 import { checkHookDrift } from "./hooks.ts";
 import { buildRunsPayload, type RunsPayload } from "./runs.ts";
 import { answers, readAnswerLog, unacked } from "./answers.ts";
-import { readSessionLog, summarizeSessions } from "./sessions.ts";
+import { MAX_LOG_BYTES, readSessionLog, summarizeSessions } from "./sessions.ts";
 import { affectedBy, loadGraph, unreconciledFiles } from "./graph.ts";
 import { commitsSince, daysBetween, isSet, plural, readHygieneState, type HygieneThresholds } from "./hygiene.ts";
 import { readContext } from "./context.ts";
@@ -1014,30 +1014,37 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `answer-log check skipped: ${err instanceof Error ? err.message : String(err)}` });
   }
 
-  // ── Session events: is anything observing this repo at all? (C0) ─────────
+  // ── Session events: has anything observed this repo? (C0) ────────────────
   //
-  // The control center reads a log the HARNESS writes, so the failure mode is not a broken PANTRY,
-  // it is a hook that was never mounted, and the surface would render a calm empty page either way.
-  // That is the silent-degrade shape AUDIT-STANDARD §6 names, and the guard against it is that the
-  // payload carries `present` and the page has to say "nothing has observed this repo" out loud.
+  // What this measures is the LOG, not the mounting. A hook this doctor cannot see lives in the
+  // harness config and is wired in a settings file PANTRY has no business reading, so the honest
+  // claim is "no events have arrived here", and the reason may be that nothing is mounted or that
+  // nobody has worked here today. Naming the path is what makes the difference checkable by hand.
   //
-  // INFO and not warn, even when nothing is mounted, and the reason is the baseline rule (LOOP §2):
-  // PANTRY ships into other people's projects where this emitter will never exist, and a check that
-  // is red forever in the normal case is a check everyone learns to skip. The one thing that does
-  // earn a warn is malformed lines, because those mean the emitter and this reader disagree about
-  // the schema, which is a defect rather than a state.
+  // INFO and not warn in that state, deliberately (LOOP §2's baseline rule): PANTRY ships into
+  // projects where this emitter will never exist, and a check that is red forever in the normal case
+  // is one everyone learns to skip. Two states do earn a warn, because both are defects rather than
+  // quiet days: a log that exists and cannot be read, and a malformed line that is NOT the last one.
+  // A bad final line is a read that raced an append, which sessions.ts calls normal and means it.
   try {
     if (!existsSync(config.sessionsLog)) {
       checks.push({ id: "session-events", severity: "info", ok: true, label: "session events", detail: `nothing has observed this repo — events appear at ${config.sessionsLog} once the harness emitter is mounted` });
     } else {
       const log = await readSessionLog(config.sessionsLog);
-      const rows = summarizeSessions(log, now.toISOString(), config.cwd);
-      const alive = rows.filter((r) => r.state === "alive").length;
-      const detail = `${rows.length} session(s) recorded here, ${alive} alive now`;
-      if (log.malformed > 0) {
-        checks.push({ id: "session-events", severity: "warn", ok: false, label: "session events", detail: `${detail}, and ${log.malformed} line(s) this reader could not parse — the emitter and sessions.ts disagree about the schema` });
+      if (log.readError) {
+        checks.push({ id: "session-events", severity: "warn", ok: false, label: "session events", detail: `${config.sessionsLog} exists and could not be read: ${log.readError}` });
       } else {
-        checks.push({ id: "session-events", severity: "info", ok: true, label: "session events", detail });
+        const rows = summarizeSessions(log, now.toISOString(), config.cwd);
+        const alive = rows.filter((r) => r.state === "alive").length;
+        const notes = [`${rows.length} session(s) recorded here, ${alive} alive now`];
+        if (log.truncated) notes.push(`only the last ${MAX_LOG_BYTES} bytes were read`);
+        if (log.unknownKinds > 0) notes.push(`${log.unknownKinds} line(s) carry a kind this version does not know, skipped`);
+        const realDefect = log.malformed > (log.malformedTail ? 1 : 0);
+        if (realDefect) {
+          checks.push({ id: "session-events", severity: "warn", ok: false, label: "session events", detail: `${notes.join(", ")}, and ${log.malformed} line(s) this reader could not parse — the emitter and sessions.ts disagree about the schema` });
+        } else {
+          checks.push({ id: "session-events", severity: "info", ok: true, label: "session events", detail: notes.join(", ") });
+        }
       }
     }
   } catch (err) {

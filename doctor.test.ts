@@ -1370,14 +1370,24 @@ describe("session events", () => {
   });
 
   // The one state that IS a defect: the emitter and the reader disagreeing about the schema.
-  test("a line the reader cannot parse warns, and still never fails the build", async () => {
+  test("a bad line in the middle warns, and still never fails the build", async () => {
     await compliantKit();
-    await writeFile(logPath(), '{"kind":"start","at":"' + at(1_000) + '","session":"s1","cwd":"' + dir + '"}\nnot json at all\n');
+    await writeFile(logPath(), 'not json at all\n{"kind":"start","at":"' + at(1_000) + '","session":"s1","cwd":"' + dir + '"}\n');
     const r = await run({ sessionsLog: logPath() });
     const c = byId(r, "session-events");
     expect(c.severity).toBe("warn");
     expect(c.ok).toBe(false);
     expect(c.detail).toContain("could not parse");
     expect(r.ok).toBe(true);
+  });
+
+  // A read that races an append leaves half a line at the end. sessions.ts calls that the normal
+  // state of the file, so the doctor must not diagnose it as a schema disagreement.
+  test("a half-written FINAL line is a race, not a defect", async () => {
+    await compliantKit();
+    await writeFile(logPath(), '{"kind":"start","at":"' + at(1_000) + '","session":"s1","cwd":"' + dir + '"}\n{half writ');
+    const c = byId(await run({ sessionsLog: logPath() }), "session-events");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
   });
 });

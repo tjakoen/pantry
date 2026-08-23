@@ -87,11 +87,12 @@ describe("zero config — `bunx pantry` in a bare project", () => {
     expect(config.standardsSource).toBeUndefined();
   });
 
-  test("every surface is on", async () => {
+  test("every surface that renders the repo is on, and the one that renders the machine is off", async () => {
     const config = await loadPantryConfig(await host());
     expect(config.surfaces).toEqual({
       plans: true, docs: true, reference: true, catalog: true, standards: true,
-      decisions: true, artifacts: true, timeline: true, runs: true, control: true,
+      decisions: true, artifacts: true, timeline: true, runs: true,
+      control: false,   // the control center reads the operator's machine, so the host opts in
     });
   });
 });
@@ -422,9 +423,12 @@ describe("surfaces and standardsSource — what the host may turn off", () => {
     );
   });
 
-  test("an empty surfaces object leaves every surface on", async () => {
+  test("an empty surfaces object leaves the defaults alone", async () => {
     const root = await withJson({ surfaces: {} });
-    expect(Object.values((await loadPantryConfig(root)).surfaces).every(Boolean)).toBe(true);
+    const { surfaces } = await loadPantryConfig(root);
+    const { control, ...rendersTheRepo } = surfaces;
+    expect(Object.values(rendersTheRepo).every(Boolean)).toBe(true);
+    expect(control).toBe(false);
   });
 
   // Only the standards home may carry canon-named files in standards/ without doctor's forked-

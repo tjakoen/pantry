@@ -205,6 +205,25 @@ describe("surface toggles gate their routes", () => {
     expect(home).not.toContain(`href="/artifacts"`);
   });
 
+  // The control center's machine twin (C0). Two gates, not one: the surface is off unless the host
+  // asks for it, and even then the route answers this machine only. A row names the operator's home
+  // directory and every file a session wrote, none of which is in the project being served.
+  test("/sessions.json is loopback only, and 404s when the surface is off", async () => {
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    const from = (address: string | null) =>
+      on(new Request("http://localhost/sessions.json"), address ? ({ requestIP: () => ({ address }) } as never) : undefined);
+
+    expect((await from(null)).status).toBe(403);            // no address is not an address
+    expect((await from("192.168.68.56")).status).toBe(403); // the LAN, which Bun.serve binds by default
+    const local = await from("127.0.0.1");
+    expect(local.status).toBe(200);
+    const payload = await local.json();
+    expect(payload).toMatchObject({ project: "test-project", present: false, sessions: [] });
+
+    const off = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: false }) });
+    expect((await get(off, "/sessions.json")).status).toBe(404);
+  });
+
   test("runs off → all three run routes 404, the nav + home teaser drop the link", async () => {
     const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ runs: false }) });
     expect((await get(handler, "/runs")).status).toBe(404);
