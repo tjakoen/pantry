@@ -28,6 +28,7 @@ import {
   readLoopLamps,
   type SessionEvent,
   type SessionLog,
+  type SessionRow,
 } from "./sessions.ts";
 
 const NOW = "2026-08-22T12:00:00.000Z";
