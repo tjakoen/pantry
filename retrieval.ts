@@ -13,6 +13,7 @@ import { RENDER_OP_KINDS, ENDPOINTS } from "@tjakoen/grain/ai/vocab-reference.ts
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
+import { buildSessionsPayload } from "./sessions.ts";
 import { buildArtifactsPayload } from "./artifacts.ts";
 import { buildRunsPayload } from "./runs.ts";
 
@@ -57,6 +58,11 @@ export interface Knowledge {
    *  orientation, before it repeats the omission. 0 when clean, when the ledger is empty, or when the
    *  surface is off. */
   incompleteRuns: number;
+  /** How many OTHER sessions are alive in this repo right now. Alive rather than merely recorded: an
+   *  entry for a repo whose last session ended three weeks ago is noise in an index whose whole job
+   *  is to be short. 0 when nothing is alive, when the log cannot be read, or when the surface is
+   *  off, which is the one surface that is off by default. */
+  aliveSessions: number;
   /** the machine index of the plan index + the doc raw-source twins (where to fetch the brain) */
   vocabulary: {
     renderOps: typeof RENDER_OP_KINDS;
@@ -79,6 +85,7 @@ function surfacesOf(
   artifactCount: number,
   timelinePlanCount: number,
   incompleteRuns: number,
+  aliveSessions: number,
 ): KnowledgeSurface[] {
   const { surfaces } = config;
   return [
@@ -87,6 +94,12 @@ function surfacesOf(
     // worth pointing an agent at, the same rule decisions and artifacts follow. When it IS listed it
     // sits with decisions, because both are things this run inherits rather than reference material.
     surfaces.runs && incompleteRuns > 0 && { route: "/runs.json", title: "Run ledger", description: `${incompleteRuns} closed run report(s) missing LOOP §9 evidence — read before writing this run's own report, so the same omission is not repeated.` },
+    // The control center's twin, listed only when something is ALIVE. Not "a log exists" and not
+    // "sessions were recorded here": an entry for a repo whose last session ended three weeks ago is
+    // noise in an index whose whole job is to be short. It sits with the run ledger because it is the
+    // same kind of fact, something this run INHERITS rather than reference material, and the thing it
+    // tells an agent is immediately actionable: another session is writing in this repo right now.
+    surfaces.control && aliveSessions > 0 && { route: "/sessions.json", title: "Sessions in flight", description: `${aliveSessions} other session(s) are working in this same repo right now. Read this before editing: a file another session is writing is a file to leave alone, and a dirty tree here is not necessarily yours.` },
     // Listed only when something is OPEN — an empty inbox isn't worth pointing an agent at, same rule
     // as the mindmap below. When present it leads (it gates the run), so it sits first after the board.
     surfaces.decisions && openDecisions > 0 && { route: "/decisions", title: "Decisions", description: `${openDecisions} open decision(s) the human must resolve before this run proceeds (LOOP.md §4). Machine twin at /decisions.json.` },
@@ -152,15 +165,30 @@ export async function buildKnowledge(
     ? (await buildRunsPayload(config, generatedAt)).incompleteCount
     : 0;
 
+  // How many sessions are alive in this repo right now (pure read); skipped entirely when the surface
+  // is off. An unreadable session log costs this ONE index entry and nothing else: the pack is what an
+  // agent reads to orient, and failing to build it over a telemetry file nobody promised would be
+  // there would be a poor trade.
+  let aliveSessions = 0;
+  if (config.surfaces.control) {
+    try {
+      const payload = await buildSessionsPayload(config, generatedAt);
+      aliveSessions = payload.sessions.filter((row) => row.state === "alive").length;
+    } catch {
+      aliveSessions = 0;
+    }
+  }
+
   return {
     project: config.projectName,
     generatedAt,
     runsModel: false,
-    surfaces: surfacesOf(config, openDecisions, artifactCount, timelinePlanCount, incompleteRuns),
+    surfaces: surfacesOf(config, openDecisions, artifactCount, timelinePlanCount, incompleteRuns, aliveSessions),
     docs,
     plans,
     openDecisions,
     incompleteRuns,
+    aliveSessions,
     vocabulary: { renderOps: RENDER_OP_KINDS, endpoints: ENDPOINTS },
   };
 }
@@ -193,6 +221,13 @@ export function renderLlmsTxt(k: Knowledge): string {
   if (k.incompleteRuns > 0) {
     out.push("", "## Loop hygiene — the last runs' own record");
     out.push(link(`${k.incompleteRuns} run report(s) missing evidence`, "/runs.json", "which LOOP §9 items each one skipped; do not repeat them in this run's report"));
+  }
+
+  // Other sessions working here right now, third and for the same reason as the two above: it is a
+  // fact this run inherits. Silent when nothing is alive, so it only ever speaks when it matters.
+  if (k.aliveSessions > 0) {
+    out.push("", "## Sessions in flight — you are not alone in this repo");
+    out.push(link(`${k.aliveSessions} other session(s) working here now`, "/sessions.json", "which files each one is writing; leave those alone, and do not assume a dirty tree is yours"));
   }
 
   const board = k.surfaces.find((s) => s.route === "/plans");

@@ -5,6 +5,7 @@
 import { test, expect, describe } from "bun:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import type { MillCollection } from "@tjakoen/mill/serve.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
@@ -146,5 +147,64 @@ describe("renderLlmsTxt — the session context pack (same brain, human projecti
     const k = await buildKnowledge({ ...configWith({ runs: false, control: true }), runsDir }, [], AT);
     expect(k.incompleteRuns).toBe(0);
     expect(k.surfaces.some((s) => s.route === "/runs.json")).toBe(false);
+  });
+});
+
+// The control center's machine twin in the index a model actually consults. The one surface built
+// for a machine reader was invisible to it, which is the gap these cover.
+describe("sessions in flight, in the pack", () => {
+  const ago = (ms: number) => new Date(Date.parse(AT) - ms).toISOString();
+
+  // A config whose session log is a real file we control, since the shared fixture points at a path
+  // that does not exist (which is itself the "nothing observed this repo" case, tested below).
+  const withLog = async (events: object[], surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}) => {
+    const dir = await mkdtemp(join(tmpdir(), "pantry-retrieval-sessions-"));
+    const sessionsLog = join(dir, "sessions.jsonl");
+    await writeFile(sessionsLog, events.map((e) => JSON.stringify(e)).join("\n"));
+    return { ...configWith(surfaces), cwd: EXAMPLE, sessionsLog };
+  };
+
+  const alive = { kind: "tool", at: ago(30_000), session: "s-alive", cwd: EXAMPLE, tool: "Edit", path: join(EXAMPLE, "a.ts") };
+  const stale = { kind: "tool", at: ago(6 * 3_600_000), session: "s-old", cwd: EXAMPLE, tool: "Edit", path: join(EXAMPLE, "b.ts") };
+
+  test("a live session is listed, with the count and the reason it matters to an agent", async () => {
+    const k = await buildKnowledge(await withLog([alive]), [], AT);
+    expect(k.aliveSessions).toBe(1);
+    const entry = k.surfaces.find((s) => s.route === "/sessions.json");
+    expect(entry).toBeDefined();
+    expect(entry!.description).toContain("1 other session(s)");
+    expect(entry!.description).toContain("leave alone");
+  });
+
+  test("nothing alive means no entry, even though sessions were recorded here", async () => {
+    // Recorded is not the gate. An entry for a repo whose last session ended hours ago is noise in
+    // an index whose whole job is to be short.
+    const k = await buildKnowledge(await withLog([stale]), [], AT);
+    expect(k.aliveSessions).toBe(0);
+    expect(k.surfaces.find((s) => s.route === "/sessions.json")).toBeUndefined();
+  });
+
+  test("the surface off means no entry, however alive the sessions are", async () => {
+    const k = await buildKnowledge(await withLog([alive], { control: false }), [], AT);
+    expect(k.aliveSessions).toBe(0);
+    expect(k.surfaces.find((s) => s.route === "/sessions.json")).toBeUndefined();
+  });
+
+  test("llms.txt and knowledge.json agree, because both are one brain in two projections", async () => {
+    const live = await buildKnowledge(await withLog([alive]), [], AT);
+    expect(renderLlmsTxt(live)).toContain("/sessions.json");
+    expect(renderLlmsTxt(live)).toContain("you are not alone in this repo");
+
+    const quiet = await buildKnowledge(await withLog([stale]), [], AT);
+    expect(renderLlmsTxt(quiet)).not.toContain("/sessions.json");
+  });
+
+  test("a log nothing has written costs the entry and never the pack", async () => {
+    // The pack is what an agent reads to orient. Failing to build it over a telemetry file nobody
+    // promised would be there would be a poor trade.
+    const k = await buildKnowledge(configWith(), [], AT);
+    expect(k.aliveSessions).toBe(0);
+    expect(k.surfaces.length).toBeGreaterThan(0);
+    expect(k.runsModel).toBe(false);
   });
 });
