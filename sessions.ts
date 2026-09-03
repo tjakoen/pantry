@@ -16,9 +16,14 @@
 // **The transcript was the obvious source and it is not the one.** The harness writes a far richer
 // JSONL per session in the same directory, free and already on disk. It is also an undocumented
 // format owned by a vendor who can change it in a point release, so a surface built on it breaks on
-// somebody else's schedule. The heartbeat below is a schema we own, it is a few hundred bytes a
-// session, and its failure mode is an empty list. If transcript parsing ever lands it enriches a row
-// that already renders without it.
+// somebody else's schedule. The heartbeat below is a schema we own and its failure mode is an empty
+// list. If transcript parsing ever lands it enriches a row that already renders without it.
+//
+// IT IS NOT "A FEW HUNDRED BYTES A SESSION", which is what this file used to claim and what nobody
+// had checked. Replaying eight real transcripts from this estate through the emitter's own rules
+// gives a mean of 275 lines and 56 KiB per session, and 120 KiB for the heaviest of them. The claim
+// was wrong by roughly two orders of magnitude, in the safe direction for correctness and the
+// expensive direction for the cap below.
 //
 // **What a row may honestly claim.** Alive, idle, or ended, from timestamps and a stop event. Not
 // what the model is thinking: nothing here observes that, and a surface that animates a thought it
@@ -89,7 +94,13 @@ export const MAX_PATHS_PER_SESSION = 50;
 /** How much of the log is read. The file is append-only and nothing rotates it, so an unbounded read
  *  is a request that gets slower for the life of the machine: a million lines measured at 169MB,
  *  375ms of parsing and 769MB of memory, on every page load and every doctor run. Above this the
- *  tail is read and the payload says so. */
+ *  tail is read and the payload says so.
+ *
+ *  MEASURED, and the number is smaller than it looks. At the 56 KiB a real session turns out to
+ *  cost, this cap holds about seventy of them. The busiest repo in this estate started 146 sessions
+ *  in a month, so the log crosses four mebibytes in roughly a fortnight and nothing rotates it. The
+ *  truncated flag is therefore the NORMAL state of an active repo rather than a theoretical
+ *  safeguard, which is the argument for the payload admitting to it on the page. */
 export const MAX_LOG_BYTES = 4 * 1024 * 1024;
 /** How far ahead of the reader an event may be dated before it is ignored. A clock a minute out is a
  *  clock; a row dated next century pins itself to the top of the list and can never retire, because
