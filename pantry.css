@@ -533,3 +533,73 @@
   border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem); padding: 0.2rem 0.6rem;
 }
 .pantry-review__receiptclose:hover { color: var(--ink); border-color: var(--ink-muted); }
+
+/* ── /control (C1): the plan board joined to what is moving ───────────────────────────────────── */
+/* State is carried in a data attribute, so the server and pantry-control.js write the same thing and
+   this file is the only place that decides what a state looks like.
+
+   NO STATUS HUE. The palette here is closed and collapses success and danger into the one ink, so a
+   lamp is drawn as a TREATMENT rather than a colour: filled for lit, outlined for dark, dashed for
+   unobserved. Three of them and not two, because unobserved has to read as an absence of evidence
+   rather than as a failure. The word is in the markup beside every dot, which is what actually
+   carries the meaning; the treatment only has to make the three scannable apart. */
+.pantry-control-section { margin-block-start: var(--space-6, 2rem); }
+.pantry-control-blind {
+  border-inline-start: 3px solid var(--ink);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.pantry-control-note { color: var(--ink-faint); font-size: var(--text-xs); margin-block-start: var(--space-3, 1rem); }
+
+.pantry-waiting { list-style: none; padding: 0; margin: 0; }
+.pantry-waiting li {
+  display: flex; flex-wrap: wrap; gap: var(--space-2, 0.5rem); align-items: baseline;
+  padding-block: var(--space-2, 0.5rem); border-block-end: 1px solid var(--rule);
+}
+
+.pantry-lamps { list-style: none; padding: 0; margin: 0; }
+.pantry-lamp {
+  display: grid; grid-template-columns: auto 1fr auto; gap: var(--space-2, 0.5rem);
+  align-items: baseline; padding-block: var(--space-2, 0.5rem);
+  border-block-end: 1px solid var(--rule);
+}
+.pantry-lamp__dot {
+  inline-size: 0.6rem; block-size: 0.6rem; border-radius: 50%; align-self: center;
+  border: 1px solid var(--ink-faint);
+}
+.pantry-lamp[data-state="lit"] .pantry-lamp__dot { background: var(--ink); border-color: var(--ink); }
+.pantry-lamp[data-state="dark"] .pantry-lamp__dot { background: none; border-style: solid; border-color: var(--ink-muted); }
+.pantry-lamp[data-state="unobserved"] .pantry-lamp__dot { background: none; border-style: dashed; border-color: var(--ink-faint); }
+.pantry-lamp[data-state="lit"] .pantry-lamp__label { color: var(--ink); }
+.pantry-lamp[data-state="unobserved"] .pantry-lamp__label { color: var(--ink-muted); }
+.pantry-lamp__state {
+  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-muted);
+}
+.pantry-lamp__shared {
+  margin-inline-start: var(--space-2, 0.5rem); padding: 0.1em 0.5em;
+  border: 1px solid var(--rule); border-radius: var(--radius, 0.5rem);
+}
+.pantry-lamp__detail { grid-column: 2 / -1; margin: 0; color: var(--ink-muted); font-size: var(--text-sm); }
+
+.pantry-plan-row { margin-block-start: var(--space-3, 1rem); }
+.pantry-plan-steps { margin-block: var(--space-2, 0.5rem); padding-inline-start: var(--space-4, 1.25rem); font-size: var(--text-sm); }
+.pantry-plan-sessions,
+.pantry-session-list { display: flex; flex-wrap: wrap; gap: var(--space-2, 0.5rem); align-items: center; margin-block-start: var(--space-2, 0.5rem); }
+
+.pantry-session {
+  display: inline-flex; gap: var(--space-2, 0.5rem); align-items: center;
+  padding: 0.1em 0.5em; border: 1px solid var(--rule);
+  border-radius: var(--radius, 0.5rem); font-size: var(--text-xs);
+}
+.pantry-session__dot {
+  inline-size: 0.5rem; block-size: 0.5rem; border-radius: 50%;
+  border: 1px solid var(--ink-faint); background: none;
+}
+.pantry-session[data-state="alive"] .pantry-session__dot { background: var(--ink); border-color: var(--ink); }
+.pantry-session[data-state="idle"] .pantry-session__dot { border-style: solid; border-color: var(--ink-muted); }
+.pantry-session[data-state="ended"] .pantry-session__dot { border-style: dashed; }
+.pantry-session__id { font-family: var(--font-mono); color: var(--ink); }
+.pantry-session__state, .pantry-session__age { color: var(--ink-muted); }
+/* Aged past the point where the rendered state could still be true. The row is not relabelled,
+   because this page cannot see the log; it is only marked as no longer worth believing. */
+.pantry-session[data-stale] { opacity: 0.65; border-style: dashed; }

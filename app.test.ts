@@ -224,6 +224,62 @@ describe("surface toggles gate their routes", () => {
     expect((await get(off, "/sessions.json")).status).toBe(404);
   });
 
+  // The page over the same record (C1). It shows strictly more than the JSON twin does, so it takes
+  // the same two gates and neither of them is allowed to be softer here.
+  test("/control is loopback only, and 404s when the surface is off", async () => {
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    const from = (address: string | null, query = "") =>
+      on(new Request(`http://localhost/control${query}`), address ? ({ requestIP: () => ({ address }) } as never) : undefined);
+
+    expect((await from(null)).status).toBe(403);
+    expect((await from("192.168.68.56")).status).toBe(403);
+    expect((await from("127.0.0.1")).status).toBe(200);
+
+    const off = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: false }) });
+    expect((await get(off, "/control")).status).toBe(404);
+  });
+
+  test("/control says out loud that nothing has observed the repo, rather than rendering a calm board", async () => {
+    // The whole reason this page has a loud empty state. Every section below would otherwise render
+    // correctly and emptily, and read as a quiet morning rather than as a blind surface.
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    const res = await on(new Request("http://localhost/control"), { requestIP: () => ({ address: "127.0.0.1" }) } as never);
+    const body = await res.text();
+    expect(body).toContain("Nothing has observed this repo");
+    expect(body).toContain("because nothing is watching, not because nothing has happened");
+    // The plan half is still true without an emitter, so it must still be on the page.
+    expect(body).toContain("Open plans");
+  });
+
+  test("/control tells the reader what a lamp state means, and draws unobserved apart from dark", async () => {
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    const body = await (await on(new Request("http://localhost/control"), { requestIP: () => ({ address: "127.0.0.1" }) } as never)).text();
+    expect(body).toContain("Lit means the mechanism ran in this session, not that it is configured");
+    expect(body).toContain(`data-state="unobserved"`);
+    // The doctor lamp can never light from disk, and the page has to say why rather than look broken.
+    expect(body).toContain("transcript");
+  });
+
+  test("/control accepts a session to replay, and admits when the log never saw it", async () => {
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    const body = await (await on(new Request("http://localhost/control?session=ended-last-tuesday"), { requestIP: () => ({ address: "127.0.0.1" }) } as never)).text();
+    expect(body).toContain("no session ended-last-tuesday");
+  });
+
+  test("the nav carries Control only when the surface is on", async () => {
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    expect(await (await get(on, "/about")).text()).toContain(`href="/control"`);
+    const off = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: false }) });
+    expect(await (await get(off, "/about")).text()).not.toContain(`href="/control"`);
+  });
+
+  test("/pantry-control.js is served, because a page that references a 404 ages wrong in silence", async () => {
+    const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ control: true }) });
+    const res = await get(on, "/pantry-control.js");
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain("ALIVE_WINDOW_S");
+  });
+
   test("runs off → all three run routes 404, the nav + home teaser drop the link", async () => {
     const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ runs: false }) });
     expect((await get(handler, "/runs")).status).toBe(404);

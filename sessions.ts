@@ -665,7 +665,7 @@ export async function buildControlPayload(
         kind: "decision",
         id: d.id,
         title: d.title,
-        detail: d.unblocks ? `Unblocks ${d.unblocks}.` : "Waiting on an answer.",
+        detail: d.unblocks ? d.unblocks : "Waiting on an answer.",
         href: `/decisions/${encodeURIComponent(d.id)}`,
       });
     }

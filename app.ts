@@ -26,7 +26,8 @@ import { createCrumbRoutes } from "@tjakoen/crumb/routes.ts";
 import { buildVocabReference } from "@tjakoen/grain/ai/vocab-reference.ts";
 import { createCatalog } from "@tjakoen/grain/catalog/catalog.ts";
 import { loadPantryConfig, type ResolvedPantryConfig, type PantrySurfaces } from "./config.ts";
-import { buildSessionsPayload, resolveSessionsLog } from "./sessions.ts";
+import { buildControlPayload, buildSessionsPayload, resolveSessionsLog } from "./sessions.ts";
+import type { ControlPayload, SessionRow } from "./sessions.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
 import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 import { isInside } from "./paths.ts";
@@ -341,6 +342,7 @@ function nav(surfaces: PantrySurfaces, review: boolean): string {
     review && `<a href="/review">Review</a>`,
     surfaces.plans && `<a href="/plans">Plans</a>`,
     surfaces.decisions && `<a href="/decisions">Decisions</a>`,
+    surfaces.control && `<a href="/control">Control</a>`,
     surfaces.runs && `<a href="/runs">Runs</a>`,
     surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
     surfaces.timeline && `<a href="/timeline">Timeline</a>`,
@@ -561,6 +563,132 @@ graphify merge-graphs …      # optional: a whole-stack map</code></pre>
   <ol class="pantry-god-list">${gods}</ol>
 </section>
 <script src="/pantry-map.js" defer></script>`;
+}
+
+// /control (C1) — the control center: the plan board joined to what is moving right now.
+//
+// The four questions a person actually has at nine in the morning, on one page: what is this project
+// meant to do, what is moving and who is moving it, did the loop run this time, and what is waiting
+// on me. Every one of them is read from files that were already on disk, which is what lets this
+// replay a session that ended last Tuesday instead of only describing the one in front of you. C2
+// puts a tail on this same renderer; nothing here assumes a live transport.
+//
+// This is a projection of the PLAN with sessions as an attribute of a row, and never a list of
+// sessions. A list of sessions is a monitor: it duplicates the editor and it goes stale the moment
+// nobody is watching it.
+function sessionChip(row: SessionRow, now: Date): string {
+  // data-last-seen is what pantry-control.js ages in place. The server-rendered text is the truth at
+  // render time and stays readable with no JavaScript at all.
+  return `<span class="pantry-session" data-state="${escapeHtml(row.state)}" data-last-seen="${escapeHtml(row.lastSeenAt)}">
+  <span class="pantry-session__dot" aria-hidden="true"></span>
+  <code class="pantry-session__id">${escapeHtml(row.id.slice(0, 8))}</code>
+  <span class="pantry-session__state">${escapeHtml(row.state)}</span>
+  <span class="pantry-session__age" data-age>${escapeHtml(relativeAge(row.lastSeenAt, now))}</span>
+</span>`;
+}
+
+function controlBody(payload: ControlPayload): string {
+  const now = new Date(payload.generated);
+  const parts: string[] = [`<header>
+  <h1 class="proof-masthead">Control</h1>
+  <p class="proof-lede">Where ${escapeHtml(payload.project)} is: every plan with an open step, whatever is working in it, and what is waiting on a person. Read from files, so this page is the record rather than a monitor. The machine twin is <a href="/sessions.json">/sessions.json</a>.</p>
+</header>`];
+
+  // The loud empty state, and the reason this page has one. A calm dashboard over a log nothing has
+  // ever written is the exact silent degrade the doctor row exists to catch: every section below
+  // would render, correctly and emptily, and read as a quiet morning rather than as a blind surface.
+  if (!payload.present) {
+    parts.push(`<div class="card pantry-control-blind" data-pad="md">
+  <h2 class="card__title">Nothing has observed this repo</h2>
+  <p>There is no session event log at <code>${escapeHtml(payload.logPath)}</code>. The sessions on this page are empty because nothing is watching, not because nothing has happened here. Mount the harness session emitter and the rows appear on the next tool call.</p>
+  <p class="pantry-member__role">The plan board below is still true either way: those are files in the repo.</p>
+</div>`);
+  } else if (payload.sessions.readError) {
+    parts.push(`<div class="card pantry-control-blind" data-pad="md">
+  <h2 class="card__title">The session log could not be read</h2>
+  <p><code>${escapeHtml(payload.logPath)}</code> exists and could not be opened: ${escapeHtml(payload.sessions.readError)}. Treat every session below as missing rather than as absent.</p>
+</div>`);
+  }
+  if (payload.sessions.truncated) {
+    parts.push(`<p class="pantry-control-note">The log was longer than this reader will take in one go, so only its tail was read. Sessions older than that tail are not on this page.</p>`);
+  }
+
+  // Waiting first. It is the only block on the page that asks something of the reader, and a page
+  // that buries the ask under a status board is a page that gets read as a status board.
+  const waiting = payload.waiting.length === 0
+    ? `<p class="pantry-member__role">Nothing is waiting on you.</p>`
+    : `<ul class="pantry-waiting">${payload.waiting.map((w) => `<li data-kind="${escapeHtml(w.kind)}">
+  ${w.href ? `<a href="${escapeHtml(w.href)}">${escapeHtml(w.title)}</a>` : escapeHtml(w.title)}
+  <span class="pantry-member__role">${escapeHtml(w.detail)}</span>
+</li>`).join("\n")}</ul>`;
+  parts.push(`<section class="pantry-control-section">
+  <h2 class="pantry-section-title">Waiting on you</h2>
+  ${waiting}
+</section>`);
+
+  // The lamps. The wording here is doing real work: lit is a claim about THIS session, dark is a
+  // claim about the run, and unobserved is a claim about the observer. Saying so on the page is the
+  // difference between a grey lamp reading as a failure and reading as an absence of evidence.
+  const lampSource = payload.lampSession
+    ? `These describe session <code>${escapeHtml(payload.lampSession)}</code>.`
+    : `No session has been recorded here, so none of these describes a run.`;
+  const lamps = payload.lamps.map((l) => `<li class="pantry-lamp" data-state="${escapeHtml(l.state)}">
+  <span class="pantry-lamp__dot" aria-hidden="true"></span>
+  <span class="pantry-lamp__label">${escapeHtml(l.label)}</span>
+  <span class="pantry-lamp__state">${escapeHtml(l.state)}${l.shared ? `<span class="pantry-lamp__shared" title="Repo-level evidence, not per-session">shared</span>` : ""}</span>
+  <p class="pantry-lamp__detail">${escapeHtml(l.detail)}</p>
+</li>`).join("\n");
+  parts.push(`<section class="pantry-control-section">
+  <h2 class="pantry-section-title">Did the loop run</h2>
+  <p class="pantry-member__role">${lampSource} Lit means the mechanism ran in this session, not that it is configured. Unobserved means nothing on disk can answer the question, which is a different thing from a mechanism that did not run.</p>
+  <ul class="pantry-lamps">${lamps}</ul>
+</section>`);
+
+  // The plan board half.
+  if (payload.planError) {
+    parts.push(`<section class="pantry-control-section">
+  <h2 class="pantry-section-title">Open plans</h2>
+  <div class="card pantry-control-blind" data-pad="md"><p>${escapeHtml(payload.planError)}</p></div>
+</section>`);
+  } else {
+    const rows = payload.sessions.sessions;
+    const plans = payload.plans.length === 0
+      ? `<p class="pantry-member__role">No plan here has an open step.</p>`
+      : payload.plans.map((plan) => {
+        const attached = plan.sessions
+          .map((id) => rows.find((r) => r.id === id))
+          .filter((r): r is SessionRow => r !== undefined)
+          .map((r) => sessionChip(r, now)).join("\n");
+        const steps = plan.openTasks.map((t) => `<li>${escapeHtml(t)}</li>`).join("\n");
+        const omitted = plan.openTasksOmitted > 0
+          ? `<li class="pantry-member__role">and ${plan.openTasksOmitted} more</li>` : "";
+        return `<article class="card pantry-plan-row" data-pad="md" data-status="${escapeHtml(plan.status)}">
+  <h3 class="card__title"><a href="/plans">${escapeHtml(plan.title)}</a> <span class="pantry-decision-badge" data-status="${escapeHtml(plan.status)}">${escapeHtml(plan.status)}</span></h3>
+  <p class="pantry-member__role">${plan.openCount} open, ${plan.doneCount} done${plan.track ? ` · track ${escapeHtml(plan.track)}` : ""} · owner ${escapeHtml(plan.owner)}</p>
+  <ul class="pantry-plan-steps">${steps}${omitted}</ul>
+  ${attached
+    ? `<div class="pantry-plan-sessions"><span class="pantry-member__role">Seen writing here:</span> ${attached}</div>`
+    : `<p class="pantry-member__role">Nothing has been seen writing in the areas this plan touches.</p>`}
+</article>`;
+      }).join("\n");
+    parts.push(`<section class="pantry-control-section">
+  <h2 class="pantry-section-title">Open plans</h2>
+  <p class="pantry-member__role">A session is attached to a plan when a file it was seen writing falls under one of the areas that plan declares. That is evidence of work rather than an inventory of it: only write-shaped tools are recorded, and the path list per session is capped.</p>
+  ${plans}
+</section>`);
+  }
+
+  if (payload.unattached.length > 0) {
+    parts.push(`<section class="pantry-control-section">
+  <h2 class="pantry-section-title">Not attached to a plan</h2>
+  <p class="pantry-member__role">Still going, and nothing it wrote falls under any open plan's declared areas. Often that is a session doing something no plan covers.</p>
+  <div class="pantry-session-list">${payload.unattached.map((r) => sessionChip(r, now)).join("\n")}</div>
+</section>`);
+  }
+
+  parts.push(`<p class="pantry-control-note">Rendered ${escapeHtml(payload.generated)} from files alone. Add a session id to the address to replay a run that has already ended.</p>
+<script src="/pantry-control.js" defer></script>`);
+  return parts.join("\n");
 }
 
 // /decisions (piece 11d) — the decision inbox. The INDEX: open decisions first (what the human owes an
@@ -1537,6 +1665,8 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-review.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-map.js")     // mindmap viz (piece 10) — reads its graph from /map.json
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-map.js")), { headers: { "Content-Type": "text/javascript" } });
+    if (path === "/pantry-control.js")   // control center (C1) — ages the idle labels in place
+      return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-control.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-decisions.js")   // decision inbox (piece 11d) — the client generate-prompt flow
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-decisions.js")), { headers: { "Content-Type": "text/javascript" } });
 
@@ -1574,6 +1704,18 @@ export function createPantryHandler(opts: PantryOptions) {
         return Response.json({ error: "The session log is readable from this machine only." }, { status: 403 });
       }
       return Response.json(await buildSessionsPayload(config, new Date().toISOString()));
+    }
+    // C1: the page over the same record, joined to the plan board. The loopback rule is the twin's
+    // rule and for the same reason, because the page shows strictly more than the JSON does: a
+    // session id, the files it wrote, and now which plan those files belong to.
+    if (surfaces.control && path === "/control") {
+      if (!isLoopbackRequest(clientAddress)) {
+        return new Response("The control center is readable from this machine only.", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      }
+      // The session parameter is what makes this replayable. A run that ended last week is read the
+      // same way as the one in front of you, because both are only ever files.
+      const asked = url.searchParams.get("session") ?? undefined;
+      return html(page("Control", controlBody(await buildControlPayload(config, new Date().toISOString(), { session: asked }))));
     }
 
     // --- the decision inbox (piece 11d): human /decisions + /decisions/<id>, machine twin /decisions.json.
