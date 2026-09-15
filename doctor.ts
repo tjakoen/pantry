@@ -15,6 +15,7 @@
 import { lstat, readlink, stat, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname, relative } from "node:path";
+import { homedir } from "node:os";
 import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
 import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
 import { checkPantryDrift, checkPantrySymbolDrift, usesMergedGraph } from "./drift.ts";
@@ -97,6 +98,16 @@ export interface DoctorOptions {
   /** override the host's cold-start ceiling (tests, and a one-off run); falls back to the resolved
    *  config, which falls back to the estate default. See context.ts. */
   contextBudgetChars?: number;
+  /** fold the worktree-isolation check in; default true (set false in hermetic unit tests that do
+   *  not want doctor reading the real harness config dir) */
+  runWorktrees?: boolean;
+  /** how recently a session transcript must have been touched to count as live; default 30.
+   *  NOT measured. The harness records no "session ended" event a checker can read, so liveness has
+   *  to be inferred from the transcript's mtime, and the window is the one number that inference
+   *  needs. Thirty minutes is chosen to be longer than a session spends thinking and shorter than a
+   *  lunch break. Retune it against a real cadence rather than treating it as a law, the same
+   *  posture `auditActivityCommits` takes. */
+  sessionIdleMinutes?: number;
 }
 
 // The canonical cross-repo standards. A REAL file of one of these names in a host's standards/ dir
@@ -322,6 +333,38 @@ function runsWrittenSince(runsPayload: RunsPayload, since: Date): number {
 
 // Any e2e suite present? A repo with none can't run the mechanical tier's full gate (LOOP.md §2).
 // Checked cheaply: an `e2e/` dir, or a `*.e2e.*` file at the root or in test(s)/.
+/**
+ * How many sessions are currently live in this project.
+ *
+ * The harness names a project's directory after its path with every non-alphanumeric character
+ * replaced by a dash (the same rule context.ts documents), and writes one transcript per session
+ * inside it. There is no "session ended" record to read, so a session counts as live when its
+ * transcript was written to inside `idleMinutes`. That is an inference and the option's doc says so.
+ *
+ * A missing directory is zero rather than an error: a repo nobody has opened a session in yet is a
+ * state, not a fault.
+ */
+async function liveSessionCount(cwd: string, configDir: string, now: Date, idleMinutes: number): Promise<number> {
+  const dir = join(configDir, "projects", resolve(cwd).replace(/[^a-zA-Z0-9]/g, "-"));
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return 0;
+  }
+  const floor = now.getTime() - idleMinutes * 60_000;
+  let live = 0;
+  for (const name of entries) {
+    if (!name.endsWith(".jsonl")) continue;
+    try {
+      if ((await stat(join(dir, name))).mtimeMs >= floor) live++;
+    } catch {
+      // a transcript that vanished between readdir and stat is one that is not live
+    }
+  }
+  return live;
+}
+
 async function hasE2eSuite(cwd: string): Promise<boolean> {
   if (existsSync(join(cwd, "e2e"))) return true;
   for (const dir of [cwd, join(cwd, "test"), join(cwd, "tests")]) {
@@ -404,6 +447,42 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
       } catch (err) {
         checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: `context check skipped: ${err instanceof Error ? err.message : String(err)}` });
       }
+    }
+  }
+
+  // Worktree isolation, which LOOP states as one branch, one worktree, one run and which nothing
+  // measured until now (gap 1 of the portfolio's plans/loop-practice-gaps.md). The unit is per
+  // SESSION, matching the unit work is attributed to, so the comparison is live sessions against
+  // worktrees rather than anything about branches.
+  //
+  // WARN, never error. Two sessions in one tree is a collision waiting to happen, not a broken kit,
+  // and a check that failed CI over how someone opened their editor would be muted within the week
+  // (LOOP section 7). The detail names both numbers because "you are sharing a tree" is not
+  // actionable and "2 live sessions, 1 worktree" says exactly what to open.
+  if (opts.runWorktrees !== false) {
+    const listed = await git(["worktree", "list", "--porcelain"], cwd);
+    if (listed === null) {
+      checks.push({
+        id: "worktree-isolation",
+        severity: "info",
+        ok: true,
+        label: "worktree isolation",
+        detail: "not a checkout git could answer for, so there is nothing to compare sessions against",
+      });
+    } else {
+      const worktrees = listed.split("\n").filter((l) => l.startsWith("worktree ")).length;
+      const configDir = opts.harnessConfigDir ?? join(homedir(), ".claude");
+      const live = await liveSessionCount(cwd, configDir, now, opts.sessionIdleMinutes ?? 30);
+      const shared = live > worktrees;
+      checks.push({
+        id: "worktree-isolation",
+        severity: "warn",
+        ok: !shared,
+        label: "worktree isolation",
+        detail: shared
+          ? `${plural(live, "live session")} against ${plural(worktrees, "worktree")} — open one per session before editing, or the next diff is two sessions deep`
+          : `${plural(live, "live session")} against ${plural(worktrees, "worktree")}`,
+      });
     }
   }
 
