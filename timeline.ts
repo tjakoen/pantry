@@ -1,15 +1,16 @@
 // pantry/timeline.ts — piece 11e sub-unit 3: the RETROSPECTIVE project timeline, DATA layer (the view
 // is in app.ts, same split as map.ts/decisions.ts/artifacts.ts). /timeline draws the project's OWN
-// history — plan bars from git-derived status-transition dates, `depends` arrows, commit density, and
-// dated audit-report markers — reading nothing but git + the plan files + report mtimes. PANTRY runs no
-// model: git is a history read (a fancy `fs stat`), never a forecast. Hard rule enforced end to end:
+// history — plan bars from git-derived status-transition dates, `depends` arrows, commit and run
+// activity, and dated audit-report markers. It reads git + plan files + run reports + report mtimes.
+// PANTRY runs no model: git is a history read (a fancy `fs stat`), never a forecast. Hard rule enforced end to end:
 // NO estimate, NO projected/future bar, NO "target" date — every date rendered is a real git commit
-// date, a real file mtime, or `generatedAt` ("now"). This module is pure reads; it never writes.
+// date, a run report's declared date, a file mtime, or `generatedAt` ("now"). This module is pure reads; it never writes.
 import { readdir, stat } from "node:fs/promises";
 import { basename, join, relative } from "node:path";
 import { loadPlans } from "@tjakoen/proof/loader.ts";
 import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { buildRunsPayload } from "./runs.ts";
 
 export interface TimelineTransition {
   status: string;
@@ -60,12 +61,19 @@ export interface TimelinePayload {
   plans: TimelinePlan[];
   density: TimelineDensityBucket[];
   densityBucket: "day" | "week";
+  /** run reports closed in each day/week, grouped to match the commit-density strip */
+  runActivity: TimelineDensityBucket[];
+  runCount: number;
+  runDatedCount: number;
+  runsEnabled: boolean;
   auditMarkers: TimelineAuditMarker[];
   /** earliest plan `created` → generatedAt, in days (0 when there is no dated plan) */
   spanDays: number;
   /** distinct calendar days with at least one commit, over the same bounded commit log as `density` */
   activeDays: number;
   earliest: string | null;
+  /** left edge of the chart, widened to include the earliest plan or dated run bucket */
+  axisStart: string | null;
   generatedAt: string;
   /** guidance for the empty state; set only when available is false */
   reason?: string;
@@ -101,6 +109,11 @@ const DAILY_BUCKET_MAX_SPAN_DAYS = 120;
 
 const DAY_MS = 86_400_000;
 const isoDay = (iso: string): string => iso.slice(0, 10);
+const isIsoDay = (day: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false;
+  const date = new Date(`${day}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === day;
+};
 const daysBetween = (a: Date, b: Date): number => Math.floor((b.getTime() - a.getTime()) / DAY_MS);
 
 // Monday of the ISO week containing `day` (a "YYYY-MM-DD" string), computed in UTC so bucketing is
@@ -253,13 +266,13 @@ async function planFileNames(plansDir: string): Promise<Map<string, string>> {
 }
 
 /**
- * Build the retrospective timeline. Pure reads (git via the injected runner, fs stats for report
- * mtimes); no writes, no model. `generatedAt` is injected so the "now" edge and the stat tiles are
+ * Build the retrospective timeline. Pure reads (git via the injected runner, run-report frontmatter,
+ * and fs stats for audit-report mtimes); no writes, no model. `generatedAt` is injected so the "now" edge and the stat tiles are
  * deterministic in tests. Not a git repo, git absent, or no plans found → available:false with empty
  * arrays and a `reason` — the same "a surface never 500s" posture as every other surface.
  */
 export async function buildTimelinePayload(
-  config: Pick<ResolvedPantryConfig, "projectName" | "plansDir" | "cwd">,
+  config: Pick<ResolvedPantryConfig, "projectName" | "plansDir" | "runsDir" | "cwd"> & { surfaces: { runs: boolean } },
   generatedAt: string,
   rawGitRunner: GitRunner = defaultGitRunner,
 ): Promise<TimelinePayload> {
@@ -269,10 +282,15 @@ export async function buildTimelinePayload(
     plans: [],
     density: [],
     densityBucket: "day",
+    runActivity: [],
+    runCount: 0,
+    runDatedCount: 0,
+    runsEnabled: config.surfaces.runs,
     auditMarkers: [],
     spanDays: 0,
     activeDays: 0,
     earliest: null,
+    axisStart: null,
     generatedAt,
   };
 
@@ -330,11 +348,26 @@ export async function buildTimelinePayload(
   }
 
   const { density, bucket, activeDays } = await deriveDensity(git, config.cwd);
+  const runs = config.surfaces.runs
+    ? await buildRunsPayload({ projectName: config.projectName, runsDir: config.runsDir }, generatedAt)
+    : { count: 0, runs: [] };
+  const runCounts = new Map<string, number>();
+  for (const run of runs.runs) {
+    if (!run.date || !isIsoDay(run.date)) continue;
+    const date = bucket === "day" ? run.date : isoWeekStart(run.date);
+    runCounts.set(date, (runCounts.get(date) ?? 0) + 1);
+  }
+  const runActivity = [...runCounts.entries()]
+    .map(([date, count]) => ({ date, count }))
+    .toSorted((a, b) => a.date.localeCompare(b.date));
   const auditMarkers = await collectAuditMarkers(config.cwd);
 
   const createdDates = plans.map((p) => p.created).filter((d): d is string => !!d).sort();
   const earliest = createdDates[0] ?? null;
   const spanDays = earliest ? daysBetween(new Date(isoDay(earliest)), new Date(isoDay(generatedAt))) : 0;
+  const axisStart = [earliest, ...runActivity.map((d) => d.date)]
+    .filter((d): d is string => !!d)
+    .toSorted()[0] ?? null;
 
   return {
     available: true,
@@ -342,10 +375,15 @@ export async function buildTimelinePayload(
     plans,
     density,
     densityBucket: bucket,
+    runActivity,
+    runCount: runs.count,
+    runDatedCount: runActivity.reduce((sum, runBucket) => sum + runBucket.count, 0),
+    runsEnabled: config.surfaces.runs,
     auditMarkers,
     spanDays,
     activeDays,
     earliest,
+    axisStart,
     generatedAt,
   };
 }

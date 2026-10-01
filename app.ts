@@ -420,7 +420,7 @@ function aiSurfaceTeasers(surfaces: PantrySurfaces): { title: string; role: stri
       ? [{ title: "Artifacts", role: "Run evidence — screenshots, audit reports, diffs — served read-only. Machine twin at /artifacts.json.", href: "/artifacts", status: "live" }]
       : []),
     ...(surfaces.timeline
-      ? [{ title: "Timeline", role: "The project's retrospective history — git-derived plan bars, dependency arrows, commit density. No forecast. Machine twin at /timeline.json.", href: "/timeline", status: "live" }]
+      ? [{ title: "Timeline", role: "The project's retrospective history: plan bars, dependency arrows, commit and run activity. No forecast. Machine twin at /timeline.json.", href: "/timeline", status: "live" }]
       : []),
   ];
 }
@@ -1199,14 +1199,14 @@ ${escapeHtml(payload.dir)}/&lt;run-id&gt;/&lt;file&gt;   # per-run subfolders ar
 }
 
 // /timeline (piece 11e sub-unit 3) — the RETROSPECTIVE project timeline: one bar per plan spanning its
-// git-derived created→end span, `depends` arrows between bars, a commit-density strip along the time
-// axis, and dated audit-report markers. Same model (buildTimelinePayload) backs both the SVG and the
+// git-derived created→end span, `depends` arrows between bars, commit and run activity, and dated
+// audit-report markers. Same model (buildTimelinePayload) backs both the SVG and the
 // machine twin at /timeline.json, so they never drift. Built to the FIGURES data-viz scaffold: a
 // self-contained e-ink palette on the root, one coral accent (the "now" marker), no <style> block, no
 // hardcoded hex below the root, status shown by a within-family fill tone AND a direct text label (not
-// colour-alone). NO forecast, NO projected bar, NO "target" date anywhere — every date drawn is a real
-// git commit, a real report mtime, or generatedAt ("now"). An absent git repo / no plans degrades to
-// guidance, never a crash — same posture as every other absent-source surface.
+// colour-alone). NO forecast, NO projected bar, NO "target" date anywhere — every date drawn comes
+// from git history, a run report, an audit-report mtime, or generatedAt ("now"). An absent git repo /
+// no plans degrades to guidance, never a crash — same posture as every other absent-source surface.
 const isoDay = (iso: string): string => iso.slice(0, 10);
 const monthsRound = (days: number): number => Math.max(0, Math.round(days / 30));
 
@@ -1239,7 +1239,7 @@ function timelineEnd(p: TimelinePlan, generatedAt: string): string {
 
 function timelineSvg(payload: TimelinePayload): string {
   const plans = payload.plans;
-  const minIso = payload.earliest ?? payload.generatedAt;
+  const minIso = payload.axisStart ?? payload.generatedAt;
   const minT = new Date(minIso).getTime();
   const maxT = new Date(payload.generatedAt).getTime();
   const span = Math.max(maxT - minT, 86_400_000); // never a zero/negative span (avoids a NaN scale)
@@ -1304,6 +1304,22 @@ function timelineSvg(payload: TimelinePayload): string {
   const densityLabelY = (y += 10);
   y += 6;
 
+  let runSvg = "";
+  if (payload.runsEnabled) {
+    const RUN_H = 12;
+    const runY = (y += 10);
+    const maxRuns = Math.max(1, ...payload.runActivity.map((d) => d.count));
+    const runBars = payload.runActivity.map((d) => {
+      const bx = x(d.date);
+      const h = 2 + (d.count / maxRuns) * (RUN_H - 2);
+      return `<rect x="${(bx - 1.5).toFixed(1)}" y="${(runY + RUN_H - h).toFixed(1)}" width="3" height="${h.toFixed(1)}" style="fill:var(--ink)"><title>${escapeHtml(d.date)}: ${d.count} run close${d.count === 1 ? "" : "s"}</title></rect>`;
+    }).join("");
+    y += RUN_H + 6;
+    const runLabelY = (y += 10);
+    y += 6;
+    runSvg = `<text x="14" y="${runLabelY}" style="fill:var(--muted);font-size:12.5px">run closes</text>${runBars}`;
+  }
+
   // audit markers — thin ticks on the axis; a native <title> carries the label + date (no JS needed)
   const markerSvg = payload.auditMarkers.map((m) => {
     const mx = x(m.date);
@@ -1322,7 +1338,10 @@ function timelineSvg(payload: TimelinePayload): string {
   const doneCount = plans.filter((p) => p.status === "done").length;
   const activeCount = plans.length - doneCount;
   const months = monthsRound(payload.spanDays);
-  const ariaLabel = `Retrospective timeline of ${plans.length} plan${plans.length === 1 ? "" : "s"} over ${months} month${months === 1 ? "" : "s"}; ${doneCount} done, ${activeCount} in progress.`;
+  const runDescription = payload.runsEnabled
+    ? `; ${payload.runDatedCount} dated run reports shown across ${payload.runActivity.length} ${payload.densityBucket === "day" ? "days" : "weeks"}`
+    : "";
+  const ariaLabel = `Retrospective timeline of ${plans.length} plan${plans.length === 1 ? "" : "s"} over ${months} month${months === 1 ? "" : "s"}; ${doneCount} done, ${activeCount} in progress${runDescription}.`;
 
   const legendItems = Object.keys(STATUS_TONE);
   const legend = legendItems.map((status, i) => {
@@ -1347,14 +1366,15 @@ function timelineSvg(payload: TimelinePayload): string {
   <text x="${ML + PW}" y="${axisLabelY}" text-anchor="end" style="fill:var(--muted);font-size:12.5px">${escapeHtml(isoDay(payload.generatedAt))}</text>
   <text x="14" y="${densityLabelY}" style="fill:var(--muted);font-size:12.5px">commit density</text>
   ${densitySvg}
-  <text x="14" y="${payoffY}" style="fill:var(--ink);font-size:13px">No forecast — every date above is a real git commit or "now".</text>
+  ${runSvg}
+  <text x="14" y="${payoffY}" style="fill:var(--ink);font-size:13px">No forecast — dates come from git, run reports, audit reports, or "now".</text>
 </svg>`;
 }
 
 function timelineBody(payload: TimelinePayload): string {
   const header = `<header>
   <h1 class="proof-masthead">Timeline</h1>
-  <p class="proof-lede">A retrospective picture of ${escapeHtml(payload.project)}'s own history — plan bars from git-derived status-transition dates, dependency arrows, commit density, and audit-report markers. PANTRY runs no model; every date here is a real git commit, a real report's mtime, or "now" — never a forecast or an estimate. Machine twin at <a href="/timeline.json">/timeline.json</a>.</p>
+  <p class="proof-lede">A retrospective picture of ${escapeHtml(payload.project)}'s own history: plan bars from git-derived status changes, dependency arrows, commit density, ${payload.runsEnabled ? "run-close activity, " : ""}and audit-report markers. PANTRY runs no model; dates come from git history, dated run reports, audit-report modification times, or "now". Machine twin at <a href="/timeline.json">/timeline.json</a>.</p>
 </header>`;
   if (!payload.available) {
     return `${header}
@@ -1379,6 +1399,7 @@ function timelineBody(payload: TimelinePayload): string {
 <figure class="pantry-timeline" data-grade="smooth">
   ${timelineSvg(payload)}
 </figure>
+${payload.runsEnabled ? `<p class="pantry-member__role"><em>Run closes are grouped by ${payload.densityBucket === "day" ? "day" : "week"}; ${payload.runDatedCount} of ${payload.runCount} reports carry a date.</em> <a href="/runs">Browse the run ledger →</a></p>` : ""}
 <section class="pantry-timeline-audits">
   <h2 class="pantry-section-title">Audit markers</h2>
   ${auditList}

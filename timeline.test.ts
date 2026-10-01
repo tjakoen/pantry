@@ -69,7 +69,10 @@ function fakeGit(world: FakeWorld): GitRunner {
   };
 }
 
-const build = (world: FakeWorld) => buildTimelinePayload({ projectName: "t", plansDir, cwd }, AT, fakeGit(world));
+const runsDir = () => join(cwd, "artifacts", "runs");
+const build = (world: FakeWorld) => buildTimelinePayload({
+  projectName: "t", plansDir, runsDir: runsDir(), cwd, surfaces: { runs: true },
+}, AT, fakeGit(world));
 
 describe("buildTimelinePayload — created / lastActivity / done", () => {
   test("derives created (add commit), lastActivity (newest touch), and done (status:done reached)", async () => {
@@ -254,6 +257,36 @@ describe("buildTimelinePayload — commit density + stat tiles", () => {
   });
 });
 
+describe("buildTimelinePayload — run activity", () => {
+  test("groups dated run reports on the same day or week as commit density", async () => {
+    await writePlan("014-only", `---\nstatus: todo\n---\n# Only\n`);
+    await mkdir(runsDir(), { recursive: true });
+    await writeFile(join(runsDir(), "a.md"), `---\ntitle: First\ndate: 2026-01-05\n---\n`);
+    await writeFile(join(runsDir(), "b.md"), `---\ntitle: Second\ndate: 2026-01-08\n---\n`);
+    await writeFile(join(runsDir(), "c.md"), `---\ntitle: Invalid date\ndate: 2026-99-99\n---\n`);
+
+    const weekly = await build({ densityLog: ["2026-01-05T00:00:00.000Z", "2026-08-01T00:00:00.000Z"] });
+    expect(weekly.densityBucket).toBe("week");
+    expect(weekly.runCount).toBe(3);
+    expect(weekly.runDatedCount).toBe(2);
+    expect(weekly.runActivity).toEqual([{ date: "2026-01-05", count: 2 }]);
+    expect(weekly.axisStart).toBe("2026-01-05");
+  });
+
+  test("does not read or expose run activity when the runs surface is disabled", async () => {
+    await writePlan("015-only", `---\nstatus: todo\n---\n# Only\n`);
+    await mkdir(runsDir(), { recursive: true });
+    await writeFile(join(runsDir(), "a.md"), `---\ntitle: First\ndate: 2026-01-05\n---\n`);
+
+    const disabled = await buildTimelinePayload({
+      projectName: "t", plansDir, runsDir: runsDir(), cwd, surfaces: { runs: false },
+    }, AT, fakeGit({}));
+    expect(disabled.runsEnabled).toBe(false);
+    expect(disabled.runCount).toBe(0);
+    expect(disabled.runActivity).toEqual([]);
+  });
+});
+
 describe("buildTimelinePayload — audit markers", () => {
   test("dated audit reports across cwd/artifacts/reports/docs are collected, AUDIT.md runbook excluded", async () => {
     await writePlan("011-only", `---\nstatus: todo\n---\n# Only\n`);
@@ -286,7 +319,7 @@ describe("buildTimelinePayload — degradations", () => {
     await expect(
       (async () => {
         try {
-          return await buildTimelinePayload({ projectName: "t", plansDir, cwd }, AT, throwingGit);
+          return await buildTimelinePayload({ projectName: "t", plansDir, runsDir: runsDir(), cwd, surfaces: { runs: true } }, AT, throwingGit);
         } catch {
           return null;
         }
@@ -302,7 +335,7 @@ describe("buildTimelinePayload — degradations", () => {
   });
 
   test("an absent plans dir → available:false, no throw", async () => {
-    const p = await buildTimelinePayload({ projectName: "t", plansDir: join(cwd, "nope"), cwd }, AT, fakeGit({}));
+    const p = await buildTimelinePayload({ projectName: "t", plansDir: join(cwd, "nope"), runsDir: runsDir(), cwd, surfaces: { runs: true } }, AT, fakeGit({}));
     expect(p.available).toBe(false);
     expect(p.plans).toEqual([]);
   });

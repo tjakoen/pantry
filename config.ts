@@ -26,8 +26,8 @@ export interface PantrySurfaces {
    *  Model-free, like every surface. Default on. */
   artifacts: boolean;
   /** the retrospective project timeline (/timeline) — plan bars from git-derived status-transition
-   *  dates, depends arrows, commit density, dated audit markers. Reads git + plans/ + report mtimes;
-   *  no new tracking, no model. Default on. */
+   *  dates, depends arrows, commit density, run-close activity, and dated audit markers. Reads git +
+   *  plans/ + run reports + audit-report mtimes; no new tracking, no model. Default on. */
   timeline: boolean;
   /** the run ledger (/runs, /runs/<id>, /runs.json) — run reports parsed against LOOP §9, and which items each is
    *  missing. Human index + detail alongside the machine twin, all three off together when this is

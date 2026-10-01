@@ -436,6 +436,11 @@ stays here as these are built. **Built:** `artifacts/` + `/timeline`; the home f
 2) now carries the `deps-drift` pill too, so the control-plane layer-pin drift surfaces on the front door
 next to audit / doc / graph freshness.
 
+The retrospective also reads dated run reports from the host's configured `runsDir` and adds a
+run-close strip to `/timeline`, grouped by the same day or week as commit density. The page links that
+strip to `/runs`; `/timeline.json` carries the same counts. Its chart range widens to include the
+earliest dated run when that predates the plan history.
+
 **11f — `pantry skills` (DONE 2026-08-07, this branch).** The estate-wide half of the portfolio's
 skills-runtime plan (S2). A standard only fires if the agent's harness lists it, so
 `pantry skills sync [dir]` materializes each standard carrying a `when:` key as
