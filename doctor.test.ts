@@ -1259,6 +1259,90 @@ describe("pantry doctor — loop hygiene (S3a: work that is finished and still s
   });
 });
 
+// Gap 1 of plans/loop-practice-gaps.md: LOOP names one branch, one worktree, one run, and nothing
+// measured whether that was true. The unit is per SESSION, so the number worth comparing against the
+// worktree count is how many sessions are currently live in this project, which the harness records
+// as transcripts under its projects/<slug>/ dir. Both sides are doubled here so none of this depends
+// on the machine the suite runs on.
+describe("pantry doctor - worktree isolation (gap 1, warn tier)", () => {
+  let harness: string;
+  let sessionDir: string;
+  beforeEach(async () => {
+    harness = await mkdtemp(join(tmpdir(), "pantry-wt-"));
+    sessionDir = join(harness, "projects", dir.replace(/[^a-zA-Z0-9]/g, "-"));
+    await mkdir(sessionDir, { recursive: true });
+  });
+  afterEach(async () => {
+    await rm(harness, { recursive: true, force: true });
+  });
+
+  /** The porcelain git prints for `worktree list`: one `worktree <path>` line per checkout. */
+  const wtGit = (paths: string[] | null): GitRunner => async (args) =>
+    args.slice(0, 2).join(" ") === "worktree list"
+      ? (paths === null ? null : paths.map((p) => "worktree " + p + "\nHEAD abc\n").join("\n"))
+      : null;
+
+  /** A session transcript last touched `minutes` before NOW. */
+  async function transcript(name: string, minutes: number) {
+    const f = join(sessionDir, name + ".jsonl");
+    await writeFile(f, "{}\n");
+    const t = new Date(NOW.getTime() - minutes * 60_000);
+    await utimes(f, t, t);
+  }
+
+  const wt = (paths: string[] | null, over = {}) =>
+    run({}, { runWorktrees: true, harnessConfigDir: harness, gitRunner: wtGit(paths), ...over });
+
+  test("one live session in one checkout is the normal case and passes", async () => {
+    await compliantKit();
+    await transcript("a", 1);
+    const c = byId(await wt(["/repo"]), "worktree-isolation");
+    expect(c.ok).toBe(true);
+    expect(c.severity).toBe("warn");
+  });
+
+  test("two live sessions sharing one worktree warns and names both numbers", async () => {
+    await compliantKit();
+    await transcript("a", 1);
+    await transcript("b", 2);
+    const c = byId(await wt(["/repo"]), "worktree-isolation");
+    expect(c.ok).toBe(false);
+    expect(c.detail).toContain("2 live session");
+    expect(c.detail).toContain("1 worktree");
+  });
+
+  test("two live sessions with two worktrees is the shape the standard asks for", async () => {
+    await compliantKit();
+    await transcript("a", 1);
+    await transcript("b", 2);
+    expect(byId(await wt(["/repo", "/repo-wt"]), "worktree-isolation").ok).toBe(true);
+  });
+
+  test("a transcript older than the idle window is not live", async () => {
+    await compliantKit();
+    await transcript("a", 1);
+    await transcript("stale", 600);
+    expect(byId(await wt(["/repo"]), "worktree-isolation").ok).toBe(true);
+  });
+
+  test("the collision is due work, never a broken build", async () => {
+    await compliantKit();
+    await transcript("a", 1);
+    await transcript("b", 1);
+    const r = await wt(["/repo"]);
+    expect(byId(r, "worktree-isolation").ok).toBe(false);
+    expect(r.ok).toBe(true);
+  });
+
+  test("a host git cannot answer for reports info rather than a warn about nothing", async () => {
+    await compliantKit();
+    await transcript("a", 1);
+    const c = byId(await wt(null), "worktree-isolation");
+    expect(c.severity).toBe("info");
+    expect(c.ok).toBe(true);
+  });
+});
+
 describe("formatDoctorReport", () => {
   test("a compliant kit reads OK with a zero-failing tail", async () => {
     await compliantKit();
