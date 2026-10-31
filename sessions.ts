@@ -31,10 +31,9 @@
 import { existsSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
-import { homedir } from "node:os";
 import { loadPlans } from "@tjakoen/proof/loader.ts";
 import type { PlanOwner, PlanStatus } from "@tjakoen/proof/core/types.ts";
-import { harnessProjectDir } from "./context.ts";
+import { harnessConfigDir, harnessProjectDir } from "./context.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
@@ -163,7 +162,7 @@ export function defaultSessionsLog(cwd: string, configDir = harnessConfigDir()):
  * every session started through the work wrapper and reports "nothing has observed this repo"
  * forever while the emitter is appending happily a directory away.
  */
-export const harnessConfigDir = (): string => process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+export { harnessConfigDir } from "./context.ts";
 
 const isKind = (v: unknown): v is SessionEventKind =>
   typeof v === "string" && (SESSION_EVENT_KINDS as readonly string[]).includes(v);

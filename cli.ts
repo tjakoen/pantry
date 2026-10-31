@@ -253,8 +253,9 @@ async function main() {
 
     if (!sub || sub === "list") {
       const log = await readAnswerLog(logPath);
-      if (isOn(flags.json)) { console.log(JSON.stringify({ path: log.path, unread: unacked(log), answers: answers(log) }, null, 2)); return; }
-      console.log(formatAnswerLog(log));
+      if (isOn(flags.json)) console.log(JSON.stringify({ path: log.path, readError: log.readError, malformed: log.malformed, unread: unacked(log), answers: answers(log) }, null, 2));
+      else console.log(formatAnswerLog(log));
+      if (log.readError || log.malformed) process.exit(1);
       // Exit 0 even with unread answers. This is a surface a session reads, not a gate: making
       // pending work fail a command turns "there is something for you" into "the build is broken",
       // which is how a check gets muted (LOOP §2's baseline-and-regress rule, same reasoning).
@@ -295,6 +296,7 @@ async function main() {
     if (sub === "ack") {
       if (!arg) { console.error("usage: pantry answers ack <answer-id> [--by <who>] [--note <why>]"); process.exit(1); }
       const log = await readAnswerLog(logPath);
+      if (log.readError || log.malformed) { console.error(formatAnswerLog(log)); process.exit(1); }
       if (!log.entries.some((e) => e.kind === "answer" && e.id === arg)) {
         console.error(`pantry answers ack: no answer with id "${arg}" in ${logPath}`);
         process.exit(1);

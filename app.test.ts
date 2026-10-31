@@ -814,6 +814,32 @@ describe("the answer channel — the one route in PANTRY that writes", () => {
     expect(json.answers[0].choice).toBe("SQLite");
   });
 
+  test("an unreadable answer log renders an explicit alert and a failing machine response", async () => {
+    const { handler, log } = await withLog();
+    await mkdir(log);
+    const page = await (await get(handler, "/answers")).text();
+    expect(page).toContain('role="alert"');
+    expect(page).toContain("Unread answers are unknown");
+    expect(page).not.toContain("Nothing answered yet");
+    const response = await get(handler, "/answers.json");
+    expect(response.status).toBe(503);
+    expect((await response.json()).readError).toBeTruthy();
+  });
+
+  test("malformed persisted answers are counted without crashing either projection", async () => {
+    const { handler, log } = await withLog();
+    await Bun.write(log, '{"kind":"answer","id":"broken"}\n');
+    const page = await (await get(handler, "/answers")).text();
+    expect(page).toContain("1 unparseable");
+    expect(page).toContain("No valid entries were recovered");
+    expect(page).not.toContain("Nothing answered yet");
+    const response = await get(handler, "/answers.json");
+    expect(response.status).toBe(503);
+    const json = await response.json();
+    expect(json.malformed).toBe(1);
+    expect(json.answers).toEqual([]);
+  });
+
   test("with the decisions surface off, the channel is off too — write and read alike", async () => {
     const dir = await mkdtemp(join(tmpdir(), "pantry-answers-off-"));
     const config = { ...configWith({ decisions: false }), answersLog: join(dir, "answers.jsonl") };

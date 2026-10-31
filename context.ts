@@ -41,6 +41,9 @@ export interface ContextEntry {
 
 /** The measured cold start: every file, biggest first, and the total. */
 export interface ContextReading {
+  /** This measures Claude Code files, not Codex instructions or its full prompt. */
+  harness: "claude";
+  configDir: string;
   entries: ContextEntry[];
   chars: number;
   /** true when nothing could be read at all — no CLAUDE.md, no memory, no machine front door */
@@ -48,7 +51,7 @@ export interface ContextReading {
 }
 
 export interface ContextOptions {
-  /** the harness config dir holding CLAUDE.md and projects/; default ~/.claude */
+  /** the harness config dir holding CLAUDE.md and projects/; default CLAUDE_CONFIG_DIR, then ~/.claude */
   configDir?: string;
   /** injected for tests; default os.homedir() */
   home?: string;
@@ -112,6 +115,9 @@ async function walk(path: string, source: ContextEntry["source"], seen: Set<stri
   }
 }
 
+/** Resolve the Claude account once for context and session readers. */
+export const harnessConfigDir = (home = homedir()): string => process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
+
 /**
  * Where the harness keeps everything it holds about one project: the agent memory, the transcripts,
  * and (once the emitter is mounted) the session event log. Claude Code names the directory after the
@@ -138,7 +144,7 @@ export function memoryIndexPath(cwd: string, configDir: string): string {
  * fault and should not be fixed here.
  */
 export async function readContext(cwd: string, opts: ContextOptions = {}): Promise<ContextReading> {
-  const configDir = opts.configDir ?? join(opts.home ?? homedir(), ".claude");
+  const configDir = opts.configDir ?? harnessConfigDir(opts.home);
   const entries: ContextEntry[] = [];
   const seen = new Set<string>();
 
@@ -148,5 +154,5 @@ export async function readContext(cwd: string, opts: ContextOptions = {}): Promi
 
   entries.sort((a, b) => b.chars - a.chars);
   const chars = entries.reduce((sum, e) => sum + e.chars, 0);
-  return { entries, chars, empty: entries.length === 0 };
+  return { harness: "claude", configDir, entries, chars, empty: entries.length === 0 };
 }

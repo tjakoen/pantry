@@ -84,3 +84,39 @@ describe("a flag value is a string, so reading it needs care", () => {
     expect(numberFlag("30", 900)).toBe(30);
   });
 });
+
+// These cross the process boundary: a warning in JSON alone must not look like CLI success.
+describe("answer log diagnostics reach CLI callers", () => {
+  test("unreadable and malformed logs fail list, wait and ack without appending", async () => {
+    const { mkdtemp, mkdir, readFile, rm, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "pantry-cli-log-"));
+    try {
+      const log = join(dir, "answers.jsonl");
+      await writeFile(join(dir, "pantry.config.json"), JSON.stringify({ answersLog: log }));
+      const invoke = async (args: string[]) => {
+        const proc = Bun.spawn([process.execPath, join(import.meta.dir, "cli.ts"), "answers", ...args], { cwd: dir, stdout: "pipe", stderr: "pipe" });
+        const [out, err, code] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+        return { out, err, code };
+      };
+      await mkdir(log);
+      const unreadable = await invoke(["--json"]);
+      expect(unreadable.code).toBe(1);
+      expect(JSON.parse(unreadable.out).readError).toBeTruthy();
+      expect((await invoke(["wait", "ref", "--timeout", "0"])).code).toBe(1);
+      expect((await invoke(["ack", "id"])).code).toBe(1);
+      await rm(log, { recursive: true });
+      const broken = '{"kind":"answer","id":"id"}\n';
+      await writeFile(log, broken);
+      const malformed = await invoke(["--json"]);
+      expect(malformed.code).toBe(1);
+      expect(JSON.parse(malformed.out).malformed).toBe(1);
+      expect((await invoke(["wait", "ref", "--timeout", "0"])).code).toBe(1);
+      expect((await invoke(["ack", "id"])).code).toBe(1);
+      expect(await readFile(log, "utf8")).toBe(broken);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+});

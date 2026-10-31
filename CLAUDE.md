@@ -57,18 +57,28 @@ contract wording especially) + a memory if a decision was made.
 
 ## Running the gates
 
-The gates run in a container rather than against whatever is installed on the host, driven from
-the bread repo checked out beside this one, which holds the compose file:
+Run the repository gates from this checkout:
 
 ```sh
-MSYS_NO_PATHCONV=1 docker compose --profile gates run --rm gates-pantry
+bun run check
+bun test
+bun run lint
 ```
 
-It installs from the frozen lockfile, then runs the typecheck, the tests and the linter. The
-baseline is 669 pass, 0 fail; anything less is a real regression rather than a local
-quirk.
-The reason it is not a host run belongs to bread's docs/OPERATING-NOTES.md rather than here, so
-it has one home: a Windows host without Developer Mode cannot create the symlink these fixtures
-build, and a host run therefore reports failures that do not exist. The `MSYS_NO_PATHCONV=1`
-prefix is not optional from Git Bash, which otherwise rewrites a container path into a
-Windows one and kills the run before it starts.
+The full test suite includes the package smoke test. To isolate that distribution boundary while
+working on the package allowlist, run:
+
+```sh
+bun test tools/package-smoke.test.ts
+```
+
+The smoke test packs PANTRY and exercises the extracted CLI and control client outside the source
+checkout, using the checkout's installed dependencies. It proves the runtime file closure; it does
+not prove a fresh network installation.
+
+Record the actual totals and command output for each run rather than comparing against a fixed
+historical test count. On Windows, the fixtures require permission to create symlinks: enable
+Developer Mode or use an account with the required privilege before running the host suite. A
+container gate is an option only when the checkout actually provides a Compose configuration and
+the named service. This bread checkout has no Compose file, so the host commands above are the
+verified path.

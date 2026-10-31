@@ -122,6 +122,12 @@ That is also the default, so most projects set nothing. Point it at an absolute 
 to keep one log per machine instead of one per repo. Do not give it a `.log` extension: `*.log` sits
 in nearly every .gitignore, and a per-repo log the repo never commits is not one.
 
+A missing log is the healthy first-use state. An existing log that cannot be read is an error, and
+a malformed line is reported while valid neighboring entries remain visible. The CLI exits nonzero
+for either condition; waiting and acknowledgement stop until the log is repaired. The browser shows
+an alert and the machine twin at `/answers.json` returns HTTP 503. Doctor treats an unreadable log
+as an error and malformed records as due work. An empty recovered set never proves the inbox is empty.
+
 From a session:
 
 ```
@@ -273,3 +279,11 @@ Run these from the root of the project you want PANTRY in, one command at a time
 
 See `pantry/PLAN.md` for the full design, including the host contract and what PANTRY bundles
 versus what your project provides.
+
+### Claude Code context measurement
+
+Doctor labels its context measurement as Claude Code context. Context and session readers both use
+`CLAUDE_CONFIG_DIR` when it is set and otherwise use `~/.claude`. Programmatic callers may explicitly
+override that directory. The reading identifies the selected directory and harness; it counts
+CLAUDE.md imports and the Claude memory index. It does not measure Codex instructions, skills, tool
+schemas or the complete prompt of either harness.

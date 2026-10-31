@@ -424,29 +424,29 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   if (runContext) {
     const budget = opts.contextBudgetChars ?? config.contextBudgetChars;
     if (!Number.isFinite(budget)) {
-      checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: "muted by this repo's pantry.config (contextBudgetChars)" });
+      checks.push({ id: "context-budget", severity: "info", ok: true, label: "Claude Code context", detail: "muted by this repo's pantry.config (contextBudgetChars)" });
     } else {
       try {
         const reading = await readContext(cwd, { configDir: opts.harnessConfigDir });
         if (reading.empty) {
-          checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: "nothing loads at cold start — no CLAUDE.md, no memory index" });
+          checks.push({ id: "context-budget", severity: "info", ok: true, label: "Claude Code context", detail: `No Claude Code context files found under ${reading.configDir}; Codex context is not measured` });
         } else {
           const biggest = reading.entries[0];
           const share = `${basename(biggest.label)} is ${biggest.chars.toLocaleString("en-US")} of it`;
-          const size = `${reading.chars.toLocaleString("en-US")} chars over ${plural(reading.entries.length, "file")}`;
+          const size = `${reading.chars.toLocaleString("en-US")} chars over ${plural(reading.entries.length, "file")} (Claude Code, ${reading.configDir}; Codex context is not measured)`;
           const over = reading.chars > budget;
           checks.push({
             id: "context-budget",
             severity: "warn",
             ok: !over,
-            label: "cold-start context",
+            label: "Claude Code context",
             detail: over
               ? `${size}, over the ${budget.toLocaleString("en-US")} budget — ${share}`
               : `${size}, inside the ${budget.toLocaleString("en-US")} budget — ${share}`,
           });
         }
       } catch (err) {
-        checks.push({ id: "context-budget", severity: "info", ok: true, label: "cold-start context", detail: `context check skipped: ${err instanceof Error ? err.message : String(err)}` });
+        checks.push({ id: "context-budget", severity: "info", ok: true, label: "Claude Code context", detail: `context check skipped: ${err instanceof Error ? err.message : String(err)}` });
       }
     }
   }
@@ -1072,7 +1072,11 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     } else {
       const log = await readAnswerLog(config.answersLog);
       const pending = unacked(log);
-      if (pending.length === 0) {
+      if (log.readError) {
+        checks.push({ id: "unacted-answers", severity: "error", ok: false, label: "answer log", detail: `cannot read ${log.path}: ${log.readError}; unread answers are unknown` });
+      } else if (log.malformed) {
+        checks.push({ id: "unacted-answers", severity: "warn", ok: false, label: "answer log", detail: `${log.malformed} unparseable line(s) skipped in ${log.path}; ${pending.length} valid unread answers${pending.length ? `: ${pending.slice(0, 3).map((a) => a.request.ref).join(", ")}` : ""}; repair the log before waiting or acknowledging` });
+      } else if (pending.length === 0) {
         checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `${answers(log).length} answers, all acted on` });
       } else {
         // Named, not just counted. A number tells a session there is something to read and nothing
@@ -1090,7 +1094,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
       }
     }
   } catch (err) {
-    checks.push({ id: "unacted-answers", severity: "info", ok: true, label: "answer log", detail: `answer-log check skipped: ${err instanceof Error ? err.message : String(err)}` });
+    checks.push({ id: "unacted-answers", severity: "error", ok: false, label: "answer log", detail: `answer-log check failed: ${err instanceof Error ? err.message : String(err)}` });
   }
 
   // ── Session events: has anything observed this repo? (C0) ────────────────

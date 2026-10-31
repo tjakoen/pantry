@@ -977,6 +977,27 @@ describe("unacted answers", () => {
     const c = byId(await run(), "unacted-answers");
     expect(c.severity).toBe("warn");
     expect(c.detail).toContain("still-seen");
+    expect(c.detail).toContain("1 unparseable");
+  });
+
+  test("an unreadable answer log is a broken check, not an empty inbox", async () => {
+    await compliantKit();
+    await mkdir(logPath(), { recursive: true });
+    const report = await run();
+    const check = byId(report, "unacted-answers");
+    expect(check.severity).toBe("error");
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain("unread answers are unknown");
+    expect(report.ok).toBe(false);
+  });
+
+  test("malformed-only logs warn instead of claiming all answers were acted on", async () => {
+    await compliantKit();
+    await writeLog(['{"kind":"ack","id":"bad"}']);
+    const check = byId(await run(), "unacted-answers");
+    expect(check.ok).toBe(false);
+    expect(check.detail).toContain("1 unparseable");
+    expect(check.detail).not.toContain("all acted on");
   });
 });
 
@@ -1422,7 +1443,9 @@ describe("pantry doctor — cold-start context (what a session pays before any w
     await mkdir(join(dir, "plans"));
     const c = byId(await ctx(), "context-budget");
     expect(c.severity).toBe("info");
-    expect(c.detail).toContain("nothing loads at cold start");
+    expect(c.detail).toContain("No Claude Code context files found");
+    expect(c.detail).toContain("Codex context is not measured");
+    expect(c.label).toBe("Claude Code context");
   });
 });
 

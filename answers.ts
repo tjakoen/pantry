@@ -92,6 +92,8 @@ export interface AnswerLog {
   /** lines that would not parse. Counted rather than thrown: one bad line must never cost the rest,
    *  and a silent skip would make a lost answer indistinguishable from an answer never given. */
   malformed: number;
+  /** An existing log that could not be read is an unknown inbox, never an empty one. */
+  readError: string | null;
 }
 
 /** What a caller hands `appendAnswer`. Everything a reader needs is required; everything else is not. */
@@ -305,20 +307,20 @@ async function writeLine(logPath: string, entry: LogEntry): Promise<void> {
  * asked anything is the healthy case and must not read as a broken one.
  */
 export async function readAnswerLog(logPath: string): Promise<AnswerLog> {
-  if (!existsSync(logPath)) return { path: logPath, entries: [], malformed: 0 };
   let text: string;
   try {
     text = await readFile(logPath, "utf8");
-  } catch {
-    return { path: logPath, entries: [], malformed: 0 };
+  } catch (err) {
+    const absent = err instanceof Error && "code" in err && err.code === "ENOENT";
+    return { path: logPath, entries: [], malformed: 0, readError: absent ? null : err instanceof Error ? err.message : String(err) };
   }
   const entries: LogEntry[] = [];
   let malformed = 0;
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     try {
-      const parsed = JSON.parse(line) as LogEntry;
-      if (parsed && (parsed.kind === "answer" || parsed.kind === "ack") && typeof parsed.id === "string") {
+      const parsed: unknown = JSON.parse(line);
+      if (isLogEntry(parsed)) {
         entries.push(parsed);
       } else {
         malformed++;
@@ -327,7 +329,33 @@ export async function readAnswerLog(logPath: string): Promise<AnswerLog> {
       malformed++;
     }
   }
-  return { path: logPath, entries, malformed };
+  return { path: logPath, entries, malformed, readError: null };
+}
+
+/** Disk is a trust boundary too. Check the complete persisted shape before consumers dereference it. */
+function isLogEntry(value: unknown): value is LogEntry {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  const field = (v: unknown, cap = MAX_FIELD_CHARS): v is string =>
+    typeof v === "string" && v.trim().length > 0 && v.length <= cap;
+  const optional = (v: unknown, cap = MAX_FIELD_CHARS): boolean =>
+    v === undefined || (typeof v === "string" && v.length <= cap);
+  if (!field(row.id, 200) || !field(row.at, 100) || !Number.isFinite(Date.parse(row.at))) return false;
+  if (row.kind === "ack") return field(row.for, 200) && optional(row.by, 200) && optional(row.note);
+  if (row.kind !== "answer" || !field(row.via, 200) || typeof row.choice !== "string" || row.choice.length > MAX_FIELD_CHARS
+    || !optional(row.notes) || !optional(row.composed, MAX_COMPOSED_CHARS)) return false;
+  if (!row.request || typeof row.request !== "object" || Array.isArray(row.request)) return false;
+  const req = row.request as Record<string, unknown>;
+  if (!field(req.source) || !field(req.ref, 200) || !field(req.question)
+    || !optional(req.file, 1_000) || !optional(req.recommendation) || !optional(req.unblocks)) return false;
+  if (req.options !== undefined && (!Array.isArray(req.options) || req.options.length > MAX_OPTIONS
+    || !req.options.every((option) => field(option)))) return false;
+  try {
+    normalizeAnswer(row);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export const isAnswer = (e: LogEntry): e is AnswerEntry => e.kind === "answer";
@@ -424,6 +452,7 @@ export async function waitForAnswers(
 
   const matching = async (): Promise<AnswerEntry[]> => {
     const log = await readAnswerLog(logPath);
+    if (log.readError || log.malformed) throw new AnswerRejected(formatAnswerLog(log));
     const acked = new Set(log.entries.filter(isAck).map((a) => a.for));
     return log.entries.filter(isAnswer).filter((a) =>
       matchesWaitTarget(a.request.ref, target)
@@ -494,15 +523,17 @@ export function formatAnswer(a: AnswerEntry, opts: { acked?: boolean } = {}): st
 
 /** The CLI's whole report: what is unread first, because that is the only part that needs doing. */
 export function formatAnswerLog(log: AnswerLog): string {
+  if (log.readError) return `Cannot read answer log: ${log.path}\n${log.readError}\nUnread answers are unknown.`;
   if (log.entries.length === 0) {
+    if (log.malformed) return `log: ${log.path}\n${log.malformed} unparseable line(s) skipped. No valid entries were recovered; unread answers are unknown.`;
     return `No answers recorded yet.\n  log: ${log.path}\nA run raises a question on a decision request or a tour's decision card; the answer lands here.`;
   }
   const pending = unacked(log);
   const ackedSet = new Set(log.entries.filter(isAck).map((a) => a.for));
   const done = answers(log).filter((a) => ackedSet.has(a.id));
   const out: string[] = [`log: ${log.path}`];
-  if (log.malformed) out.push(`${log.malformed} unparseable line(s) skipped.`);
-  out.push("", pending.length ? `UNREAD (${pending.length}) — act on these, then \`pantry answers ack <id>\`` : "Nothing unread.");
+  if (log.malformed) out.push(`${log.malformed} unparseable line(s) skipped. Unread answers are unknown; repair the log before waiting or acknowledging.`);
+  out.push("", pending.length ? `UNREAD (${pending.length}) — act on these, then \`pantry answers ack <id>\`` : log.malformed ? "No valid unread answers were recovered." : "Nothing unread.");
   for (const a of pending) out.push("", formatAnswer(a));
   if (done.length) {
     out.push("", `Acted on (${done.length}):`);

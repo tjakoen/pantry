@@ -946,16 +946,19 @@ function answersBody(log: AnswerLog, project: string): string {
   <p class="proof-lede">Every answer ${escapeHtml(project)} has given a run, in one append-only log. A session reads the unread ones when it wakes and acks what it acted on; nothing here is ever edited. Machine twin at <a href="/answers.json">/answers.json</a>. <a href="/decisions">← The questions</a></p>
   <p class="pantry-answer__path"><code>${escapeHtml(log.path)}</code>${log.malformed ? ` · ${log.malformed} unparseable line(s) skipped` : ""}</p>
 </header>`;
+  if (log.readError) return `${header}<p role="alert">Cannot read the answer log: ${escapeHtml(log.readError)}. Unread answers are unknown.</p>`;
   if (log.entries.length === 0) {
+    if (log.malformed) return `${header}<p role="alert">No valid entries were recovered. Unread answers are unknown; repair the log before continuing.</p>`;
     return `${header}
 <p class="pantry-member__role">Nothing answered yet. A run raises a question on a decision request or a tour's decision card, you answer it there, and it lands here.</p>`;
   }
+  const warning = log.malformed ? `<p role="alert">Unread answers are unknown because some entries could not be read. Repair the log before waiting or acknowledging.</p>` : "";
   const unreadSection = `<h2 class="pantry-section-title">Unread (${unread.length})</h2>
-${unread.length ? unread.map((a) => answerCard(a, true)).join("\n") : `<p class="pantry-member__role">Every answer has been acted on.</p>`}`;
+${unread.length ? unread.map((a) => answerCard(a, true)).join("\n") : `<p class="pantry-member__role">${log.malformed ? "No valid unread answers were recovered." : "Every answer has been acted on."}</p>`}`;
   const restSection = rest.length
     ? `<h2 class="pantry-section-title">Acted on (${rest.length})</h2>\n${rest.map((a) => answerCard(a, false)).join("\n")}`
     : "";
-  return `${header}\n${unreadSection}\n${restSection}`;
+  return `${header}\n${warning}\n${unreadSection}\n${restSection}`;
 }
 
 // /runs (piece 11c, the human half) — the RUN LEDGER surface. The INDEX lists closed runs newest
@@ -1762,10 +1765,11 @@ export function createPantryHandler(opts: PantryOptions) {
       return Response.json({
         path: log.path,
         malformed: log.malformed,
+        readError: log.readError,
         unread: unacked(log),
         answers: answers(log),
         generatedAt: new Date().toISOString(),
-      });
+      }, { status: log.readError || log.malformed ? 503 : 200 });
     }
     if (surfaces.decisions && path === "/answers")
       return html(page("Answers", answersBody(await readAnswerLog(config.answersLog), config.projectName)));

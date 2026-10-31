@@ -5,6 +5,7 @@
 
 .pantry-nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-4, 1rem);
   padding: var(--space-4, 1rem) var(--space-8, 2rem);
@@ -281,7 +282,7 @@
 .pantry-answer__q { margin: 0 0 var(--space-1, 0.25rem); font-weight: 600; }
 .pantry-answer__a { margin: var(--space-2, 0.5rem) 0 0; }
 .pantry-answer__meta, .pantry-answer__notes { margin: var(--space-1, 0.25rem) 0 0; font-size: var(--text-sm); color: var(--ink-muted); }
-.pantry-answer__path { font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-answer__path { font-size: var(--text-sm); color: var(--ink-muted); overflow-wrap: anywhere; }
 
 /* ── the run ledger (piece 11c, human half) ─────────────────────────────── */
 /* The badge reuses the decision-badge pill shape. Only `blocked` picks up a tint: a partial run is a

@@ -138,6 +138,50 @@ describe("append only, and never plan corpus", () => {
     const read = await readAnswerLog(join(await tmp(), "never-written.jsonl"));
     expect(read.entries).toEqual([]);
     expect(read.malformed).toBe(0);
+    expect(read.readError).toBeNull();
+  });
+
+  test("an unreadable log is reported and waiting fails immediately", async () => {
+    const path = await tmp(); // Reading a directory fails on every account, including root.
+    const log = await readAnswerLog(path);
+    expect(log.readError).toBeTruthy();
+    expect(formatAnswerLog(log)).toContain("Unread answers are unknown");
+    expect(formatAnswerLog(log)).not.toContain("No answers recorded yet");
+    await expect(waitForAnswers(path, "ref", { timeoutMs: 0 })).rejects.toThrow("Cannot read answer log");
+  });
+
+  test("persisted rows validate every consumed field and retain valid neighbors", async () => {
+    const path = join(await tmp(), "answers.jsonl");
+    const good = await appendAnswer(path, goodInput(), NOW);
+    const bad = [
+      { kind: "answer", id: "x" },
+      { ...good, at: "not a date" },
+      { ...good, via: 7 },
+      { ...good, choice: {} },
+      { ...good, notes: [] },
+      { ...good, request: { ...good.request, source: "unknown" } },
+      { ...good, request: { ...good.request, question: null } },
+      { ...good, request: { ...good.request, options: [7] } },
+      { ...good, request: { ...good.request, unblocks: {} } },
+      { kind: "ack", id: "ack", at: NOW.toISOString() },
+      { kind: "ack", id: "ack", at: NOW.toISOString(), for: good.id, by: [] },
+    ];
+    await writeFile(path, [JSON.stringify(good), ...bad.map((row) => JSON.stringify(row))].join("\n"));
+    const log = await readAnswerLog(path);
+    expect(log.entries).toEqual([good]);
+    expect(log.malformed).toBe(bad.length);
+    expect(answersFor(log, good.request.ref)).toEqual([good]);
+    expect(formatAnswerLog(log)).toContain(`${bad.length} unparseable`);
+    await expect(waitForAnswers(path, good.request.ref, { timeoutMs: 0 })).rejects.toThrow("unparseable");
+  });
+
+  test("a log with only malformed rows never claims that nothing was answered", async () => {
+    const path = join(await tmp(), "answers.jsonl");
+    await writeFile(path, '{"kind":"answer","id":"broken"}\n');
+    const text = formatAnswerLog(await readAnswerLog(path));
+    expect(text).toContain("1 unparseable");
+    expect(text).toContain("unread answers are unknown");
+    expect(text).not.toContain("No answers recorded yet");
   });
 
   test("ids are unique across writes in the same second", () => {

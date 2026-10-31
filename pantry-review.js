@@ -181,7 +181,7 @@
   function syncCard() {
     const card = readCard();
     if (!card) return;
-    liveCard = { tour: card.tour, composed: card.composed, asks: { ...(card.asks || {}) } };
+    liveCard = { tour: card.tour, composed: card.composed, asks: { ...card.asks } };
     unrecordedAtCard = Object.keys(liveCard.asks)
       .filter((id) => liveCard.asks[id])
       .filter((id) => !recorded.has(`${liveCard.tour}#${id}`)).length;

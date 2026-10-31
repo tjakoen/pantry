@@ -11,6 +11,15 @@
 > features. See §The reshape.**
 > Canonical plan: this file. Cross-layer sequencing is Track F in [ROADMAP.md](https://github.com/tjakoen/bread/blob/main/ROADMAP.md).
 
+## Reliability follow-up (2026-11-01)
+
+The [reliability slice](plans/pantry-reliability.md) repairs the package runtime closure and makes
+unreadable or malformed answer logs visible across the CLI, doctor and browser. The packed package
+is exercised outside the source checkout. Context and session readers share the Claude account
+resolver; the context measurement explicitly excludes Codex. The answer page and navigation wrap
+at phone widths. The implementation is local and unpublished; product adoption remains a separate
+evaluation against the course-platform workflow.
+
 ## What PANTRY is for (the purpose)
 
 **PANTRY is a side tool for developers — for their docs and for working with AI.** You `bunx` it into
