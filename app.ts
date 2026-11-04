@@ -18,7 +18,8 @@ import { renderGrainDocument } from "@tjakoen/mill/adapters/grain/grain-adapter.
 import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
-import { annotateBoard, boardAnnotations } from "./orchestrator.ts";
+import { annotateBoard, boardAnnotations, claimsFile } from "./orchestrator.ts";
+import { watchFile } from "node:fs";
 // CRUMB, carried rather than expected (plans/pantry-review-layer.md P4). PANTRY mounts the tour DATA
 // routes and serves the client + stylesheet as its own assets, so a review can be walked on a project
 // that has never heard of CRUMB. This is the SAME parser the GRAIN host uses — the plan's "one parser,
@@ -1590,6 +1591,21 @@ export function createPantryHandler(opts: PantryOptions) {
     try { return annotateBoard(html, await boardAnnotations(config.cwd ?? dirname(config.plansDir), claimHome, claimProject)); }
     catch { return html; }
   };
+  // The live stream only follows plansDir, and a claim is written to the hub's home, so the claims
+  // file gets its own watch. Polling, because file events across the Docker mount are unreliable.
+  // PROOF does not export its board renderer, so it is resolved beside the loader it ships with.
+  if (surfaces.plans && claimProject && claimHome) {
+    watchFile(claimsFile(claimHome, claimProject), { interval: 5000 }, async () => {
+      try {
+        const { loadPlans } = await import("@tjakoen/proof/loader.ts");
+        const { renderBoardBody } = await import(new URL("./board.ts", import.meta.resolve("@tjakoen/proof/loader.ts")).href);
+        const { OP_EVENT } = await import("@tjakoen/grain/ai/contract.ts");
+        const { plans, duplicates } = await loadPlans(config.plansDir);
+        const html = await annotate(renderBoardBody(plans, duplicates));
+        stream.broadcast(OP_EVENT, { target: "proof-board", op: "replace", html: rebasePantryHtml(fixProofCardLinks(html), base), provenance: "system", commit: "committed" });
+      } catch { /* the next poll tries again */ }
+    });
+  }
 
   // The dev preview proxy (plans/pantry-review-layer.md P0). OFF unless the host configured a target,
   // and when it is on PANTRY's own routes move wholesale under the reserved prefix so the reviewed

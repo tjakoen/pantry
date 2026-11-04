@@ -11,6 +11,14 @@
 > features. See §The reshape.**
 > Canonical plan: this file. Cross-layer sequencing is Track F in [ROADMAP.md](https://github.com/tjakoen/bread/blob/main/ROADMAP.md).
 
+## Hub, MCP and orchestration (2026-11-04)
+
+PANTRY now runs as one always-on hub per machine (`hub.ts`, Docker), serving every registered
+project on its own port, answering MCP at `/mcp`, and handing out plans to agents that claim them
+(`orchestrator.ts`). The orchestrator's design and its goldfish review are in
+[`plans/pantry-orchestrator.md`](plans/pantry-orchestrator.md) and
+`artifacts/reviews/pantry-orchestrator.md`; `INSTALL.md` documents the hub and orchestration.
+
 ## Reliability follow-up (2026-11-01)
 
 The [reliability slice](plans/pantry-reliability.md) repairs the package runtime closure and makes

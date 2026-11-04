@@ -135,6 +135,32 @@ claude mcp add --transport http -s user pantry http://127.0.0.1:4400/mcp
 The hub serves pages. The checks (`doctor`, `drift`, `capture`) stay commands you run in the
 checkout, because they must see the exact working tree an agent is editing.
 
+## Orchestration: agents take plans from PANTRY
+
+The hub hands out work; it never runs an agent. An agent session in a registered project calls
+`pantry_next` with its working directory and gets the plans it may take now: `status: todo`,
+`owner: ai` written explicitly, every `depends` at `done`, no open decision whose `blocks` list names
+the plan, and no live claim. Every other `todo` plan comes back with its reasons, so an agent can
+tell the owner what is waiting on them.
+
+`pantry_claim` takes a ready plan for one session; a second claim names the holder. The holder calls
+`pantry_heartbeat` about every ten minutes, and a claim expires after `PANTRY_CLAIM_TTL_MINUTES`
+(default 30) without one. `pantry_release` ends it with `done` or `released`. A `done` claim keeps
+the plan off the list until its file says `status: done`, for at most 24 hours. `pantry_claims`
+lists active claims and those that ended in the last day.
+
+Claims are JSON lines in `~/.pantry/claims/<project>.jsonl`, written only by the hub process, one
+at a time per project. PANTRY never edits a plan file: the agent sets `doing` and `done` itself. A
+decision holds plans back with an optional list:
+
+```yaml
+blocks:
+  - some-plan-id
+```
+
+The board labels claimed and ready plans and refreshes within about five seconds of a claim.
+`/health?path=` reports `ready` and `claimed` counts.
+
 ## The two things PANTRY writes
 
 Every other surface is a pure read. There are exactly two exceptions, and both are small enough to

@@ -1,6 +1,6 @@
 ---
 id: pantry-orchestrator
-status: todo
+status: done
 track: feature
 depends: []
 touches: [orchestrator.ts, orchestrator.test.ts, decisions.ts, decisions.test.ts, mcp.ts, mcp.test.ts, hub.ts, hub.test.ts, app.ts, app.test.ts, INSTALL.md, PLAN.md]
