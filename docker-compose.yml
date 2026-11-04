@@ -14,8 +14,14 @@ services:
     restart: unless-stopped
     environment:
       PANTRY_HOME: /pantry-home
+      # The session log the harness hook writes lives under the host's Claude config dir, so the
+      # container reads that dir at the host's own path. Read-only: PANTRY only ever reads it.
+      CLAUDE_CONFIG_DIR: ${HOME}/.claude
     volumes:
       - ${PANTRY_CODE_ROOT:?set PANTRY_CODE_ROOT to the folder that holds your projects}:${PANTRY_CODE_ROOT}:ro
       - ${HOME}/.pantry:/pantry-home
+      # Only the per-project folders, where sessions.jsonl sits beside agent memory. Not the whole
+      # config dir: settings, credentials and hooks have no business inside this container.
+      - ${HOME}/.claude/projects:${HOME}/.claude/projects:ro
     ports:
       - "127.0.0.1:4400-4449:4400-4449"
