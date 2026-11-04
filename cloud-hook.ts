@@ -51,7 +51,7 @@ type HookConfig = { hooks?: Record<string, { matcher?: string; hooks: { type: st
 
 /** Add the SessionStart entry to a Claude or Codex hook config unless one already runs the script. */
 export function mergeHook(config: HookConfig): { config: HookConfig; changed: boolean } {
-  const hooks = { ...(config.hooks ?? {}) };
+  const hooks = { ...config.hooks };
   const start = [...(hooks.SessionStart ?? [])];
   if (start.some((g) => g.hooks?.some((h) => h.command?.includes(CLOUD_HOOK_PATH)))) return { config, changed: false };
   start.push({ hooks: [{ type: "command", command: HOOK_COMMAND }] });
