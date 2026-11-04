@@ -22,7 +22,7 @@ import {
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 
-const SURFACES = ["knowledge", "decisions", "answers", "runs", "timeline", "artifacts", "map"] as const;
+const SURFACES = ["brief", "knowledge", "decisions", "answers", "runs", "timeline", "artifacts", "map"] as const;
 
 const pathArg = {
   path: { type: "string", description: "An absolute directory inside the project, normally your working directory." },
@@ -36,12 +36,12 @@ export const TOOLS = [
   },
   {
     name: "pantry_orient",
-    description: "Read the project's llms.txt: what an agent should read first to work this project (plans, docs, standards, recent runs). Call this at the start of work in a PANTRY project.",
+    description: "Read the project's alignment brief (what is in flight, what was written outside its plan, what waits on the owner, what drifted, what is next), then its llms.txt: what an agent should read first to work this project (plans, docs, standards, recent runs). Call this at the start of work in a PANTRY project.",
     inputSchema: { type: "object", properties: pathArg, required: ["path"] },
   },
   {
     name: "pantry_read",
-    description: `Read one of the project's machine-readable PANTRY surfaces as JSON: ${SURFACES.join(", ")}. knowledge is the full retrieval payload, decisions the open questions for the owner, answers the owner's recorded answers, runs the run ledger, timeline the plan timeline, artifacts the review artifacts, map the codebase mindmap.`,
+    description: `Read one of the project's machine-readable PANTRY surfaces as JSON: ${SURFACES.join(", ")}. brief is the alignment brief, knowledge the full retrieval payload, decisions the open questions for the owner, answers the owner's recorded answers, runs the run ledger, timeline the plan timeline, artifacts the review artifacts, map the codebase mindmap.`,
     inputSchema: {
       type: "object",
       properties: { ...pathArg, surface: { type: "string", enum: [...SURFACES] } },
@@ -115,8 +115,11 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
   if (!p) return text(`No registered PANTRY project contains ${dir}. Run \`pantry register\` in the project, or check pantry_projects.`, true);
 
   if (name === "pantry_orient") {
-    const body = await fetchSurface(p, "/llms.txt");
-    return body ? text(body) : text(`${p.name}'s PANTRY on port ${p.port} did not answer.`, true);
+    // The brief first: what is in flight, what strayed from its plan, what waits on the owner. The
+    // agent reads the same account the owner sees on the home page, then the reading list.
+    const [brief, body] = await Promise.all([fetchSurface(p, "/brief.txt"), fetchSurface(p, "/llms.txt")]);
+    if (!brief && !body) return text(`${p.name}'s PANTRY on port ${p.port} did not answer.`, true);
+    return text([brief, body].filter(Boolean).join("\n\n---\n\n"));
   }
   if (name === "pantry_read") {
     const surface = String(args.surface ?? "");

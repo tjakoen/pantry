@@ -1,6 +1,6 @@
 ---
 id: pantry-brief
-status: todo
+status: done
 track: feature
 depends: [pantry-orchestrator]
 touches: [brief.ts, brief.test.ts, brief-routes.ts, config.ts, config.test.ts, mcp.ts, mcp.test.ts, app.ts, app.test.ts, pantry.css, PLAN.md, INSTALL.md]
@@ -90,13 +90,13 @@ All paths are relative to the pantry repository root.
 
 ## Steps
 
-- [ ] `brief.ts` with `buildBrief`, `BriefPayload` and `briefText`, tested in `brief.test.ts`.
-- [ ] `brief-routes.ts` serving `/brief`, `/brief.json` and `/brief.txt`, each section with an
+- [x] `brief.ts` with `buildBrief`, `BriefPayload` and `briefText`, tested in `brief.test.ts`.
+- [x] `brief-routes.ts` serving `/brief`, `/brief.json` and `/brief.txt`, each section with an
       empty-state line.
-- [ ] The `brief` surface key in config.ts; `/` renders the brief when it is on.
-- [ ] `pantry_orient` returns the brief text before `llms.txt`; `brief` added to `SURFACES`.
-- [ ] Screenshot of `/brief` on this repository and on tjakoen.github.io, shown to the owner.
-- [ ] PLAN.md and INSTALL.md describe the brief and the new front door.
+- [x] The `brief` surface key in config.ts; `/` renders the brief when it is on.
+- [x] `pantry_orient` returns the brief text before `llms.txt`; `brief` added to `SURFACES`.
+- [x] Screenshot of `/brief` on this repository and on tjakoen.github.io, shown to the owner.
+- [x] PLAN.md and INSTALL.md describe the brief and the new front door.
 
 ## Done when
 

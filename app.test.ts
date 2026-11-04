@@ -28,7 +28,7 @@ const configWith = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): R
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, brief: false, control: true, ...surfaces },
 });
 
 const get = async (handler: (r: Request) => Promise<Response>, path: string) =>
@@ -853,5 +853,36 @@ describe("the answer channel — the one route in PANTRY that writes", () => {
     const { handler, log } = await withLog();
     await get(handler, "/answers");
     expect(await Bun.file(log).exists()).toBe(false);
+  });
+});
+
+describe("the alignment brief", () => {
+  const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ brief: true }) });
+  const off = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ brief: false }) });
+
+  test("/ is the brief when the surface is on, and the older home when it is off", async () => {
+    const a = await (await get(on, "/")).text();
+    expect(a).toContain("Where the AI work stands");
+    expect(a).toContain("Waiting on you");
+    const b = await (await get(off, "/")).text();
+    expect(b).not.toContain("Where the AI work stands");
+    expect(b).toContain("test-project");
+  }, 30_000);
+
+  test("/plans serves the board either way", async () => {
+    expect((await get(on, "/plans")).status).toBe(200);
+    expect((await get(off, "/plans")).status).toBe(200);
+  });
+
+  test("/brief.json has the sections and /brief.txt is the agent's copy", async () => {
+    const j = await (await get(on, "/brief.json")).json() as Record<string, unknown>;
+    for (const k of ["inFlight", "waiting", "drift", "next", "notes"]) expect(j).toHaveProperty(k);
+    const t = await get(on, "/brief.txt");
+    expect(t.headers.get("content-type")).toContain("text/markdown");
+    expect(await t.text()).toContain("## In flight");
+  }, 30_000);
+
+  test("an off brief is a 404", async () => {
+    expect((await get(off, "/brief.json")).status).toBe(404);
   });
 });

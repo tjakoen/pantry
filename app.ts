@@ -18,6 +18,7 @@ import { renderGrainDocument } from "@tjakoen/mill/adapters/grain/grain-adapter.
 import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
+import { briefRoute } from "./brief-routes.ts";
 import { annotateBoard, boardAnnotations, claimsFile } from "./orchestrator.ts";
 import { watchFile } from "node:fs";
 // CRUMB, carried rather than expected (plans/pantry-review-layer.md P4). PANTRY mounts the tour DATA
@@ -1496,7 +1497,7 @@ const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: false },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, brief: true, control: false },
 });
 
 export function createPantryHandler(opts: PantryOptions) {
@@ -1845,6 +1846,9 @@ export function createPantryHandler(opts: PantryOptions) {
       return html(page("Timeline", timelineBody(await buildTimelinePayload(config, new Date().toISOString()))));
 
     // --- landings PANTRY owns ---
+    // The alignment brief (plans/pantry-brief.md) is the home page while its surface is on.
+    const brief = await briefRoute(path, config, page);
+    if (brief) return brief;
     if (path === "/") {
       // The heartbeat row: doctor's staleness checks, computed at request time with `now` injected for
       // determinism. Doctor runs NO model — every check is a stat/age compare. ANY throw (a bare repo,

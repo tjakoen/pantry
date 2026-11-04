@@ -45,7 +45,7 @@ const cfg = (over: Partial<ResolvedPantryConfig> = {}): ResolvedPantryConfig => 
   toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, brief: false, control: true },
   ...over,
 });
 

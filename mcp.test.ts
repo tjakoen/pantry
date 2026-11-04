@@ -73,3 +73,34 @@ describe("orchestration tools", () => {
     expect((r?.result as { isError?: boolean }).isError).toBe(true);
   });
 });
+
+describe("pantry_orient", () => {
+  const call = async (port: number) => {
+    const r = await handleRpc({ jsonrpc: "2.0", id: 9, method: "tools/call", params: { name: "pantry_orient", arguments: { path: "/w/site" } } },
+      { hubPort: 4400, projects: [{ name: "site", path: "/w/site", port }] }, deps);
+    return r?.result as { content: { text: string }[]; isError?: boolean };
+  };
+
+  test("returns the brief before llms.txt", async () => {
+    const server = Bun.serve({ port: 0, fetch: (req) => {
+      const p = new URL(req.url).pathname;
+      if (p === "/brief.txt") return new Response("# site: where the AI work stands\n");
+      if (p === "/llms.txt") return new Response("# llms\n");
+      return new Response("no", { status: 404 });
+    } });
+    try {
+      const text = (await call(server.port!)).content[0].text;
+      expect(text.startsWith("# site: where the AI work stands")).toBe(true);
+      expect(text).toContain("# llms");
+    } finally { server.stop(true); }
+  });
+
+  test("falls back to llms.txt alone when the brief does not answer", async () => {
+    const server = Bun.serve({ port: 0, fetch: (req) => new URL(req.url).pathname === "/llms.txt" ? new Response("# llms\n") : new Response("no", { status: 404 }) });
+    try {
+      const r = await call(server.port!);
+      expect(r.isError).toBeFalsy();
+      expect(r.content[0].text).toBe("# llms\n");
+    } finally { server.stop(true); }
+  });
+});

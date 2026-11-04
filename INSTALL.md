@@ -161,6 +161,19 @@ blocks:
 The board labels claimed and ready plans and refreshes within about five seconds of a claim.
 `/health?path=` reports `ready` and `claimed` counts.
 
+## The home page: the alignment brief
+
+The first page PANTRY serves is the alignment brief. It reads only what is already on disk (plans,
+decisions, the hub's claims, the session log and the doctor's quick checks) and shows, in order,
+what is in flight, which files were written outside every in-flight plan, what waits on you, the
+next ready plan, and drift. Each row has a link or a copy button, and most copy buttons hold a
+prompt to paste into the agent's session. `/brief.json` is the same data, and `/brief.txt` is the
+agent's copy, which `pantry_orient` returns first. To keep the older home, set
+`"surfaces": { "brief": false }` in `pantry.config.json`.
+
+The in-flight section can only show what agents wrote when a session log exists for the project.
+Without one, the page says so rather than reporting zero.
+
 ## The two things PANTRY writes
 
 Every other surface is a pure read. There are exactly two exceptions, and both are small enough to

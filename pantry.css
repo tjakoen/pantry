@@ -604,3 +604,36 @@
 /* Aged past the point where the rendered state could still be true. The row is not relabelled,
    because this page cannot see the log; it is only marked as no longer worth believing. */
 .pantry-session[data-stale] { opacity: 0.65; border-style: dashed; }
+
+/* --- the alignment brief (brief-routes.ts) ---
+   Status is carried by weight and rule thickness, never by hue, as across GRAIN: an alert row has a
+   heavy left rule and a bold tag, a warning a medium one, a calm row a hairline. */
+.brief-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
+.brief-stat { border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-radius: var(--radius, 0.5rem); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
+.brief-stat-n { font-size: var(--text-xl); font-weight: 400; color: var(--ink); }
+.brief-stat-l { font-size: var(--text-sm); color: var(--ink-muted); }
+.brief-stat.is-warn .brief-stat-n { font-weight: 600; }
+.brief-stat.is-alert { border-width: 2px; border-color: var(--ink); }
+.brief-stat.is-alert .brief-stat-n { font-weight: 800; }
+.brief-notes { font-size: var(--text-sm); color: var(--ink-muted); margin: 0 0 var(--space-4); padding-left: var(--space-4); }
+.brief-section { margin: var(--space-6) 0 var(--space-3); }
+.brief-section h2 { font-size: var(--text-lg); display: flex; align-items: baseline; gap: var(--space-2); }
+.brief-count { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-muted); }
+.brief-empty { color: var(--ink-muted); font-size: var(--text-sm); }
+.brief-row { border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-left-width: 3px; border-radius: var(--radius, 0.5rem); padding: var(--space-3) var(--space-4); margin: var(--space-2) 0; }
+.brief-row.is-alert { border-left-width: 6px; border-left-color: var(--ink); }
+.brief-row.is-next { border-left-color: var(--ink-muted); }
+.brief-row > header { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.brief-row h3 { font-size: var(--text-base); margin: 0; }
+.brief-row p { margin: var(--space-1) 0; }
+.brief-meta { font-size: var(--text-sm); color: var(--ink-muted); }
+.brief-meta code, .brief-scope code { font-family: var(--font-mono); font-size: var(--text-xs); }
+.brief-tag { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted); border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-radius: var(--radius, 0.5rem); padding: 0.1em 0.5em; white-space: nowrap; }
+.brief-tag.is-warn { color: var(--ink); font-weight: 600; }
+.brief-tag.is-alert { color: var(--ink); font-weight: 800; border-color: var(--ink); }
+.brief-scope { margin: var(--space-2) 0; font-size: var(--text-sm); }
+.brief-scope ul { margin: var(--space-1) 0; padding-left: var(--space-4); }
+.brief-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+.brief-act { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--paper); border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-radius: var(--radius, 0.5rem); padding: 0.25em 0.75em; cursor: pointer; text-decoration: none; }
+.brief-act:hover, .brief-act:focus-visible { border-color: var(--ink); }
+.brief-skipped { font-size: var(--text-sm); color: var(--ink-muted); margin: var(--space-2) 0; }

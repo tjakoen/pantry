@@ -24,6 +24,8 @@
     "answers.ts",
     "app.ts",
     "artifacts.ts",
+    "brief.ts",
+    "brief-routes.ts",
     "capture.ts",
     "cli.ts",
     "cloud-hook.ts",

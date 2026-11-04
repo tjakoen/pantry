@@ -318,7 +318,7 @@ describe("createPantryHandler — the reserved prefix", () => {
     runsDir: join(import.meta.dir, "artifacts", "runs"), previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
     hygiene: DEFAULT_HYGIENE,
     contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-    surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true, control: true },
+    surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true, brief: false, control: true },
   });
 
   test("with NO target the root is PANTRY's own home, exactly as it always was", async () => {

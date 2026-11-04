@@ -168,7 +168,7 @@ const configWith = (previewTarget: string | null, toursDir: string | null): Reso
   previewTarget, previewCommand: null, previewCommandCwd: import.meta.dir, toursDir,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true, control: true },
+  surfaces: { plans: true, docs: false, reference: true, catalog: false, standards: false, decisions: true, artifacts: true, timeline: false, runs: true, brief: false, control: true },
 });
 
 // The stand-in for a non-GRAIN project: a plain page, no CRUMB, and one route that DOES load a tour

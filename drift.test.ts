@@ -18,7 +18,7 @@ const config = (surfaces: Partial<ResolvedPantryConfig["surfaces"]> = {}): Resol
   cwd: EXAMPLE, projectName: "test-project", plansDir: EXAMPLE, docsDirs: [], graphPath: null, graphDir: join(EXAMPLE, "graphify-out"), decisionsDir: join(EXAMPLE, "decisions"), answersLog: join(EXAMPLE, "decisions", "answers.jsonl"), sessionsLog: "/tmp/pantry-test-sessions.jsonl", artifactsDir: join(EXAMPLE, "artifacts"), runsDir: join(EXAMPLE, "artifacts", "runs"), previewTarget: null, previewCommand: null, previewCommandCwd: EXAMPLE, toursDir: null,
   hygiene: DEFAULT_HYGIENE,
   contextBudgetChars: DEFAULT_CONTEXT_BUDGET,
-  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: true, ...surfaces },
+  surfaces: { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, brief: false, control: true, ...surfaces },
 });
 
 // A collection whose pages are (slug → markdown body), backed by an in-memory ContentSource.

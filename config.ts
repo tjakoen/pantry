@@ -29,6 +29,10 @@ export interface PantrySurfaces {
    *  dates, depends arrows, commit density, run-close activity, and dated audit markers. Reads git +
    *  plans/ + run reports + audit-report mtimes; no new tracking, no model. Default on. */
   timeline: boolean;
+  /** the alignment brief (/brief, /brief.json, /brief.txt), and with it the home page: what is in
+   *  flight, what was written outside its plan, what waits on the owner, what drifted, what is next.
+   *  Off restores the older home. Model-free, read-only. Default on. */
+  brief: boolean;
   /** the run ledger (/runs, /runs/<id>, /runs.json) — run reports parsed against LOOP §9, and which items each is
    *  missing. Human index + detail alongside the machine twin, all three off together when this is
    *  false. Model-free, read-only. Default on. */
@@ -200,7 +204,7 @@ export interface ResolvedPantryConfig {
 
 // Named for what it is rather than for what it used to be: every surface that renders the repo is
 // on, and the one that renders the operator's machine is off until the host says otherwise.
-const SURFACE_DEFAULTS: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, control: false };
+const SURFACE_DEFAULTS: PantrySurfaces = { plans: true, docs: true, reference: true, catalog: true, standards: true, decisions: true, artifacts: true, timeline: true, runs: true, brief: true, control: false };
 
 const abs = (cwd: string, p: string) => (isAbsolute(p) ? p : join(cwd, p));
 

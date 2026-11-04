@@ -11,6 +11,16 @@
 > features. See §The reshape.**
 > Canonical plan: this file. Cross-layer sequencing is Track F in [ROADMAP.md](https://github.com/tjakoen/bread/blob/main/ROADMAP.md).
 
+## The alignment brief is the home page (2026-11-04)
+
+PANTRY's front door is now the [alignment brief](plans/pantry-brief.md): an operations page for the
+project's AI work. It lists what is in flight with each plan's intent beside what its sessions
+wrote, the files written outside every in-flight plan, what waits on the owner, what the doctor's
+quick checks report as drift, and the next ready plan. Every row carries an action, either a link
+to the page that settles it or a prompt to copy for the agent. The same payload is served as
+`/brief.json` and as `/brief.txt`, which `pantry_orient` returns before `llms.txt`, so the owner and
+the agent read one account. The `brief` surface turns it off and restores the older home.
+
 ## Hub, MCP and orchestration (2026-11-04)
 
 PANTRY now runs as one always-on hub per machine (`hub.ts`, Docker), serving every registered
