@@ -9,6 +9,7 @@
 // makes the same instructions tool-agnostic. Both are write-if-absent and NEVER overwritten (not even
 // with --force — a host's CLAUDE.md is sacred), so `pantry init --kit` on an existing repo only fills
 // the gaps. The acceptance test is a green `pantry doctor` right after (doctor.ts checks exactly these).
+import { ensureCloudHook } from "./cloud-hook.ts";
 import { writeFile, access, symlink, lstat } from "node:fs/promises";
 import { join, basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -174,6 +175,10 @@ async function scaffoldKit(targetDir: string, created: string[], skipped: string
   } else {
     skipped.push(`${AGENTS_FILE} (no CLAUDE.md to link to)`);
   }
+
+  // A cloud session runs only what the repository commits, so the kit commits the hook that points it
+  // at the published standards (cloud-hook.ts).
+  await ensureCloudHook(targetDir, created, skipped);
 
   // Mount the standards as skills. Degrades to a named skip when the portfolio package is absent,
   // the same posture readStarter takes above — an optional package is never a scaffold failure.
