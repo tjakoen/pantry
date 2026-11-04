@@ -129,6 +129,10 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
     port: reg.hubPort,
     async fetch(req) {
       const url = new URL(req.url);
+      if (url.pathname === "/mcp") {
+        const { handleMcpRequest } = await import("./mcp.ts");
+        return handleMcpRequest(req, reg, { status, cli });
+      }
       if (url.pathname === "/health") {
         const dir = url.searchParams.get("path");
         if (dir) {

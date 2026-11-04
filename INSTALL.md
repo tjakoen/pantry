@@ -119,6 +119,19 @@ the image, treats the container network as loopback because of that binding; nev
 ports on another interface. The session-start checklist in the owner's agent config reads
 `/health?path=` to decide whether a project's PANTRY is serving.
 
+The hub also answers MCP at `http://127.0.0.1:4400/mcp` (Streamable HTTP, stateless), so Claude
+Code and Codex share one PANTRY. Its tools are `pantry_projects`, `pantry_orient` (the project's
+`llms.txt`), `pantry_read` (one JSON surface: knowledge, decisions, answers, runs, timeline,
+artifacts or map) and `pantry_doctor`. Each takes the agent's working directory and resolves the
+project from the registry. Register it once per machine:
+
+```sh
+claude mcp add --transport http -s user pantry http://127.0.0.1:4400/mcp
+# Codex, in ~/.codex/config.toml:
+# [mcp_servers.pantry]
+# url = "http://127.0.0.1:4400/mcp"
+```
+
 The hub serves pages. The checks (`doctor`, `drift`, `capture`) stay commands you run in the
 checkout, because they must see the exact working tree an agent is editing.
 
