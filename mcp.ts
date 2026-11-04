@@ -18,6 +18,7 @@ import { PANTRY_PREFIX } from "./preview.ts";
 import { homedir } from "node:os";
 import {
   claimPlan, claimsFile, foldClaims, listClaims, loadProjectWork, readClaims, readyPlans, ttlMs, updateClaim,
+  answerOwner, type ClaimView,
 } from "./orchestrator.ts";
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
@@ -55,7 +56,7 @@ export const TOOLS = [
   },
   {
     name: "pantry_claim",
-    description: "Claim a ready plan before starting it, so no other session takes it. Then set the plan's status to doing in its file. Heartbeat every 10 minutes while working.",
+    description: "Claim a ready plan before starting it, so no other session takes it. A session handed an owner answer claims it the same way with planId answer:<id>. Then set the plan's status to doing in its file. Heartbeat every 10 minutes while working.",
     inputSchema: {
       type: "object",
       properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string", description: "Your session id." }, tool: { type: "string", enum: ["claude", "codex"] } },
@@ -102,7 +103,17 @@ async function fetchSurface(p: HubProject, route: string): Promise<string | null
 }
 
 /** The owner's unacked answers for a project, the ones touching `planId` first. */
-export async function unreadAnswers(projectPath: string, decisions: { id: string; blocks: string[] }[], planId: string): Promise<{ answers?: unknown[]; answersNote?: string }> {
+export async function unreadAnswerIds(projectPath: string): Promise<string[]> {
+  try {
+    const { loadPantryConfig } = await import("./config.ts");
+    const { readAnswerLog, unacked } = await import("./answers.ts");
+    return unacked(await readAnswerLog((await loadPantryConfig(projectPath)).answersLog)).map((a) => a.id);
+  } catch {
+    return [];
+  }
+}
+
+export async function unreadAnswers(projectPath: string, decisions: { id: string; blocks: string[] }[], planId: string, claims: Map<string, ClaimView> = new Map()): Promise<{ answers?: unknown[]; answersNote?: string }> {
   try {
     const { loadPantryConfig } = await import("./config.ts");
     const { readAnswerLog, unacked, answerHandoff, ANSWER_ROUTING } = await import("./answers.ts");
@@ -115,6 +126,7 @@ export async function unreadAnswers(projectPath: string, decisions: { id: string
       answer: a.choice,
       ...(a.notes ? { notes: a.notes } : {}),
       forYourPlan: decisions.some((d) => d.id === a.request.ref && d.blocks.includes(planId)),
+      owner: answerOwner(a.id, a.request.ref, decisions.map((d) => ({ ...d, status: "open" })), claims),
       handoff: answerHandoff(a),
     })).sort((x, y) => Number(y.forYourPlan) - Number(x.forYourPlan));
     return { answers: rows, answersNote: `The owner answered these. ${ANSWER_ROUTING}` };
@@ -153,7 +165,8 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     const home = deps.home ?? process.env.PANTRY_HOME ?? join(homedir(), ".pantry");
     const file = claimsFile(home, p.name);
     const { plans, decisions } = await loadProjectWork(p.path);
-    const ctx = { file, project: p.name, plans, decisions };
+    const pendingIds = await unreadAnswerIds(p.path);
+    const ctx = { file, project: p.name, plans, decisions, answers: pendingIds };
     const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : "");
     const reply = (r: { ok: true; value: unknown } | { ok: false; error: string }) =>
       r.ok ? text(JSON.stringify(r.value, null, 2)) : text(r.error, true);
@@ -169,7 +182,8 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     // agent asks every ten minutes anyway, and the reply is where it finds out.
     const withAnswers = async (r: { ok: true; value: unknown } | { ok: false; error: string }, planId: string) => {
       if (!r.ok) return reply(r);
-      const answers = await unreadAnswers(p.path, decisions, planId);
+      const doneInFile = new Set(plans.filter((x) => x.status === "done").map((x) => x.id));
+      const answers = await unreadAnswers(p.path, decisions, planId, foldClaims(await readClaims(file), Date.now(), ttlMs(), doneInFile));
       return text(JSON.stringify({ ...(r.value as object), ...answers }, null, 2));
     };
     if (name === "pantry_claim") return withAnswers(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool")), str("planId"));

@@ -158,8 +158,29 @@ export interface ClaimContext {
   project: string;
   plans: PlanLike[];
   decisions: DecisionLike[];
+  /** ids of the owner's answers no session has acked; `answer:<id>` is claimable only for these */
+  answers?: string[];
   now?: () => number;
   ttl?: number;
+}
+
+/** The claim id for an answer. Answers are claimed like plans, so two sessions handed the same answer
+ *  cannot both act on it: the second claim is refused. */
+export const ANSWER_CLAIM_PREFIX = "answer:";
+
+/** Who is already on an unread answer: a session holding the answer itself, or one holding a plan
+ *  the answered decision blocks (that session gets the answer on its next heartbeat). */
+export interface AnswerOwner { via: "answer" | "plan"; planId: string; sessionId: string; tool: ClaimTool }
+
+export function answerOwner(answerId: string, decisionRef: string, decisions: DecisionLike[], claims: Map<string, ClaimView>): AnswerOwner | null {
+  const own = claims.get(ANSWER_CLAIM_PREFIX + answerId);
+  if (own?.state === "active") return { via: "answer", planId: own.planId, sessionId: own.sessionId, tool: own.tool };
+  const held = decisions.find((d) => d.id === decisionRef)?.blocks ?? [];
+  for (const planId of held) {
+    const c = claims.get(planId);
+    if (c?.state === "active") return { via: "plan", planId, sessionId: c.sessionId, tool: c.tool };
+  }
+  return null;
 }
 
 export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, tool: string): Promise<Result<ClaimView>> {
@@ -170,6 +191,15 @@ export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, 
     const ttl = ctx.ttl ?? ttlMs();
     const doneInFile = new Set(ctx.plans.filter((p) => p.status === "done").map((p) => p.id));
     const views = foldClaims(await readClaims(ctx.file), now, ttl, doneInFile);
+    if (planId.startsWith(ANSWER_CLAIM_PREFIX)) {
+      const id = planId.slice(ANSWER_CLAIM_PREFIX.length);
+      if (!(ctx.answers ?? []).includes(id)) return { ok: false, error: `${id} is not an unread answer in ${ctx.project}` };
+      const held = views.get(planId);
+      if (blocks(held, doneInFile)) return { ok: false, error: `${planId} is already held by ${held!.tool} ${held!.sessionId}; leave it to that session` };
+      const at = new Date(now).toISOString();
+      await append(ctx.file, { project: ctx.project, planId, sessionId, tool: tool as ClaimTool, at, event: "claim" });
+      return { ok: true, value: { planId, sessionId, tool: tool as ClaimTool, claimedAt: at, lastAt: at, state: "active" } };
+    }
     const { ready, skipped } = readyPlans(ctx.plans, ctx.decisions, views);
     if (!ready.some((r) => r.id === planId)) {
       const skip = skipped.find((s) => s.id === planId);

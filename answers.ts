@@ -572,13 +572,14 @@ export async function waitForAnswer(
  * agent's own harness opens the session.
  */
 export const ANSWER_ROUTING =
-  "If an answer concerns the work you are on, act on it, then ack it. If it does not, leave it out of your current work: offer the owner a separate session for it, a child of yours where your harness supports one, in its own git worktree if it will change files, and give that session the handoff brief that comes with the answer. Ack only after that session has acted.";
+  "Each answer names its owner when a session already has it. If it has an owner that is not you, leave it: that session gets it on its next heartbeat. If it concerns the work you are on, act on it, then ack it. Otherwise leave it out of your current work and offer the owner a separate session for it, a child of yours where your harness supports one, in its own git worktree if it will change files, and give that session the handoff brief. The handoff session claims the answer first, so a second one started for the same answer is refused and stops.";
 
 /** A brief a fresh session can act on with nothing else: the question, the answer, and the finish line. */
 export function answerHandoff(a: AnswerEntry): string {
   const r = a.request;
   return [
     `The owner answered a decision and no session has acted on it yet. Act on this answer and nothing else.`,
+    `First call pantry_claim with planId answer:${a.id}. If it is refused, another session already has this answer: stop and say so. Heartbeat while you work, and release with outcome done when you have acked.`,
     `Decision: ${r.ref}${r.file ? ` (${r.file})` : ""}.`,
     `Question: ${r.question}`,
     `Answer: ${a.choice || "see the note"}.${a.notes ? ` Note: ${a.notes}` : ""}`,

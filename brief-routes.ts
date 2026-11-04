@@ -98,7 +98,7 @@ function howItWorks(): string {
 
 function answeredCard(a: BriefPayload["answered"][number], now: string): string {
   return `<article class="cc-card is-done-ish" tabindex="0"><header><h3>${e(a.question)}</h3><span class="cc-tag">answered</span></header>
-  <p class="cc-meta">You chose <strong>${e(a.choice || "(a note)")}</strong> ${e(ago(a.at, now))}.${a.holds.length ? ` Frees ${e(a.holds.join(", "))}.` : ""} Waiting for an agent to act and ack; a running one gets it on its next heartbeat.</p>
+  <p class="cc-meta">You chose <strong>${e(a.choice || "(a note)")}</strong> ${e(ago(a.at, now))}.${a.holds.length ? ` Frees ${e(a.holds.join(", "))}.` : ""} ${a.owner ? `Held by ${e(a.owner.tool)} session <code>${e(a.owner.sessionId.slice(0, 8))}</code> (${e(a.owner.planId)}), which gets it on its next heartbeat.` : "No session has it yet. A running agent sees it on its next heartbeat, or start one with the session brief."}</p>
   ${actions(a.actions)}
 </article>`;
 }

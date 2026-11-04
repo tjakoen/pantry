@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { claimPlan, foldClaims, listClaims, readClaims, readyPlans, updateClaim, type ClaimContext, type ClaimLine, type PlanLike } from "./orchestrator.ts";
+import { answerOwner, claimPlan, foldClaims, listClaims, readClaims, readyPlans, updateClaim, type ClaimContext, type ClaimLine, type PlanLike } from "./orchestrator.ts";
 
 const H = 60 * 60 * 1000;
 const T0 = Date.parse("2026-11-04T00:00:00Z");
@@ -113,5 +113,29 @@ describe("board annotation", () => {
     const out = annotateBoard(html, new Map([["a", { kind: "claimed", label: "claude s1 · 3m" }]]));
     expect(out).toContain('data-claim="claimed">claude s1 · 3m</span>');
     expect(out.match(/data-claim/g)?.length).toBe(1);
+  });
+});
+
+describe("answer claims", () => {
+  test("an unread answer can be claimed once; a second session is refused", async () => {
+    const c = { ...ctx([]), answers: ["a-1"] };
+    expect((await claimPlan(c, "answer:a-1", "s1", "claude")).ok).toBe(true);
+    const second = await claimPlan(c, "answer:a-1", "s2", "codex");
+    expect(second.ok).toBe(false);
+    if (!second.ok) expect(second.error).toContain("already held by claude s1");
+  });
+
+  test("an answer that is not unread cannot be claimed", async () => {
+    const r = await claimPlan({ ...ctx([]), answers: [] }, "answer:a-9", "s1", "claude");
+    expect(r.ok).toBe(false);
+  });
+
+  test("the owner is the answer's own claim first, then a claim on a plan the decision blocks", () => {
+    const at = new Date(T0).toISOString();
+    const view = (planId: string, sessionId: string) => ({ planId, sessionId, tool: "claude" as const, claimedAt: at, lastAt: at, state: "active" as const });
+    const decisions = [{ id: "d1", status: "open", blocks: ["p1"] }];
+    expect(answerOwner("a-1", "d1", decisions, new Map([["p1", view("p1", "sp")]]))).toEqual({ via: "plan", planId: "p1", sessionId: "sp", tool: "claude" });
+    expect(answerOwner("a-1", "d1", decisions, new Map([["p1", view("p1", "sp")], ["answer:a-1", view("answer:a-1", "sa")]]))?.sessionId).toBe("sa");
+    expect(answerOwner("a-1", "d1", decisions, new Map())).toBeNull();
   });
 });

@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { buildSessionsPayload, planTouchesPath, type SessionRow } from "./sessions.ts";
-import { claimsFile, foldClaims, loadProjectWork, readClaims, readyPlans, ttlMs, type ClaimView, type DecisionLike, type PlanLike } from "./orchestrator.ts";
+import { answerOwner, type AnswerOwner, claimsFile, foldClaims, loadProjectWork, readClaims, readyPlans, ttlMs, type ClaimView, type DecisionLike, type PlanLike } from "./orchestrator.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
 import { runDoctor, type DoctorCheck } from "./doctor.ts";
 import { ANSWER_ROUTING, answerHandoff, readAnswerLog, unacked, type AnswerEntry } from "./answers.ts";
@@ -95,6 +95,8 @@ export interface AnsweredRow {
   notes: string | null;
   /** the plans an open decision with this id holds, so an agent on one of them knows it is for it */
   holds: string[];
+  /** the session already on this answer, if any; nobody else should start one */
+  owner: AnswerOwner | null;
   /** a self-contained brief for a separate session, when the answer is not the current session's work */
   handoff: string;
   actions: BriefAction[];
@@ -267,6 +269,7 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
     choice: a.choice,
     notes: a.notes ?? null,
     holds: input.decisions.find((d) => d.id === a.request.ref)?.blocks ?? [],
+    owner: answerOwner(a.id, a.request.ref, input.decisions, claims),
     handoff: answerHandoff(a),
     actions: [{ label: "Copy session brief", kind: "copy", value: answerHandoff(a) }, { label: "Copy prompt", kind: "copy", value: a.composed || `The owner answered ${a.request.ref} (${a.request.question}): ${a.choice || "see note"}.${a.notes ? ` Note: ${a.notes}` : ""} Act on it, then run: pantry answers ack ${a.id}` }],
   }));
@@ -353,6 +356,9 @@ export function briefText(b: BriefPayload): string {
   else out.push(ANSWER_ROUTING, "");
   for (const a of b.answered) {
     out.push(`- ${a.id} on ${a.ref}${a.holds.length ? ` (holds ${a.holds.join(", ")})` : ""}: ${a.question} Answer: ${a.choice || "(see note)"}${a.notes ? `. Note: ${a.notes}` : ""}`);
+    out.push(a.owner
+      ? `  - owner: ${a.owner.tool} session ${a.owner.sessionId} (holds ${a.owner.planId}); leave it to that session`
+      : `  - owner: none yet`);
     out.push(`  - when acted on, run: pantry answers ack ${a.id}`);
     out.push(`  - handoff brief for a separate session:`, ...a.handoff.split("\n").map((l) => `    > ${l}`));
   }
