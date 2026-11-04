@@ -48,9 +48,9 @@ import {
 import { buildArtifactsPayload, classifyArtifact, type ArtifactsPayload, type ArtifactEntry } from "./artifacts.ts";
 import { buildRunsPayload, type RunsPayload, type RunReport, type RunPair, type EvidenceGap } from "./runs.ts";
 import { runDoctor, type DoctorReport, type DoctorCheck } from "./doctor.ts";
-import { buildTimelinePayload, type TimelinePayload, type TimelinePlan } from "./timeline.ts";
+import { buildTimelinePayload, cachedTimelinePayload, type TimelinePayload, type TimelinePlan } from "./timeline.ts";
 
-import { artifactsIndexBody, serveArtifactRaw } from "./artifacts-page.ts";
+import { artifactsIndexBody, explorerView, readPreview, serveArtifactRaw } from "./artifacts-page.ts";
 import { nav, pantryPage, styleLinks } from "./chrome.ts";
 import { controlBody } from "./control-page.ts";
 import { type PantryServer, answersBody, decisionDetailBody, decisionsIndexBody, recordAnswerRequest } from "./decisions-page.ts";
@@ -712,7 +712,12 @@ export function createPantryHandler(opts: PantryOptions) {
     if (surfaces.artifacts && path === "/artifacts.json")
       return Response.json(await buildArtifactsPayload(config, new Date().toISOString()));
     if (surfaces.artifacts && path === "/artifacts")
-      return html(page("Artifacts", artifactsIndexBody(await buildArtifactsPayload(config, new Date().toISOString()))));
+    {
+      const payload = await buildArtifactsPayload(config, new Date().toISOString());
+      const view = explorerView(url.searchParams);
+      const preview = view.file ? await readPreview(config.artifactsDir, payload.artifacts.find((a) => a.relPath === view.file)) : null;
+      return html(page("Artifacts", artifactsIndexBody(payload, view, preview)));
+    }
     if (surfaces.artifacts && path.startsWith("/artifacts/raw/")) {
       const reqPath = decodeURIComponent(path.slice("/artifacts/raw/".length));
       return serveArtifactRaw(config.artifactsDir, reqPath);
@@ -723,9 +728,28 @@ export function createPantryHandler(opts: PantryOptions) {
     // backs both, so the picture and the payload never drift. Read-only + model-free; git is a history
     // read here, never a forecast. Absent repo/plans degrades to guidance, never a crash. ---
     if (surfaces.timeline && path === "/timeline.json")
-      return Response.json(await buildTimelinePayload(config, new Date().toISOString()));
+    {
+      const payload = await cachedTimelinePayload(config, 8_000);
+      return payload ? Response.json(payload) : Response.json({ available: false, reason: "still reading git history; retry shortly" }, { status: 503, headers: { "Retry-After": "5" } });
+    }
     if (surfaces.timeline && path === "/timeline")
-      return html(page("Timeline", timelineBody(await buildTimelinePayload(config, new Date().toISOString()))));
+    {
+      // Titles straight from each plan's first heading: the plan loader runs git per file, and the
+      // timeline has already paid for its own git reads.
+      const titles = new Map<string, string>();
+      for (const f of await Array.fromAsync(new Bun.Glob("*.md").scan({ cwd: config.plansDir }))) {
+        const head = (await Bun.file(join(config.plansDir, f)).text()).slice(0, 4000);
+        const m = /^#\s+(.+)$/m.exec(head.replace(/^---[\s\S]*?\n---\n/, ""));
+        const id = /^id:\s*(.+)$/m.exec(head)?.[1]?.trim() ?? f.replace(/\.md$/, "");
+        if (m) titles.set(id, m[1].trim());
+      }
+      const view = { sort: url.searchParams.get("sort") === "recent" ? "recent" as const : "start" as const, titles };
+      const payload = await cachedTimelinePayload(config, 8_000);
+      if (!payload) {
+        return html(page("Plan timeline", `<section class="tl"><h1>Plan timeline</h1><p class="cc-empty">Reading every plan's git history. This page refreshes on its own in a few seconds.</p><meta http-equiv="refresh" content="4"></section>`));
+      }
+      return html(page("Plan timeline", timelineBody(payload, view)));
+    }
 
     // --- landings PANTRY owns ---
     // The alignment brief (plans/pantry-brief.md) is the home page while its surface is on.

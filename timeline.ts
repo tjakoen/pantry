@@ -387,3 +387,37 @@ export async function buildTimelinePayload(
     generatedAt,
   };
 }
+
+
+// ── a cache, because the history is slow to read and slow to change ─────────────────────────────
+// Reading every plan's git history takes seconds on a real project, longer than a request may wait.
+// The payload only changes when a commit lands or a plan file or run report is written, so it is
+// kept per project and rebuilt when HEAD moves or after TIMELINE_CACHE_MS, whichever comes first.
+export const TIMELINE_CACHE_MS = 10 * 60_000;
+const timelineCache = new Map<string, { head: string; at: number; payload: Promise<TimelinePayload> }>();
+
+async function headOf(cwd: string): Promise<string> {
+  try {
+    const p = Bun.spawn(["git", "rev-parse", "HEAD"], { cwd, stdout: "pipe", stderr: "ignore" });
+    return (await new Response(p.stdout).text()).trim();
+  } catch {
+    return "";
+  }
+}
+
+/** The payload, from cache when HEAD has not moved. Resolves null when it is not ready within waitMs,
+ *  so a page can say it is still reading instead of timing out; the build carries on regardless. */
+export async function cachedTimelinePayload(
+  config: Parameters<typeof buildTimelinePayload>[0], waitMs: number,
+): Promise<TimelinePayload | null> {
+  const head = await headOf(config.cwd);
+  let hit = timelineCache.get(config.cwd);
+  if (!hit || hit.head !== head || Date.now() - hit.at > TIMELINE_CACHE_MS) {
+    const payload = buildTimelinePayload(config, new Date().toISOString());
+    hit = { head, at: Date.now(), payload };
+    timelineCache.set(config.cwd, hit);
+    payload.catch(() => timelineCache.delete(config.cwd));
+  }
+  const timeout = new Promise<null>((r) => setTimeout(() => r(null), waitMs));
+  return Promise.race([hit.payload, timeout]);
+}

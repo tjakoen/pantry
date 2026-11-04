@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assembleActivity, activityBody, segmentsOf, IDLE_GAP_MS } from "./activity.ts";
+import { assembleActivity, activityBody, laneSummary, segmentsOf, IDLE_GAP_MS } from "./activity.ts";
 import { parseSessionLine, summarizeSessions, type SessionEvent } from "./sessions.ts";
 
 const NOW = "2026-11-05T12:00:00.000Z";
@@ -36,11 +36,21 @@ describe("lanes", () => {
     expect(a.lanes).toHaveLength(0);
   });
 
-  test("the page draws a lane per session and per subagent", () => {
-    const html = activityBody(build([ev(30), ev(20, { agent: "a1", agentType: "locator", task: "Map it" })]));
-    expect(html).toContain("locator");
+  test("a session card names its worktree, says what it did, and lists the files with who wrote them", () => {
+    const html = activityBody(build([
+      ev(30, { worktree: "/repo/.claude/worktrees/fix-nav" }),
+      ev(20, { agent: "a1", agentType: "locator", task: "Map it" }),
+      ev(19, { agent: "a1", agentType: "locator", path: "/repo/src/x.ts", tool: "Edit" }),
+    ]));
+    expect(html).toContain("fix-nav");
     expect(html).toContain("Map it");
-    expect(html.match(/class="act-lane(?! act-axis)/g)?.length).toBe(2);
+    expect(html).toContain("Wrote 1 file, inside plan p1, ran 1 subagent.");
+    expect(html).toContain("<code>src/x.ts</code> <span class=\"act-by\">by locator</span>");
+    expect(html.match(/class="act-row is-(session|agent)/g)?.length).toBe(2);
+  });
+
+  test("a session that only read says so instead of looking idle", () => {
+    expect(laneSummary(build([ev(30, { tool: "Read" })]).lanes[0])).toBe("Read and ran commands, wrote nothing.");
   });
 });
 

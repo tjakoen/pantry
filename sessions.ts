@@ -64,6 +64,8 @@ export interface SessionEvent {
   agentType?: string;
   /** the few words the parent used to describe the subagent's task, on its start and stop events */
   task?: string;
+  /** the git worktree the session ran in, when it was not the main checkout */
+  worktree?: string;
 }
 
 /** A subagent's state. "running" while it is still firing events, "done" once it stopped, and
@@ -221,6 +223,7 @@ export function parseSessionLine(line: string): SessionEvent | "unknown-kind" | 
   if (typeof o.agent === "string" && o.agent) event.agent = o.agent;
   if (typeof o.agentType === "string" && o.agentType) event.agentType = o.agentType;
   if (typeof o.task === "string" && o.task) event.task = o.task;
+  if (typeof o.worktree === "string" && o.worktree) event.worktree = o.worktree;
   return event;
 }
 

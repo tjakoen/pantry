@@ -551,7 +551,7 @@ describe("run artifacts (piece 11e sub-unit 1)", () => {
     expect((await get(handler, "/runs.json")).status).toBe(404);
   });
 
-  test("real artifact files render as cards, newest first; the machine twin agrees; raw bytes are servable", async () => {
+  test("real artifact files list as an explorer: folders first, a folder opens, search goes flat; raw bytes are servable", async () => {
     const artifactsDir = join(tmpdir(), `pantry-app-artifacts-${Date.now()}`);
     await Bun.write(join(artifactsDir, "old-report.md"), "# an old report");
     await Bun.write(join(artifactsDir, "run-1", "shot.png"), "not-really-a-png");
@@ -559,7 +559,12 @@ describe("run artifacts (piece 11e sub-unit 1)", () => {
 
     const index = await (await get(handler, "/artifacts")).text();
     expect(index).toContain("old-report.md");
-    expect(index).toContain("shot.png");
+    expect(index).toContain(`href="/artifacts?dir=run-1"`);
+    expect(await (await get(handler, "/artifacts?dir=run-1")).text()).toContain("shot.png");
+    expect(await (await get(handler, "/artifacts?q=shot")).text()).toContain("run-1/shot.png");
+    const preview = await (await get(handler, "/artifacts?file=old-report.md")).text();
+    expect(preview).toContain("ax-preview");
+    expect(preview).toContain("an old report");
 
     const j = await (await get(handler, "/artifacts.json")).json();
     expect(j.available).toBe(true);

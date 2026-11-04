@@ -340,3 +340,19 @@ describe("buildTimelinePayload — degradations", () => {
     expect(p.plans).toEqual([]);
   });
 });
+
+test("the timeline page groups plans by status, uses titles, and draws one segment per status stretch", async () => {
+  const { timelineBody } = await import("./timeline-page.ts");
+  const html = timelineBody({
+    available: true, project: "x", generatedAt: "2026-03-01T00:00:00Z", axisStart: "2026-01-01T00:00:00Z", spanDays: 60, activeDays: 9, earliest: "2026-01-01T00:00:00Z",
+    density: [{ date: "2026-01-05", count: 3 }], densityBucket: "day", runActivity: [], runCount: 0, runDatedCount: 0, runsEnabled: true, auditMarkers: [],
+    plans: [
+      { id: "a", status: "done", depends: [], created: "2026-01-02T00:00:00Z", done: "2026-02-01T00:00:00Z", lastActivity: "2026-02-01T00:00:00Z", transitions: [{ status: "todo", date: "2026-01-02T00:00:00Z" }, { status: "doing", date: "2026-01-10T00:00:00Z" }, { status: "done", date: "2026-02-01T00:00:00Z" }], transitionsCapped: false },
+      { id: "b", status: "doing", depends: ["a"], created: "2026-02-02T00:00:00Z", done: null, lastActivity: "2026-02-20T00:00:00Z", transitions: [], transitionsCapped: false },
+    ],
+  } as never, { sort: "start", titles: new Map([["a", "Plan A title"]]) });
+  expect(html).toContain("Plan A title");
+  expect(html.indexOf("In progress")).toBeLessThan(html.indexOf(">Done "));
+  expect(html.match(/class="tl-seg" data-status=/g)?.length).toBe(4);
+  expect(html).toContain("after a");
+});
