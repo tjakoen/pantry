@@ -77,22 +77,25 @@ export function projectFor(reg: Registry, dir: string): HubProject | null {
 // `git log` per plan file, and seventeen projects probed at once pinned the container's CPU and
 // stopped every project from answering. The stylesheet costs nothing and proves the server is up.
 // Results are cached briefly so a page refresh or a burst of session starts cannot become a storm.
-const upCache = new Map<number, { at: number; up: boolean }>();
-async function isUp(port: number): Promise<boolean> {
+// The probe also learns WHERE PANTRY answers: at the root, or under the reserved prefix when the
+// project proxies its own app at "/". That base is what an agent opens in its browser pane.
+type Probe = { up: boolean; base: string };
+const upCache = new Map<number, { at: number } & Probe>();
+async function probeCached(port: number): Promise<Probe> {
   const hit = upCache.get(port);
-  if (hit && Date.now() - hit.at < 15_000) return hit.up;
-  const up = await probe(port);
-  upCache.set(port, { at: Date.now(), up });
-  return up;
+  if (hit && Date.now() - hit.at < 15_000) return hit;
+  const result = await probe(port);
+  upCache.set(port, { at: Date.now(), ...result });
+  return result;
 }
-async function probe(port: number): Promise<boolean> {
-  for (const path of ["/components.css", `${PANTRY_PREFIX}/components.css`]) {
+async function probe(port: number): Promise<Probe> {
+  for (const base of ["", PANTRY_PREFIX]) {
     try {
-      const res = await fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(6000) });
-      if (res.status < 400) return true;
+      const res = await fetch(`http://127.0.0.1:${port}${base}/components.css`, { signal: AbortSignal.timeout(6000) });
+      if (res.status < 400) return { up: true, base };
     } catch { /* not listening yet */ }
   }
-  return false;
+  return { up: false, base: "" };
 }
 
 /** Run the hub: one child per project, restarted with a backoff, plus the health endpoints. */
@@ -132,9 +135,10 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
   sync();
   setInterval(sync, 5000);
 
-  const status = async (p: HubProject) => ({
-    ...p, up: await isUp(p.port), note: children.get(p.name)?.note || undefined,
-  });
+  const status = async (p: HubProject) => {
+    const { up, base } = await probeCached(p.port);
+    return { ...p, up, url: `http://localhost:${p.port}${base}/`, note: children.get(p.name)?.note || undefined };
+  };
 
   const server = Bun.serve({
     port: reg.hubPort,
@@ -155,7 +159,7 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
       }
       if (url.pathname === "/" ) {
         const rows = await Promise.all(reg.projects.map(status));
-        const list = rows.map((r) => `<li>${r.up ? "up" : "down"}: <a href="http://localhost:${r.port}/">${r.name}</a> <code>${r.path}</code>${r.note ? ` (${r.note})` : ""}</li>`).join("");
+        const list = rows.map((r) => `<li>${r.up ? "up" : "down"}: <a href="${r.url}">${r.name}</a> <code>${r.path}</code>${r.note ? ` (${r.note})` : ""}</li>`).join("");
         return new Response(`<!doctype html><title>PANTRY hub</title><h1>PANTRY hub</h1><ul>${list || "<li>No projects registered. Run <code>pantry register</code> in a project.</li>"}</ul>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       return new Response("Not found", { status: 404 });
