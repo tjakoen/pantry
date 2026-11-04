@@ -72,10 +72,21 @@ export function projectFor(reg: Registry, dir: string): HubProject | null {
   return best;
 }
 
-// Probe a PANTRY route rather than "/": a project with a preview target hands "/" to its own app,
-// which answers 502 whenever that app is not running even though PANTRY itself is fine.
+// Probe a static PANTRY asset. Not "/": a project with a preview target hands "/" to its own app,
+// which answers 502 whenever that app is down. Not "/plans" either: rendering the board runs one
+// `git log` per plan file, and seventeen projects probed at once pinned the container's CPU and
+// stopped every project from answering. The stylesheet costs nothing and proves the server is up.
+// Results are cached briefly so a page refresh or a burst of session starts cannot become a storm.
+const upCache = new Map<number, { at: number; up: boolean }>();
 async function isUp(port: number): Promise<boolean> {
-  for (const path of ["/plans", `${PANTRY_PREFIX}/plans`]) {
+  const hit = upCache.get(port);
+  if (hit && Date.now() - hit.at < 15_000) return hit.up;
+  const up = await probe(port);
+  upCache.set(port, { at: Date.now(), up });
+  return up;
+}
+async function probe(port: number): Promise<boolean> {
+  for (const path of ["/components.css", `${PANTRY_PREFIX}/components.css`]) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(6000) });
       if (res.status < 400) return true;
