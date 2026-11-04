@@ -40,6 +40,7 @@
     "init.ts",
     "map.ts",
     "mcp.ts",
+    "orchestrator.ts",
     "pantry-cmdk.js",
     "pantry-control.js",
     "pantry-decisions.js",

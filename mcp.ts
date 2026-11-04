@@ -15,6 +15,10 @@
 import { join } from "node:path";
 import { projectFor, type HubProject, type Registry } from "./hub.ts";
 import { PANTRY_PREFIX } from "./preview.ts";
+import { homedir } from "node:os";
+import {
+  claimPlan, claimsFile, foldClaims, listClaims, loadProjectWork, readClaims, readyPlans, ttlMs, updateClaim,
+} from "./orchestrator.ts";
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 
@@ -45,6 +49,39 @@ export const TOOLS = [
     },
   },
   {
+    name: "pantry_next",
+    description: "List the plans in this project an agent may take now (status todo, owner ai, dependencies done, no open decision blocking it, unclaimed), in board order, then every other todo plan with the reasons it is held. Call this before choosing work in a PANTRY project.",
+    inputSchema: { type: "object", properties: pathArg, required: ["path"] },
+  },
+  {
+    name: "pantry_claim",
+    description: "Claim a ready plan before starting it, so no other session takes it. Then set the plan's status to doing in its file. Heartbeat every 10 minutes while working.",
+    inputSchema: {
+      type: "object",
+      properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string", description: "Your session id." }, tool: { type: "string", enum: ["claude", "codex"] } },
+      required: ["path", "planId", "sessionId", "tool"],
+    },
+  },
+  {
+    name: "pantry_heartbeat",
+    description: "Keep your claim alive. Claims expire after 30 minutes without one.",
+    inputSchema: { type: "object", properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string" } }, required: ["path", "planId", "sessionId"] },
+  },
+  {
+    name: "pantry_release",
+    description: "End your claim: outcome done when the plan is finished (also set status: done in the plan file), released when you are handing it back unfinished.",
+    inputSchema: {
+      type: "object",
+      properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string" }, outcome: { type: "string", enum: ["done", "released"] } },
+      required: ["path", "planId", "sessionId", "outcome"],
+    },
+  },
+  {
+    name: "pantry_claims",
+    description: "List active claims in this project and claims that ended in the last 24 hours.",
+    inputSchema: { type: "object", properties: pathArg, required: ["path"] },
+  },
+  {
     name: "pantry_doctor",
     description: "Run the PANTRY doctor (kit compliance and staleness) on the project's checkout as the hub sees it. Read-only.",
     inputSchema: { type: "object", properties: pathArg, required: ["path"] },
@@ -67,6 +104,7 @@ async function fetchSurface(p: HubProject, route: string): Promise<string | null
 export async function callTool(name: string, args: Json, reg: Registry, deps: {
   status: (p: HubProject) => Promise<Json>;
   cli?: string;
+  home?: string;
 }): Promise<Json> {
   if (name === "pantry_projects") {
     return text(JSON.stringify(await Promise.all(reg.projects.map(deps.status)), null, 2));
@@ -85,6 +123,27 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     if (!(SURFACES as readonly string[]).includes(surface)) return text(`surface must be one of: ${SURFACES.join(", ")}`, true);
     const body = await fetchSurface(p, `/${surface}.json`);
     return body ? text(body) : text(`${p.name} did not serve /${surface}.json (surface off, or PANTRY not answering).`, true);
+  }
+  if (name.startsWith("pantry_") && ["pantry_next", "pantry_claim", "pantry_heartbeat", "pantry_release", "pantry_claims"].includes(name)) {
+    const home = deps.home ?? process.env.PANTRY_HOME ?? join(homedir(), ".pantry");
+    const file = claimsFile(home, p.name);
+    const { plans, decisions } = await loadProjectWork(p.path);
+    const ctx = { file, project: p.name, plans, decisions };
+    const str = (k: string) => (typeof args[k] === "string" ? (args[k] as string) : "");
+    const reply = (r: { ok: true; value: unknown } | { ok: false; error: string }) =>
+      r.ok ? text(JSON.stringify(r.value, null, 2)) : text(r.error, true);
+    if (name === "pantry_next" || name === "pantry_claims") {
+      const now = Date.now();
+      const doneInFile = new Set(plans.filter((x) => x.status === "done").map((x) => x.id));
+      const lines = await readClaims(file);
+      if (name === "pantry_claims") return text(JSON.stringify(listClaims(lines, now, ttlMs(), doneInFile), null, 2));
+      return text(JSON.stringify({ project: p.name, ...readyPlans(plans, decisions, foldClaims(lines, now, ttlMs(), doneInFile)) }, null, 2));
+    }
+    if (name === "pantry_claim") return reply(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool")));
+    if (name === "pantry_heartbeat") return reply(await updateClaim(ctx, str("planId"), str("sessionId"), "heartbeat"));
+    const outcome = str("outcome");
+    if (outcome !== "done" && outcome !== "released") return text("outcome must be done or released", true);
+    return reply(await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release"));
   }
   if (name === "pantry_doctor") {
     const proc = Bun.spawn(["bun", deps.cli ?? join(import.meta.dir, "cli.ts"), "doctor"], { cwd: p.path, stdout: "pipe", stderr: "pipe" });

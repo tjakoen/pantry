@@ -50,3 +50,27 @@ describe("container trust switch", () => {
     expect(isLoopbackRequest(null, { PANTRY_TRUST_CONTAINER_NETWORK: "1" })).toBe(false);
   });
 });
+
+describe("hub health", () => {
+  test("a path in no project is 404 with registered false", async () => {
+    const { runHub } = await import("./hub.ts");
+    const home = mkdtempSync(join(tmpdir(), "pantry-hubh-"));
+    const file = join(home, "projects.json");
+    writeRegistry({ hubPort: 47100 + Math.floor(Math.random() * 500), projects: [] }, file);
+    const server = await runHub({ file });
+    const res = await fetch(`${server.url}health?path=/nowhere`);
+    expect(res.status).toBe(404);
+    expect((await res.json()).registered).toBe(false);
+    server.stop(true);
+  });
+
+  test("workCounts reports ready and claimed", async () => {
+    const { workCounts } = await import("./orchestrator.ts");
+    const root = mkdtempSync(join(tmpdir(), "pantry-hubc-"));
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(root, "plans"));
+    writeFileSync(join(root, "pantry.config.json"), JSON.stringify({ projectName: "x" }));
+    writeFileSync(join(root, "plans/a.md"), "---\nid: a\nstatus: todo\ntrack: t\ndepends: []\nowner: ai\n---\n# a\n");
+    expect(await workCounts(join(root, "home"), "x", root)).toEqual({ ready: 1, claimed: 0 });
+  });
+});

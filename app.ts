@@ -18,6 +18,7 @@ import { renderGrainDocument } from "@tjakoen/mill/adapters/grain/grain-adapter.
 import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
+import { annotateBoard, boardAnnotations } from "./orchestrator.ts";
 // CRUMB, carried rather than expected (plans/pantry-review-layer.md P4). PANTRY mounts the tour DATA
 // routes and serves the client + stylesheet as its own assets, so a review can be walked on a project
 // that has never heard of CRUMB. This is the SAME parser the GRAIN host uses — the plan's "one parser,
@@ -1580,6 +1581,15 @@ export function createPantryHandler(opts: PantryOptions) {
     },
   };
   if (surfaces.plans) watchPlans({ plansDir: config.plansDir, channel: boardChannel });
+  // Orchestration (plans/pantry-orchestrator.md): under the hub a child knows its registry name and
+  // the hub's home, and the board shows who holds each plan. Unset under a plain `pantry serve`.
+  const claimProject = process.env.PANTRY_PROJECT;
+  const claimHome = process.env.PANTRY_HOME;
+  const annotate = async (html: string): Promise<string> => {
+    if (!claimProject || !claimHome) return html;
+    try { return annotateBoard(html, await boardAnnotations(config.cwd ?? dirname(config.plansDir), claimHome, claimProject)); }
+    catch { return html; }
+  };
 
   // The dev preview proxy (plans/pantry-review-layer.md P0). OFF unless the host configured a target,
   // and when it is on PANTRY's own routes move wholesale under the reserved prefix so the reviewed
@@ -1863,7 +1873,7 @@ ${body}`));
     // plan's "one parser, never a second" rule kept by importing the parser rather than by having
     // none, which is what P1 could get away with when the project always had its own.
     if (crumbRoutes) { const c = await crumbRoutes(path); if (c) return c; }
-    if (surfaces.plans) { const r = await proofRoutes(path); if (r) return fixProofResponse(r); }
+    if (surfaces.plans) { const r = await proofRoutes(path); if (r) return fixProofResponse(r, annotate); }
     const m = await millRoutes(path); if (m) return m;
     return null;   // not one of PANTRY's — the caller decides (404, or the preview target)
   };
@@ -1918,11 +1928,11 @@ function fixProofCardLinks(html: string): string {
   return html.replaceAll('href="/plan/', 'href="/plans/plan/');
 }
 
-async function fixProofResponse(res: Response): Promise<Response> {
+async function fixProofResponse(res: Response, annotate: (html: string) => Promise<string> = async (h) => h): Promise<Response> {
   if (!(res.headers.get("content-type") ?? "").includes("text/html")) return res;  // /plans.json carries no such href
   const headers = new Headers(res.headers);
   headers.delete("content-length");
-  return new Response(fixProofCardLinks(await res.text()), { status: res.status, statusText: res.statusText, headers });
+  return new Response(fixProofCardLinks(await annotate(await res.text())), { status: res.status, statusText: res.statusText, headers });
 }
 
 // A font is bytes, and BATCH's static handler reads text — it would mistype and corrupt a woff2. So

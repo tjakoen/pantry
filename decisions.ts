@@ -54,6 +54,9 @@ export interface DecisionRequest {
    *  the session that did not ask. */
   unblocks?: string;
   evidence: DecisionEvidence[];
+  /** plan ids this decision holds back while it is open (the orchestrator never offers them). Optional;
+   *  a decision without it blocks nothing. A plan named only in the body does not count. */
+  blocks: string[];
   /** the raw markdown body (frontmatter stripped) — rendered to HTML by the view, kept raw here so
    *  the data layer stays render-free and testable */
   body: string;
@@ -129,6 +132,7 @@ function parseDecision(id: string, file: string, raw: string): DecisionRequest {
     recommendation,
     unblocks,
     evidence: asArray(data.evidence).map(parseEvidence),
+    blocks: asArray(data.blocks).map((b) => b.trim()).filter(Boolean),
     body,
     file,
   };

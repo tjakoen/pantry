@@ -111,6 +111,9 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
     }
     const proc = Bun.spawn(["bun", cli, "serve", "--port", String(p.port)], {
       cwd: p.path, stdout: "inherit", stderr: "inherit",
+      // The child cannot work out its registry name from its folder (names are de-duplicated), and
+      // the board needs it to read this project's claims file.
+      env: { ...process.env, PANTRY_PROJECT: p.name, PANTRY_HOME: dirname(file) },
     });
     const prev = children.get(p.name);
     children.set(p.name, { proc, restarts: prev?.restarts ?? 0, note: "" });
@@ -153,7 +156,9 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         if (dir) {
           const p = projectFor(reg, dir);
           if (!p) return Response.json({ registered: false, path: dir }, { status: 404 });
-          return Response.json({ registered: true, ...(await status(p)) });
+          const { workCounts } = await import("./orchestrator.ts");
+          const counts = await workCounts(dirname(file), p.name, p.path).catch(() => ({ ready: null, claimed: null }));
+          return Response.json({ registered: true, ...(await status(p)), ...counts });
         }
         return Response.json({ ok: true, projects: await Promise.all(reg.projects.map(status)) });
       }
