@@ -886,3 +886,13 @@ describe("the alignment brief", () => {
     expect((await get(off, "/brief.json")).status).toBe(404);
   });
 });
+
+test("the nav groups surfaces into Work and Project menus", async () => {
+  const { pantryPage } = await import("./app.ts");
+  const html = pantryPage("t", "", { plans: true, decisions: true, control: true, runs: true, artifacts: true, timeline: true, standards: true, docs: true, reference: true, brief: true } as never);
+  const nav = html.slice(html.indexOf(`<nav class="pantry-nav">`), html.indexOf("</nav>"));
+  expect(nav).toContain(`<summary>Work</summary>`);
+  expect(nav).toContain(`<summary>Project</summary>`);
+  expect(nav).toContain(`href="/activity"`);
+  expect(nav.indexOf("Command center")).toBeLessThan(nav.indexOf("<summary>Work"));
+});

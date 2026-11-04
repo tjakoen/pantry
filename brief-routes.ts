@@ -15,7 +15,7 @@
  * agent are never told two different things.
  */
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
-import { briefText, buildBrief, type BriefAction, type BriefPayload, type InFlightRow, type WaitingRow } from "./brief.ts";
+import { briefText, buildBrief, type BriefAction, type BriefAgent, type BriefPayload, type InFlightRow, type WaitingRow } from "./brief.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
 const e = (s: string) => escapeHtml(s);
@@ -44,6 +44,23 @@ function column(id: string, title: string, question: string, count: number, body
 
 const empty = (text: string) => `<p class="cc-empty">${e(text)}</p>`;
 
+// The subagents a session spawned, under it. Running and quiet ones always show; finished ones show
+// only the last few, because a session that ran forty lookups is a wall nobody reads.
+const AGENT_DONE_SHOWN = 3;
+function subagents(agents: BriefAgent[] | undefined, now: string): string {
+  if (!agents?.length) return "";
+  const open = agents.filter((a) => a.state !== "done");
+  const done = agents.filter((a) => a.state === "done");
+  const shown = [...open, ...done.slice(0, AGENT_DONE_SHOWN)];
+  const rows = shown.map((a) => {
+    const what = a.task ?? (a.lastTool ? `last: ${a.lastTool}` : "no tool yet");
+    const when = a.state === "done" ? `done ${ago(a.lastSeenAt, now)}` : a.state === "quiet" ? `quiet ${ago(a.lastSeenAt, now)}` : `running ${ago(a.startedAt, now).replace(/ ago$/, "")}`;
+    return `<li class="cc-agent is-${a.state}"><span class="cc-dot" aria-hidden="true"></span><span class="cc-agent-type">${e(a.type ?? "subagent")}</span> ${e(what)} <span class="cc-agent-when">${e(when)}</span></li>`;
+  }).join("");
+  const more = done.length > AGENT_DONE_SHOWN ? `<li class="cc-agent is-done">and ${done.length - AGENT_DONE_SHOWN} more finished</li>` : "";
+  return `<li class="cc-agents-wrap"><ul class="cc-agents" aria-label="Subagents">${rows}${more}</ul></li>`;
+}
+
 function agentCard(r: InFlightRow, now: string): string {
   const tag = r.claim
     ? `<span class="cc-tag">${e(r.claim.tool)} · ${e(r.claim.state)}</span>`
@@ -51,7 +68,7 @@ function agentCard(r: InFlightRow, now: string): string {
   const sessions = r.sessions.map((s) => {
     const live = s.state === "alive" ? "is-live" : s.state === "idle" ? "is-idle" : "is-ended";
     const doing = s.state === "ended" ? `ended ${ago(s.lastSeenAt, now)}` : `${s.lastTool ? `last: ${s.lastTool}` : "no tool yet"} · ${ago(s.lastSeenAt, now)}`;
-    return `<li class="cc-session ${live}"><span class="cc-dot" aria-hidden="true"></span><code>${e(s.id)}</code> ${e(doing)}</li>`;
+    return `<li class="cc-session ${live}"><span class="cc-dot" aria-hidden="true"></span><code>${e(s.id)}</code> ${e(doing)}</li>${subagents(s.agents, now)}`;
   }).join("");
   const stray = r.outOfScope.length
     ? `<div class="cc-stray"><strong>${r.planId ? `Wrote ${r.outOfScope.length} file(s) outside the plan` : `Wrote ${r.outOfScope.length} file(s) with no plan`}</strong><ul>${r.outOfScope.slice(0, 6).map((f) => `<li><code>${e(f)}</code></li>`).join("")}${r.outOfScope.length > 6 ? `<li>and ${r.outOfScope.length - 6} more</li>` : ""}</ul>${r.unrecorded ? `<p class="cc-meta">${r.unrecorded} more writes were not recorded.</p>` : ""}</div>`

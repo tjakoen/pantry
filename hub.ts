@@ -163,9 +163,9 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         return Response.json({ ok: true, projects: await Promise.all(reg.projects.map(status)) });
       }
       if (url.pathname === "/" ) {
-        const rows = await Promise.all(reg.projects.map(status));
-        const list = rows.map((r) => `<li>${r.up ? "up" : "down"}: <a href="${r.url}">${r.name}</a> <code>${r.path}</code>${r.note ? ` (${r.note})` : ""}</li>`).join("");
-        return new Response(`<!doctype html><title>PANTRY hub</title><h1>PANTRY hub</h1><ul>${list || "<li>No projects registered. Run <code>pantry register</code> in a project.</li>"}</ul>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        const { hubRows, hubHomePage } = await import("./hub-home.ts");
+        const rows = await hubRows(await Promise.all(reg.projects.map(status)));
+        return new Response(hubHomePage(rows), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       return new Response("Not found", { status: 404 });
     },

@@ -13,7 +13,7 @@ const plan = (id: string, extra: Partial<PlanLike> = {}): PlanLike => ({
 const session = (id: string, paths: string[], extra: Partial<SessionRow> = {}): SessionRow => ({
   id, repo: "repo", cwd: ROOT, parent: null, state: "alive", firstSeenAt: NOW, lastSeenAt: NOW,
   idleSeconds: 0, stopped: false, skewedEvents: 0, toolEvents: paths.length, lastTool: "Edit",
-  paths: paths.map((p) => `${ROOT}/${p}`), pathsOmitted: 0, ...extra,
+  paths: paths.map((p) => `${ROOT}/${p}`), pathsOmitted: 0, agents: [], ...extra,
 });
 const inputs = (over: Partial<BriefInputs> = {}): BriefInputs => ({
   now: NOW, project: "repo", repoRoot: ROOT, plans: [], decisions: [], claims: new Map(), sessions: [], checks: [], ...over,
@@ -149,4 +149,18 @@ test("an unread answer carries a handoff brief and the routing rule for a sessio
   const text = briefText(b);
   expect(text).toContain("offer the owner a separate session");
   expect(text).toContain("> Decision: d9 (plans/decisions/d9.md).");
+});
+
+test("a session's subagents show under it in the Agents column, running ones first", () => {
+  const b = assembleBrief(inputs({
+    plans: [plan("a", { status: "doing", touches: ["src"] })],
+    sessions: [session("s1", ["src/a.ts"], { agents: [
+      { id: "x1", type: "Explore", task: "Find the routes", state: "done", startedAt: NOW, lastSeenAt: NOW, endedAt: NOW, toolEvents: 2, lastTool: "Read", paths: [] },
+      { id: "x2", type: "implementer", task: "Write the tests", state: "running", startedAt: NOW, lastSeenAt: NOW, endedAt: null, toolEvents: 1, lastTool: "Edit", paths: [] },
+    ] })],
+  }));
+  const html = briefBody(b);
+  expect(html).toContain("Write the tests");
+  expect(html.indexOf("implementer")).toBeLessThan(html.indexOf("Explore"));
+  expect(html).toContain("cc-agent is-running");
 });

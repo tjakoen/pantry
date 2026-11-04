@@ -15,7 +15,7 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ResolvedPantryConfig } from "./config.ts";
-import { buildSessionsPayload, planTouchesPath, type SessionRow } from "./sessions.ts";
+import { buildSessionsPayload, planTouchesPath, type SessionRow, type AgentRow } from "./sessions.ts";
 import { answerOwner, type AnswerOwner, claimsFile, foldClaims, loadProjectWork, readClaims, readyPlans, ttlMs, type ClaimView, type DecisionLike, type PlanLike } from "./orchestrator.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
 import { runDoctor, type DoctorCheck } from "./doctor.ts";
@@ -40,6 +40,19 @@ export interface BriefSession {
   /** the last tool the session used, the nearest thing to "what it is doing now" */
   lastTool: string | null;
   idleSeconds: number;
+  /** the subagents this session spawned, newest first, so the page can say who is doing what */
+  agents: BriefAgent[];
+}
+
+/** A subagent as the command center shows it: what kind, what it was asked, and whether it is still going. */
+export interface BriefAgent {
+  id: string;
+  type: string | null;
+  task: string | null;
+  state: AgentRow["state"];
+  lastTool: string | null;
+  startedAt: string;
+  lastSeenAt: string;
 }
 
 export interface InFlightRow {
@@ -278,7 +291,8 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
 }
 
 function toBriefSession(s: SessionRow): BriefSession {
-  return { id: short(s.id), state: s.state, lastSeenAt: s.lastSeenAt, paths: s.paths, pathsOmitted: s.pathsOmitted, lastTool: s.lastTool, idleSeconds: s.idleSeconds };
+  return { id: short(s.id), state: s.state, lastSeenAt: s.lastSeenAt, paths: s.paths, pathsOmitted: s.pathsOmitted, lastTool: s.lastTool, idleSeconds: s.idleSeconds,
+    agents: (s.agents ?? []).map((a) => ({ id: a.id, type: a.type, task: a.task, state: a.state, lastTool: a.lastTool, startedAt: a.startedAt, lastSeenAt: a.lastSeenAt })) };
 }
 
 /** Read the disk and assemble. Each source that fails becomes a note, never a 500. */

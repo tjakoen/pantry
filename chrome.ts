@@ -2,6 +2,7 @@
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
 import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { type PantrySurfaces } from "./config.ts";
+import { readFileSync } from "node:fs";
 
 export const STYLESHEETS = [
   "/styles/variables.css", "/styles/global.css", "/styles/grain.css",
@@ -13,19 +14,50 @@ export const styleLinks = STYLESHEETS.map((h) => `<link rel="stylesheet" href="$
 // own front door (Plans) + Standards + About; /docs·/reference·/catalog are DEMOTED out of the human
 // nav (they stay mounted + AI-retrievable, reached from the home "Reference surfaces" row) — cutting
 // them would undo PANTRY's founding pivot (see PLAN §The reshape).
+/** The hub's address, when this server is a hub child (the hub sets PANTRY_PROJECT). */
+function hubUrl(): string | null {
+  if (!process.env.PANTRY_PROJECT) return null;
+  try {
+    const home = process.env.PANTRY_HOME ?? `${process.env.HOME ?? ""}/.pantry`;
+    const reg = JSON.parse(readFileSync(`${home}/projects.json`, "utf8")) as { hubPort?: number };
+    return `http://localhost:${reg.hubPort ?? 4400}/`;
+  } catch {
+    return "http://localhost:4400/";
+  }
+}
+
 export function nav(surfaces: PantrySurfaces, review: boolean): string {
+  // Three areas, so the bar stays short as surfaces grow. The command center is the front door; Work
+  // is everything an agent produces or waits on; Project is how the codebase and its rules read. Each
+  // menu is a native details element, so it opens without a script and closes on its own toggle.
+  const menu = (label: string, items: (string | false | undefined)[]) => {
+    const list = items.filter(Boolean);
+    return list.length ? `<details class="pantry-nav__menu"><summary>${label}</summary><div class="pantry-nav__drop">${list.join("")}</div></details>` : "";
+  };
+  const work = menu("Work", [
+    surfaces.plans && `<a href="/plans">Plans</a>`,
+    surfaces.decisions && `<a href="/decisions">Decisions</a>`,
+    surfaces.runs && `<a href="/runs">Runs</a>`,
+    (surfaces.brief || surfaces.control) && `<a href="/activity">Activity</a>`,
+    surfaces.control && `<a href="/control">Sessions by plan</a>`,
+    surfaces.timeline && `<a href="/timeline">Plan timeline</a>`,
+    surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
+  ]);
+  const project = menu("Project", [
+    `<a href="/map">Map</a>`,
+    surfaces.standards && `<a href="/standards">Standards</a>`,
+    `<a href="/llms.txt">llms.txt</a>`,
+    `<a href="/about">About</a>`,
+  ]);
+  const hub = hubUrl();
   const links = [
+    surfaces.brief && `<a href="/">Command center</a>`,
+    work,
+    project,
     // Only when the proxy is on, because it is the only time there is anything to review. A nav
     // entry that leads to an empty frame is worse than no entry.
     review && `<a href="/review">Review</a>`,
-    surfaces.plans && `<a href="/plans">Plans</a>`,
-    surfaces.decisions && `<a href="/decisions">Decisions</a>`,
-    surfaces.control && `<a href="/control">Control</a>`,
-    surfaces.runs && `<a href="/runs">Runs</a>`,
-    surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
-    surfaces.timeline && `<a href="/timeline">Timeline</a>`,
-    surfaces.standards && `<a href="/standards">Standards</a>`,
-    `<a href="/about">About</a>`,
+    hub && `<a class="pantry-nav__hub" href="${hub}">All projects</a>`,
   ].filter(Boolean).join("\n  ");
   // The theming controls are GRAIN's, driven by attributes rather than by any code here: theme.js
   // binds anything carrying data-toggle-scheme or data-cycle-theme, and writes the current flavor
@@ -71,7 +103,8 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
   <main class="pantry-main${opts.fullBleed ? " pantry-main--full" : ""}">${body}</main>
   ${opts.fullBleed ? "" : madeWith()}
   <script src="/scripts/theme.js" defer></script>
-  <script src="/pantry-cmdk.js" defer></script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
+  <script src="/pantry-cmdk.js" defer></script>
+  <script>document.addEventListener("click",(ev)=>{for(const d of document.querySelectorAll(".pantry-nav__menu[open]"))if(!d.contains(ev.target))d.removeAttribute("open")});</script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
 </body>
 </html>`;
 }

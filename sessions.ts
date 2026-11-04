@@ -39,7 +39,7 @@ import type { ResolvedPantryConfig } from "./config.ts";
 
 /** The three moments the emitter records. Anything else in the log is malformed, by design: a
  *  vocabulary that grows silently is one no reader can be held to. */
-export const SESSION_EVENT_KINDS = ["start", "tool", "stop"] as const;
+export const SESSION_EVENT_KINDS = ["start", "tool", "stop", "agent-start", "agent-stop"] as const;
 export type SessionEventKind = (typeof SESSION_EVENT_KINDS)[number];
 
 /** One line of the log. Every field beyond the four required ones is best-effort: the harness does
@@ -58,6 +58,31 @@ export interface SessionEvent {
   path?: string;
   /** the session that spawned this one, where the harness supplied it */
   parent?: string;
+  /** the subagent that fired this event, when it ran inside the session rather than as the session */
+  agent?: string;
+  /** what kind of subagent it is (Explore, implementer), as the harness names it */
+  agentType?: string;
+  /** the few words the parent used to describe the subagent's task, on its start and stop events */
+  task?: string;
+}
+
+/** A subagent's state. "running" while it is still firing events, "done" once it stopped, and
+ *  "quiet" when it went silent without a stop, which is a subagent nobody heard end. */
+export type AgentState = "running" | "quiet" | "done";
+
+/** One subagent a session spawned, folded from the events that carry its id. */
+export interface AgentRow {
+  id: string;
+  type: string | null;
+  task: string | null;
+  state: AgentState;
+  startedAt: string;
+  lastSeenAt: string;
+  endedAt: string | null;
+  toolEvents: number;
+  lastTool: string | null;
+  /** the files it was seen writing, which also count toward its parent session's paths */
+  paths: string[];
 }
 
 export interface SessionLog {
@@ -132,6 +157,8 @@ export interface SessionRow {
   paths: string[];
   /** paths dropped by the cap, so a truncated list never reads as a complete one */
   pathsOmitted: number;
+  /** the subagents this session spawned, newest first */
+  agents: AgentRow[];
 }
 
 export interface SessionsPayload {
@@ -191,6 +218,9 @@ export function parseSessionLine(line: string): SessionEvent | "unknown-kind" | 
   if (typeof o.tool === "string" && o.tool) event.tool = o.tool;
   if (typeof o.path === "string" && o.path) event.path = o.path;
   if (typeof o.parent === "string" && o.parent) event.parent = o.parent;
+  if (typeof o.agent === "string" && o.agent) event.agent = o.agent;
+  if (typeof o.agentType === "string" && o.agentType) event.agentType = o.agentType;
+  if (typeof o.task === "string" && o.task) event.task = o.task;
   return event;
 }
 
@@ -269,6 +299,7 @@ export function summarizeSessions(log: SessionLog, nowIso: string, cwdFilter?: s
   const rows = new Map<string, SessionRow>();
   const pathSeen = new Map<string, Set<string>>();
   const stoppedAt = new Map<string, string>();
+  const agentRows = new Map<string, AgentRow>();
   // Both sides through resolve, because the emitter writes an absolute path and a host may have
   // started PANTRY with a trailing slash or a ".." segment. A string compare there finds the log and
   // then filters every row out of it, which renders as a calm empty page over a full file.
@@ -302,6 +333,7 @@ export function summarizeSessions(log: SessionLog, nowIso: string, cwdFilter?: s
         lastTool: null,
         paths: [],
         pathsOmitted: 0,
+        agents: [],
       };
       rows.set(e.session, row);
       pathSeen.set(e.session, new Set());
@@ -311,10 +343,12 @@ export function summarizeSessions(log: SessionLog, nowIso: string, cwdFilter?: s
     if (e.parent && !row.parent) row.parent = e.parent;
     if (Date.parse(e.at) < Date.parse(row.firstSeenAt)) row.firstSeenAt = e.at;
     if (Date.parse(e.at) > Date.parse(row.lastSeenAt)) row.lastSeenAt = e.at;
+    if (e.agent) foldAgent(agentRows, row, e);
     if (e.kind === "stop") stoppedAt.set(e.session, e.at);
     if (e.kind === "tool") {
       row.toolEvents++;
-      if (e.tool) row.lastTool = e.tool;
+      // The session's own last tool, not a subagent's: the subagent row says what it is doing.
+      if (e.tool && !e.agent) row.lastTool = e.tool;
       if (e.path) {
         const seen = pathSeen.get(e.session)!;
         if (!seen.has(e.path)) {
@@ -334,9 +368,36 @@ export function summarizeSessions(log: SessionLog, nowIso: string, cwdFilter?: s
     const since = Math.max(0, now - Date.parse(row.lastSeenAt));
     row.idleSeconds = Math.round(since / 1000);
     row.state = row.stopped || since > ENDED_WINDOW_MS ? "ended" : since <= ALIVE_WINDOW_MS ? "alive" : "idle";
+    for (const a of row.agents) {
+      if (a.endedAt) a.state = "done";
+      else a.state = row.state !== "ended" && now - Date.parse(a.lastSeenAt) <= ALIVE_WINDOW_MS ? "running" : "quiet";
+    }
+    row.agents.sort((x, y) => Date.parse(y.startedAt) - Date.parse(x.startedAt));
   }
 
   return [...rows.values()].sort((a, b) => Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt));
+}
+
+/** Fold one subagent event into its row, creating the row on first sight. Keyed by session and agent
+ *  id together, because an agent id is only promised unique inside its session. */
+function foldAgent(agentRows: Map<string, AgentRow>, session: SessionRow, e: SessionEvent): void {
+  const key = `${e.session}:${e.agent}`;
+  let a = agentRows.get(key);
+  if (!a) {
+    a = { id: e.agent!, type: null, task: null, state: "running", startedAt: e.at, lastSeenAt: e.at, endedAt: null, toolEvents: 0, lastTool: null, paths: [] };
+    agentRows.set(key, a);
+    session.agents.push(a);
+  }
+  if (e.agentType && !a.type) a.type = e.agentType;
+  if (e.task && !a.task) a.task = e.task;
+  if (Date.parse(e.at) < Date.parse(a.startedAt)) a.startedAt = e.at;
+  if (Date.parse(e.at) > Date.parse(a.lastSeenAt)) a.lastSeenAt = e.at;
+  if (e.kind === "agent-stop") a.endedAt = e.at;
+  if (e.kind === "tool") {
+    a.toolEvents++;
+    if (e.tool) a.lastTool = e.tool;
+    if (e.path && !a.paths.includes(e.path) && a.paths.length < MAX_PATHS_PER_SESSION) a.paths.push(e.path);
+  }
 }
 
 /**

@@ -1,0 +1,64 @@
+import { describe, expect, test } from "bun:test";
+import { assembleActivity, activityBody, segmentsOf, IDLE_GAP_MS } from "./activity.ts";
+import { parseSessionLine, summarizeSessions, type SessionEvent } from "./sessions.ts";
+
+const NOW = "2026-11-05T12:00:00.000Z";
+const at = (minAgo: number) => new Date(Date.parse(NOW) - minAgo * 60_000).toISOString();
+const ev = (minAgo: number, extra: Partial<SessionEvent> = {}): SessionEvent => ({ kind: "tool", at: at(minAgo), session: "s1", cwd: "/repo", ...extra });
+const build = (events: SessionEvent[], plans = [{ id: "p1", title: "P1", status: "doing", owner: "ai", depends: [], touches: ["src"] }]) =>
+  assembleActivity({ events, plans, repoRoot: "/repo", now: NOW, windowHours: 24, project: "repo", present: true });
+
+describe("segments", () => {
+  test("a silence longer than the gap splits a bar", () => {
+    const t = [0, 60_000, 60_000 + IDLE_GAP_MS + 1, 60_000 + IDLE_GAP_MS + 2];
+    expect(segmentsOf(t).map((s) => s.events)).toEqual([2, 2]);
+  });
+});
+
+describe("lanes", () => {
+  test("subagent events nest under their session with type and task, and their writes join a plan", () => {
+    const a = build([
+      ev(30, { kind: "start" }),
+      ev(20, { kind: "agent-start", agent: "a1", agentType: "Explore", task: "Find the routes" }),
+      ev(19, { agent: "a1", agentType: "Explore", path: "/repo/src/x.ts", tool: "Edit" }),
+      ev(18, { kind: "agent-stop", agent: "a1", agentType: "Explore" }),
+      ev(10),
+    ]);
+    expect(a.lanes).toHaveLength(1);
+    expect(a.agentCount).toBe(1);
+    const [agent] = a.lanes[0].agents;
+    expect(agent).toMatchObject({ id: "a1", label: "Explore", task: "Find the routes", ended: true, plans: ["p1"] });
+    expect(a.lanes[0].plans).toEqual(["p1"]);
+  });
+
+  test("events outside the window or another checkout are left out", () => {
+    const a = build([ev(25 * 60), ev(5, { cwd: "/elsewhere" })]);
+    expect(a.lanes).toHaveLength(0);
+  });
+
+  test("the page draws a lane per session and per subagent", () => {
+    const html = activityBody(build([ev(30), ev(20, { agent: "a1", agentType: "locator", task: "Map it" })]));
+    expect(html).toContain("locator");
+    expect(html).toContain("Map it");
+    expect(html.match(/class="act-lane(?! act-axis)/g)?.length).toBe(2);
+  });
+});
+
+describe("the session reader folds subagents", () => {
+  test("agent kinds parse, and a stopped subagent is done while its session stays alive", () => {
+    const lines = [
+      { kind: "start", at: at(3), session: "s1", cwd: "/repo" },
+      { kind: "agent-start", at: at(2), session: "s1", cwd: "/repo", agent: "a1", agentType: "Explore", task: "Look" },
+      { kind: "tool", at: at(2), session: "s1", cwd: "/repo", agent: "a2", agentType: "implementer", tool: "Edit", path: "/repo/a.ts" },
+      { kind: "agent-stop", at: at(1), session: "s1", cwd: "/repo", agent: "a1" },
+    ].map((l) => parseSessionLine(JSON.stringify(l)) as SessionEvent);
+    expect(lines.every((l) => typeof l === "object")).toBe(true);
+    const [row] = summarizeSessions({ path: "x", events: lines, malformed: 0, malformedTail: false, unknownKinds: 0, readError: null, truncated: false }, NOW);
+    expect(row.state).toBe("alive");
+    expect(row.lastTool).toBeNull();
+    const byId = Object.fromEntries(row.agents.map((a) => [a.id, a]));
+    expect(byId.a1).toMatchObject({ type: "Explore", task: "Look", state: "done" });
+    expect(byId.a2).toMatchObject({ type: "implementer", state: "running", lastTool: "Edit" });
+    expect(row.paths).toEqual(["/repo/a.ts"]);
+  });
+});

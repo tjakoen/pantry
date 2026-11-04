@@ -58,6 +58,7 @@ import { aboutBody, docsBody, homeBody } from "./home-page.ts";
 import { mapBody } from "./map-page.ts";
 import { runDetailBody, runsIndexBody } from "./runs-page.ts";
 import { timelineBody } from "./timeline-page.ts";
+import { ACTIVITY_WINDOWS, activityBody, buildActivity } from "./activity.ts";
 export { homeBody } from "./home-page.ts";
 export { pantryPage, type PantryPageOptions } from "./chrome.ts";
 
@@ -630,6 +631,24 @@ export function createPantryHandler(opts: PantryOptions) {
       // same way as the one in front of you, because both are only ever files.
       const asked = url.searchParams.get("session") ?? undefined;
       return html(page("Control", controlBody(await buildControlPayload(config, new Date().toISOString(), { session: asked }))));
+    }
+
+    // The session timeline: lanes per session with their subagents nested, over a chosen window.
+    // On with the command center, which already shows the same sessions; loopback-only like /control.
+    if ((surfaces.brief || surfaces.control) && path === "/activity") {
+      if (!isLoopbackRequest(clientAddress)) {
+        return new Response("Activity is readable from this machine only.", { status: 403, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      }
+      const asked = Number(url.searchParams.get("hours"));
+      const hours = (ACTIVITY_WINDOWS as readonly number[]).includes(asked) ? asked : 24;
+      const payload = await buildActivity(config, new Date().toISOString(), hours);
+      return html(page("Activity", activityBody(payload)));
+    }
+    if ((surfaces.brief || surfaces.control) && path === "/activity.json") {
+      if (!isLoopbackRequest(clientAddress)) return new Response("Forbidden", { status: 403 });
+      const asked = Number(url.searchParams.get("hours"));
+      const hours = (ACTIVITY_WINDOWS as readonly number[]).includes(asked) ? asked : 24;
+      return Response.json(await buildActivity(config, new Date().toISOString(), hours));
     }
 
     // --- the decision inbox (piece 11d): human /decisions + /decisions/<id>, machine twin /decisions.json.

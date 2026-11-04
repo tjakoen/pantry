@@ -554,3 +554,27 @@ portfolio since its newest run report, over the line of 15, with nothing before 
 - **Not a fork of the docs.** PANTRY renders the canonical `.md` from each package, never copies.
 </content>
 </invoke>
+
+## Activity, subagents, the hub home and the three-area nav (2026-11-05)
+
+`/activity` draws the session log as a timeline: one lane per session over the last 6, 24 or 72
+hours, a bar for each stretch of work and a gap wherever it went quiet for fifteen minutes or more.
+Subagents are lanes nested under the session that spawned them, labelled with their type and the
+few words the parent used to describe the task. Each lane names the plans its writes fall inside.
+It is on whenever the command center is, and readable from this machine only, like `/control`.
+
+Subagents reach PANTRY through the session-event hook, which now records `agent_id` and
+`agent_type` on every event a subagent fires, plus `agent-start` and `agent-stop` from the
+SubagentStart and SubagentStop hooks. The command center's Agents column lists them under their
+session: running ones always, finished ones up to three.
+
+The hub's own page at port 4400 is now a row per project, read from each project's `/brief.json`:
+live sessions and running subagents, what waits on the owner, unread answers, out-of-scope writes,
+drift and the next ready plan. Live projects sort first. The reads run three at a time and are
+cached for thirty seconds; the page renders after four seconds with whatever has arrived, marks the
+rest as still reading, and refreshes sooner until they land.
+
+The nav is three areas: the command center, a Work menu (plans, decisions, runs, activity, plan
+timeline, artifacts) and a Project menu (map, standards, llms.txt, about), plus a link back to the
+hub when the project runs as a hub child. The page markup moved out of `app.ts` into `chrome.ts`
+and one `*-page.ts` module per surface; `app.ts` keeps the routing.
