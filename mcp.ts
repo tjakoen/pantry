@@ -64,7 +64,7 @@ export const TOOLS = [
   },
   {
     name: "pantry_heartbeat",
-    description: "Keep your claim alive. Claims expire after 30 minutes without one.",
+    description: "Keep your claim alive. Claims expire after 30 minutes without one. The reply carries any answers the owner has recorded that no session has acted on, flagged forYourPlan when they concern this plan: read them every time.",
     inputSchema: { type: "object", properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string" } }, required: ["path", "planId", "sessionId"] },
   },
   {
@@ -99,6 +99,27 @@ async function fetchSurface(p: HubProject, route: string): Promise<string | null
     } catch { /* try the prefixed route */ }
   }
   return null;
+}
+
+/** The owner's unacked answers for a project, the ones touching `planId` first. */
+export async function unreadAnswers(projectPath: string, decisions: { id: string; blocks: string[] }[], planId: string): Promise<{ answers?: unknown[]; answersNote?: string }> {
+  try {
+    const { loadPantryConfig } = await import("./config.ts");
+    const { readAnswerLog, unacked } = await import("./answers.ts");
+    const pending = unacked(await readAnswerLog((await loadPantryConfig(projectPath)).answersLog));
+    if (!pending.length) return {};
+    const rows = pending.map((a) => ({
+      id: a.id,
+      decision: a.request.ref,
+      question: a.request.question,
+      answer: a.choice,
+      ...(a.notes ? { notes: a.notes } : {}),
+      forYourPlan: decisions.some((d) => d.id === a.request.ref && d.blocks.includes(planId)),
+    })).sort((x, y) => Number(y.forYourPlan) - Number(x.forYourPlan));
+    return { answers: rows, answersNote: "The owner answered these. Act on the ones that concern your work, then run: pantry answers ack <id>" };
+  } catch {
+    return {};
+  }
 }
 
 export async function callTool(name: string, args: Json, reg: Registry, deps: {
@@ -142,8 +163,16 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
       if (name === "pantry_claims") return text(JSON.stringify(listClaims(lines, now, ttlMs(), doneInFile), null, 2));
       return text(JSON.stringify({ project: p.name, ...readyPlans(plans, decisions, foldClaims(lines, now, ttlMs(), doneInFile)) }, null, 2));
     }
-    if (name === "pantry_claim") return reply(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool")));
-    if (name === "pantry_heartbeat") return reply(await updateClaim(ctx, str("planId"), str("sessionId"), "heartbeat"));
+    // Claim and heartbeat replies carry the owner's unread answers. This is how an answer recorded on
+    // the command center reaches a session that is already running, without PANTRY ever pushing: the
+    // agent asks every ten minutes anyway, and the reply is where it finds out.
+    const withAnswers = async (r: { ok: true; value: unknown } | { ok: false; error: string }, planId: string) => {
+      if (!r.ok) return reply(r);
+      const answers = await unreadAnswers(p.path, decisions, planId);
+      return text(JSON.stringify({ ...(r.value as object), ...answers }, null, 2));
+    };
+    if (name === "pantry_claim") return withAnswers(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool")), str("planId"));
+    if (name === "pantry_heartbeat") return withAnswers(await updateClaim(ctx, str("planId"), str("sessionId"), "heartbeat"), str("planId"));
     const outcome = str("outcome");
     if (outcome !== "done" && outcome !== "released") return text("outcome must be done or released", true);
     return reply(await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release"));

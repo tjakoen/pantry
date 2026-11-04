@@ -21,7 +21,8 @@
 // PANTRY's read-only promise survives intact. It may append HERE and nowhere else: the path comes
 // from config, never from a request, and a path that looks like plan corpus is refused outright.
 import { appendFile, mkdir, readFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { existsSync, lstatSync } from "node:fs";
 
 /** Which surface an answer came from. Not a behaviour switch — it is provenance, so a reader can
@@ -94,7 +95,22 @@ export interface AnswerLog {
   malformed: number;
   /** An existing log that could not be read is an unknown inbox, never an empty one. */
   readError: string | null;
+  /** the machine inbox merged into this read, when one exists (see inboxPath) */
+  inbox?: string;
 }
+
+/**
+ * The machine inbox for one answer log. The always-on hub mounts project code read-only, so an
+ * answer recorded there cannot land in the repo's log. It lands here instead, outside every repo,
+ * keyed by the repo log's own absolute path, which is the same inside the container and on the host
+ * because the hub mounts code at its host path. Every read merges it; the session that acts on an
+ * answer copies it into the repo log when it acks, so the record still ends up committed.
+ */
+export function inboxPath(logPath: string, home = process.env.PANTRY_HOME || join(homedir(), ".pantry")): string {
+  return join(home, "answers", `${logPath.replace(/[^a-zA-Z0-9]/g, "-")}.jsonl`);
+}
+
+const readOnly = (err: unknown) => err instanceof Error && "code" in err && ["EROFS", "EACCES", "EPERM"].includes(String(err.code));
 
 /** What a caller hands `appendAnswer`. Everything a reader needs is required; everything else is not. */
 export interface AnswerInput {
@@ -278,7 +294,12 @@ export async function appendAnswer(logPath: string, input: AnswerInput, now: Dat
     ...(input.notes ? { notes: input.notes } : {}),
     ...(input.composed ? { composed: input.composed } : {}),
   };
-  await writeLine(logPath, entry);
+  try {
+    await writeLine(logPath, entry);
+  } catch (err) {
+    if (!readOnly(err)) throw err;
+    await writeLine(inboxPath(logPath), entry);
+  }
   return entry;
 }
 
@@ -298,7 +319,22 @@ export async function appendAck(
     ...(ack.by ? { by: trimmed(ack.by).slice(0, 200) } : {}),
     ...(ack.note ? { note: trimmed(ack.note).slice(0, MAX_FIELD_CHARS) } : {}),
   };
-  await writeLine(logPath, entry);
+  // An answer recorded on the hub lives only in the machine inbox. Copy it into the repo log before
+  // the ack, so the committed log holds the question and answer the ack points at.
+  const repo = await readLogFile(logPath);
+  if (!repo.entries.some((e) => e.id === forId)) {
+    const fromInbox = (await readLogFile(inboxPath(logPath))).entries.find((e) => e.id === forId && e.kind === "answer");
+    if (fromInbox) {
+      try { await writeLine(logPath, fromInbox); }
+      catch (err) { if (!readOnly(err)) throw err; await writeLine(inboxPath(logPath), entry); return entry; }
+    }
+  }
+  try {
+    await writeLine(logPath, entry);
+  } catch (err) {
+    if (!readOnly(err)) throw err;
+    await writeLine(inboxPath(logPath), entry);
+  }
   return entry;
 }
 
@@ -313,6 +349,17 @@ async function writeLine(logPath: string, entry: LogEntry): Promise<void> {
  * asked anything is the healthy case and must not read as a broken one.
  */
 export async function readAnswerLog(logPath: string): Promise<AnswerLog> {
+  const repo = await readLogFile(logPath);
+  const box = inboxPath(logPath);
+  if (!existsSync(box)) return repo;
+  const extra = await readLogFile(box);
+  const seen = new Set(repo.entries.map((e) => e.id));
+  const merged = [...repo.entries, ...extra.entries.filter((e) => !seen.has(e.id))]
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return { ...repo, entries: merged, malformed: repo.malformed + extra.malformed, inbox: box };
+}
+
+async function readLogFile(logPath: string): Promise<AnswerLog> {
   let text: string;
   try {
     text = await readFile(logPath, "utf8");

@@ -5,12 +5,13 @@
 // rule stated in standards/DECISIONS.md or in the review-layer plan's security section, and a rule
 // with no test is a sentence.
 import { test, expect, describe } from "bun:test";
-import { mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   answers, answersFor, appendAck, appendAnswer, AnswerRejected, assertWritableLogPath, formatAnswerLog,
-  isLoopbackRequest, makeEntryId, matchesWaitTarget, normalizeAnswer, readAnswerLog, unacked,
+  inboxPath, isLoopbackRequest, makeEntryId, matchesWaitTarget, normalizeAnswer, readAnswerLog, unacked,
   waitForAnswer, waitForAnswers, MAX_FIELD_CHARS, type AnswerInput,
 } from "./answers.ts";
 
@@ -419,5 +420,48 @@ describe("the write-back's loopback bound", () => {
     expect(isLoopbackRequest(null)).toBe(false);
     expect(isLoopbackRequest(undefined)).toBe(false);
     expect(isLoopbackRequest("")).toBe(false);
+  });
+});
+
+describe("the machine inbox (answers recorded where the repo is read-only)", () => {
+  const input = { via: "test", choice: "A", request: { source: "decision" as const, ref: "d1", question: "Pick?" } };
+
+  async function setup() {
+    const root = await mkdtemp(join(tmpdir(), "pantry-inbox-"));
+    const home = join(root, "home");
+    const dir = join(root, "repo", "decisions");
+    await mkdir(dir, { recursive: true });
+    const prev = process.env.PANTRY_HOME;
+    process.env.PANTRY_HOME = home;
+    return { log: join(dir, "answers.jsonl"), dir, restore: () => { if (prev === undefined) delete process.env.PANTRY_HOME; else process.env.PANTRY_HOME = prev; } };
+  }
+
+  test("a read-only repo log sends the answer to the inbox, and a read merges it", async () => {
+    const { log, dir, restore } = await setup();
+    try {
+      await chmod(dir, 0o555);
+      const entry = await appendAnswer(log, input, new Date("2026-11-04T10:00:00Z"));
+      expect(existsSync(log)).toBe(false);
+      expect(existsSync(inboxPath(log))).toBe(true);
+      const read = await readAnswerLog(log);
+      expect(unacked(read).map((a) => a.id)).toEqual([entry.id]);
+      expect(read.inbox).toBe(inboxPath(log));
+    } finally { await chmod(dir, 0o755); restore(); }
+  });
+
+  test("acking an inbox-only answer copies it into the repo log first", async () => {
+    const { log, dir, restore } = await setup();
+    try {
+      await chmod(dir, 0o555);
+      const entry = await appendAnswer(log, input, new Date("2026-11-04T10:00:00Z"));
+      await chmod(dir, 0o755);
+      await appendAck(log, { for: entry.id, by: "s1" }, new Date("2026-11-04T10:05:00Z"));
+      const repoLines = (await Bun.file(log).text()).trim().split("\n").map((l) => JSON.parse(l));
+      expect(repoLines.map((l) => l.kind)).toEqual(["answer", "ack"]);
+      expect(repoLines[0].id).toBe(entry.id);
+      const read = await readAnswerLog(log);
+      expect(unacked(read)).toEqual([]);
+      expect(read.entries.filter((e) => e.kind === "answer")).toHaveLength(1);
+    } finally { await chmod(dir, 0o755); restore(); }
   });
 });

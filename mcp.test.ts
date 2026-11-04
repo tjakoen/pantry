@@ -104,3 +104,20 @@ describe("pantry_orient", () => {
     } finally { server.stop(true); }
   });
 });
+
+describe("unread answers reach a running agent", () => {
+  test("they come back flagged for the plan the decision holds", async () => {
+    const { mkdtemp, mkdir, writeFile } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { unreadAnswers } = await import("./mcp.ts");
+    const root = await mkdtemp(join(tmpdir(), "pantry-ua-"));
+    await mkdir(join(root, "plans", "decisions"), { recursive: true });
+    const line = (o: object) => JSON.stringify(o) + "\n";
+    await writeFile(join(root, "plans", "decisions", "answers.jsonl"),
+      line({ kind: "answer", id: "a-1", at: "2026-11-04T10:00:00Z", via: "t", choice: "B", request: { source: "decision", ref: "d1", question: "Pick?" } })
+      + line({ kind: "answer", id: "a-2", at: "2026-11-04T10:01:00Z", via: "t", choice: "C", request: { source: "decision", ref: "d2", question: "Other?" } }));
+    const r = await unreadAnswers(root, [{ id: "d2", blocks: ["p1"] }], "p1") as { answers: { id: string; forYourPlan: boolean }[] };
+    expect(r.answers.map((a) => [a.id, a.forYourPlan])).toEqual([["a-2", true], ["a-1", false]]);
+  });
+});

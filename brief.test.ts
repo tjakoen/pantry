@@ -130,3 +130,12 @@ test("prose after the word run is not a fix command", () => {
   expect(commandFromDetail("28 commits since the newest run report (2026-11-01) — over 15, close a run with a report")).toBeNull();
   expect(commandFromDetail("1 behind: batch 0.2.1<0.3.0 — run deps:refresh")).toBe("deps:refresh");
 });
+
+test("an unread answer is carried with the plans its decision holds, and an ack command", () => {
+  const answer = { kind: "answer" as const, id: "a-1", at: NOW, via: "t", choice: "B", request: { source: "decision" as const, ref: "d1", question: "Pick?" } };
+  const b = assembleBrief(inputs({ decisions: [{ id: "d1", status: "open", blocks: ["p1"] }], answers: [answer] }));
+  expect(b.answered).toHaveLength(1);
+  expect(b.answered[0].holds).toEqual(["p1"]);
+  expect(briefText(b)).toContain("pantry answers ack a-1");
+  expect(b.answered[0].actions[0].value).toContain("pantry answers ack a-1");
+});

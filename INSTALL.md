@@ -184,6 +184,13 @@ it, and the running server writes nothing but the log.
 
 ### The answer log
 
+When PANTRY runs on the hub, the project folder is mounted read-only, so an answer recorded there
+goes to a machine inbox at `~/.pantry/answers/`, keyed by the log's path. Every reader merges the
+inbox with the repo log. An agent receives unread answers in its `pantry_claim` and
+`pantry_heartbeat` replies and in the brief that `pantry_orient` returns. When it runs
+`pantry answers ack <id>`, an answer that exists only in the inbox is copied into the repo log
+first, so the committed log still holds both the question and the answer.
+
 An agent that cannot decide something alone raises a question: a decision request under
 `plans/decisions/`, or a decision card at the end of a review tour. The answer comes back on **one
 append-only log**, whichever surface it was given on, and the next session reads it. The path is

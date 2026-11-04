@@ -78,6 +78,31 @@ function decisionCard(w: WaitingRow): string {
 </article>`;
 }
 
+/** How PANTRY works, in the order the work moves. Shown on the command center itself, so the page
+ *  explains its own columns to someone who has never read INSTALL.md. */
+const HOW = [
+  ["Plans", "You, or an agent with your go-ahead, write plans in plans/: the goal, the files it touches, a done line and an owner. PANTRY reads them and never edits them."],
+  ["Queue", "A plan whose owner is ai, whose dependencies are done and that no decision holds is ready. Agents take the first one with pantry_next and pantry_claim. Claims live on this machine, so two agents never take the same plan."],
+  ["Agents", "A hook records each session's tool calls and the files it writes. That is how the Agents column knows who is working, and flags a file written outside the plan the agent claimed."],
+  ["Inbox", "When an agent needs you, it writes a decision in plans/decisions/. Answer it here. The answer goes to the answer log, or to this machine's inbox when the hub cannot write the repo."],
+  ["Back to the agent", "A running agent gets your unread answers with its next heartbeat, about every ten minutes, and a new session gets them from pantry_orient. It acts, then acks with pantry answers ack."],
+  ["Drift", "The doctor's quick checks run on every refresh. Each one names its fix, and the copy buttons hand it to you or to the agent."],
+] as const;
+
+function howItWorks(): string {
+  return `<details class="cc-how" data-key="how"><summary>How PANTRY works</summary>
+  <ol class="cc-how-steps">${HOW.map(([t, d]) => `<li><strong>${e(t)}</strong><span>${e(d)}</span></li>`).join("")}</ol>
+  <p class="cc-meta">PANTRY runs no model and never starts or messages an agent. It is where you watch and steer; the agents pull their work and their answers from it. The agent reads this same page as <a href="/brief.txt">text</a> through pantry_orient.</p>
+</details>`;
+}
+
+function answeredCard(a: BriefPayload["answered"][number], now: string): string {
+  return `<article class="cc-card is-done-ish" tabindex="0"><header><h3>${e(a.question)}</h3><span class="cc-tag">answered</span></header>
+  <p class="cc-meta">You chose <strong>${e(a.choice || "(a note)")}</strong> ${e(ago(a.at, now))}.${a.holds.length ? ` Frees ${e(a.holds.join(", "))}.` : ""} Waiting for an agent to act and ack; a running one gets it on its next heartbeat.</p>
+  ${actions(a.actions)}
+</article>`;
+}
+
 function plainCard(w: WaitingRow): string {
   return `<article class="cc-card" tabindex="0"><header><h3>${e(w.title)}</h3><span class="cc-tag">${w.kind === "human-plan" ? "yours" : "blocked"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
 }
@@ -86,7 +111,7 @@ export function briefBody(b: BriefPayload): string {
   const strayed = b.inFlight.filter((r) => r.outOfScope.length).length;
   const decisions = b.waiting.filter((w) => w.kind === "decision" && w.decision);
   const otherWaiting = b.waiting.filter((w) => !(w.kind === "decision" && w.decision));
-  const inboxCount = b.waiting.length;
+  const inboxCount = b.waiting.filter((w) => !b.answered.some((a) => a.ref === w.id)).length;
 
   const chips = [
     ["agents", "Agents", b.inFlight.length, ""],
@@ -115,9 +140,12 @@ export function briefBody(b: BriefPayload): string {
     ? `<details class="cc-more" data-key="drift"${decisions.length + otherWaiting.length === 0 ? " open" : ""}><summary>Drift: ${b.drift.length} check(s) due</summary>${b.drift.map((d) => `<article class="cc-card cc-drift" tabindex="0"><header><h3>${e(d.label)}</h3><span class="cc-tag${d.severity === "error" ? " is-alert" : ""}">${e(d.severity)}</span></header><p class="cc-meta">${e(d.detail)}</p>${actions(d.actions)}</article>`).join("")}</details>`
     : `<p class="cc-empty">The doctor's quick checks pass.</p>`;
 
-  const inbox = (decisions.length || otherWaiting.length
-    ? decisions.map(decisionCard).join("") + otherWaiting.map(plainCard).join("")
+  const answeredIds = new Set(b.answered.map((a) => a.ref));
+  const open = decisions.filter((w) => !answeredIds.has(w.id));
+  const inbox = (open.length || otherWaiting.length
+    ? open.map(decisionCard).join("") + otherWaiting.map(plainCard).join("")
     : empty("Nothing is waiting on you."))
+    + (b.answered.length ? `<details class="cc-more" data-key="answered" open><summary>Answered, waiting for an agent: ${b.answered.length}</summary>${b.answered.map((a) => answeredCard(a, b.generated)).join("")}</details>` : "")
     + drift;
 
   return `<div class="cc" id="cc" data-generated="${e(b.generated)}">
@@ -125,6 +153,7 @@ export function briefBody(b: BriefPayload): string {
   <div class="cc-title"><h1>${e(b.project)}</h1><p>Command center for this project's AI. Read from disk, refreshed every ${REFRESH_SECONDS} s; PANTRY runs no model and starts no session.</p></div>
   <nav class="cc-chips" aria-label="Summary">${chips.map(([to, l, n, t]) => `<a class="cc-chip${t}" href="#cc-${to}"><span class="cc-chip-n">${n}</span> ${e(l)}</a>`).join("")}</nav>
   <p class="cc-sub"><span class="cc-live" data-live>updated ${e(b.generated.slice(11, 19))} UTC</span> · <a href="/plans">board</a> · <a href="/brief.json">json</a> · <a href="/brief.txt">agent's copy</a> · <span class="cc-keys">j k move · c copy · o open · r refresh</span></p>
+  ${howItWorks()}
   ${b.notes.length ? `<ul class="cc-notes">${b.notes.map((n) => `<li>${e(n)}</li>`).join("")}</ul>` : ""}
 </header>
 <div class="cc-grid">

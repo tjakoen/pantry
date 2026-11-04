@@ -669,3 +669,8 @@
 .cc-more { margin-top: var(--space-2); }
 .cc-more > ul { font-size: var(--text-xs); padding-left: var(--space-4); }
 .cc-more > .cc-card { margin-top: var(--space-2); }
+.cc-how { border: 1px solid var(--cc-line); border-radius: var(--radius, 0.5rem); padding: var(--space-2) var(--space-3); }
+.cc-how summary { cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
+.cc-how-steps { margin: var(--space-2) 0; padding-left: var(--space-4); display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--space-2) var(--space-4); font-size: var(--text-xs); }
+.cc-how-steps li { display: grid; gap: 0.2em; color: var(--ink-muted); }
+.cc-how-steps strong { color: var(--ink); font-size: var(--text-sm); }

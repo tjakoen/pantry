@@ -19,6 +19,7 @@ import { buildSessionsPayload, planTouchesPath, type SessionRow } from "./sessio
 import { claimsFile, foldClaims, loadProjectWork, readClaims, readyPlans, ttlMs, type ClaimView, type DecisionLike, type PlanLike } from "./orchestrator.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
 import { runDoctor, type DoctorCheck } from "./doctor.ts";
+import { readAnswerLog, unacked, type AnswerEntry } from "./answers.ts";
 
 /** Sessions that ended this recently still count, so unplanned work does not vanish on close. */
 export const ENDED_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -84,6 +85,19 @@ export interface NextRow {
   skipped: { id: string; title: string; reasons: string[] }[];
 }
 
+/** An answer the owner recorded that no session has acted on yet. */
+export interface AnsweredRow {
+  id: string;
+  at: string;
+  ref: string;
+  question: string;
+  choice: string;
+  notes: string | null;
+  /** the plans an open decision with this id holds, so an agent on one of them knows it is for it */
+  holds: string[];
+  actions: BriefAction[];
+}
+
 export interface BriefPayload {
   generated: string;
   project: string;
@@ -91,6 +105,8 @@ export interface BriefPayload {
   waiting: WaitingRow[];
   drift: DriftRow[];
   next: NextRow;
+  /** answers recorded and not yet acted on, oldest first: the agent's to pick up */
+  answered: AnsweredRow[];
   /** one line each, said on the page instead of rendering a section as if it were calm */
   notes: string[];
 }
@@ -105,6 +121,8 @@ export interface BriefInputs {
   claims: Map<string, ClaimView> | null;
   sessions: SessionRow[];
   checks: DoctorCheck[] | null;
+  /** unacked answers from the answer log, inbox merged */
+  answers?: AnswerEntry[];
   notes?: string[];
 }
 
@@ -239,7 +257,18 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
   }));
   const next: NextRow = { ready: queue[0] ?? null, queue, skipped };
 
-  return { generated: input.now, project: input.project, inFlight, waiting, drift, next, notes };
+  const answered: AnsweredRow[] = (input.answers ?? []).toSorted((a, b) => a.at.localeCompare(b.at)).map((a) => ({
+    id: a.id,
+    at: a.at,
+    ref: a.request.ref,
+    question: a.request.question,
+    choice: a.choice,
+    notes: a.notes ?? null,
+    holds: input.decisions.find((d) => d.id === a.request.ref)?.blocks ?? [],
+    actions: [{ label: "Copy prompt", kind: "copy", value: a.composed || `The owner answered ${a.request.ref} (${a.request.question}): ${a.choice || "see note"}.${a.notes ? ` Note: ${a.notes}` : ""} Act on it, then run: pantry answers ack ${a.id}` }],
+  }));
+
+  return { generated: input.now, project: input.project, inFlight, waiting, drift, next, answered, notes };
 }
 
 function toBriefSession(s: SessionRow): BriefSession {
@@ -285,6 +314,14 @@ export async function buildBrief(
   } catch (err) {
     notes.push(`The session log could not be read: ${err instanceof Error ? err.message : String(err)}.`);
   }
+  let answers: AnswerEntry[] = [];
+  try {
+    const log = await readAnswerLog(config.answersLog);
+    if (log.readError) notes.push(`The answer log could not be read: ${log.readError}.`);
+    answers = unacked(log);
+  } catch (err) {
+    notes.push(`The answer log could not be read: ${err instanceof Error ? err.message : String(err)}.`);
+  }
   let checks: DoctorCheck[] | null = null;
   try {
     checks = (await runDoctor({ cwd: repoRoot, config, now: new Date(now), runDrift: false, runDeps: false })).checks;
@@ -292,7 +329,7 @@ export async function buildBrief(
   } catch {
     checks = null;
   }
-  return assembleBrief({ now, project: config.projectName, repoRoot, plans, decisions, claims, sessions, checks, notes });
+  return assembleBrief({ now, project: config.projectName, repoRoot, plans, decisions, claims, sessions, checks, answers, notes });
 }
 
 /** The brief as Markdown, the agent's copy of the page: same sections, same order. */
@@ -307,6 +344,12 @@ export function briefText(b: BriefPayload): string {
     out.push(`- ${r.planId ?? "no plan"}: ${r.title}${who}; ${r.sessions.length} session(s)`);
     if (r.outOfScope.length) out.push(`  - out of scope: ${r.outOfScope.join(", ")}`);
     if (r.unrecorded) out.push(`  - and ${r.unrecorded} more not recorded`);
+  }
+  out.push("", "## Answered by the owner, not yet acted on", "");
+  if (!b.answered.length) out.push("No unread answers.");
+  for (const a of b.answered) {
+    out.push(`- ${a.id} on ${a.ref}${a.holds.length ? ` (holds ${a.holds.join(", ")})` : ""}: ${a.question} Answer: ${a.choice || "(see note)"}${a.notes ? `. Note: ${a.notes}` : ""}`);
+    out.push(`  - when acted on, run: pantry answers ack ${a.id}`);
   }
   out.push("", "## Waiting on the owner", "");
   if (!b.waiting.length) out.push("Nothing is waiting on the owner.");
