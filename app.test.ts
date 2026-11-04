@@ -862,10 +862,10 @@ describe("the alignment brief", () => {
 
   test("/ is the brief when the surface is on, and the older home when it is off", async () => {
     const a = await (await get(on, "/")).text();
-    expect(a).toContain("Where the AI work stands");
-    expect(a).toContain("Waiting on you");
+    expect(a).toContain("Command center for this project");
+    expect(a).toContain("Inbox");
     const b = await (await get(off, "/")).text();
-    expect(b).not.toContain("Where the AI work stands");
+    expect(b).not.toContain("Command center for this project");
     expect(b).toContain("test-project");
   }, 30_000);
 

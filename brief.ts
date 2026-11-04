@@ -36,6 +36,9 @@ export interface BriefSession {
   lastSeenAt: string;
   paths: string[];
   pathsOmitted: number;
+  /** the last tool the session used, the nearest thing to "what it is doing now" */
+  lastTool: string | null;
+  idleSeconds: number;
 }
 
 export interface InFlightRow {
@@ -59,6 +62,8 @@ export interface WaitingRow {
   title: string;
   detail: string;
   actions: BriefAction[];
+  /** for a decision: what the inline answer card needs to record an answer that carries its question */
+  decision?: { options: string[]; recommendation: string | null; unblocks: string | null; file: string | null };
 }
 
 export interface DriftRow {
@@ -69,8 +74,13 @@ export interface DriftRow {
   actions: BriefAction[];
 }
 
+export interface QueueRow { id: string; title: string; touches: string[]; actions: BriefAction[] }
+
 export interface NextRow {
-  ready: { id: string; title: string; actions: BriefAction[] } | null;
+  /** the first of `queue`, kept as its own field for readers of the first version */
+  ready: QueueRow | null;
+  /** every ready plan, in the order pantry_next offers them */
+  queue: QueueRow[];
   skipped: { id: string; title: string; reasons: string[] }[];
 }
 
@@ -90,7 +100,7 @@ export interface BriefInputs {
   project: string;
   repoRoot: string;
   plans: PlanLike[];
-  decisions: (DecisionLike & { title?: string; unblocks?: string | null })[];
+  decisions: (DecisionLike & { title?: string; unblocks?: string | null; options?: string[]; recommendation?: string | null; file?: string | null })[];
   /** null when the claims file could not be read, which the page says out loud */
   claims: Map<string, ClaimView> | null;
   sessions: SessionRow[];
@@ -184,7 +194,8 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
       id: d.id,
       title: d.title ?? d.id,
       detail: d.blocks.length ? `Holds ${d.blocks.join(", ")}.` : (d.unblocks || "Waiting on an answer."),
-      actions: [{ label: "Answer", kind: "link", value: `/decisions/${encodeURIComponent(d.id)}` }],
+      actions: [{ label: "Open", kind: "link", value: `/decisions/${encodeURIComponent(d.id)}` }],
+      decision: { options: d.options ?? [], recommendation: d.recommendation ?? null, unblocks: d.unblocks ?? null, file: d.file ?? null },
     });
   }
   for (const p of input.plans) {
@@ -217,24 +228,22 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
   }
 
   const { ready, skipped } = readyPlans(input.plans, input.decisions, claims);
-  const first = ready[0];
-  const next: NextRow = {
-    ready: first ? {
-      id: first.id,
-      title: first.title,
-      actions: [
-        { label: "Open plan", kind: "link", value: `/plan/${encodeURIComponent(first.id)}` },
-        { label: "Copy start prompt", kind: "copy", value: `Call pantry_next for this project, then pantry_claim plan ${first.id}, set its status to doing, and work it to its done line. Heartbeat every ten minutes and release when you finish.` },
-      ],
-    } : null,
-    skipped,
-  };
+  const queue: QueueRow[] = ready.map((r) => ({
+    id: r.id,
+    title: r.title,
+    touches: r.touches,
+    actions: [
+      { label: "Copy start prompt", kind: "copy", value: `Call pantry_next for this project, then pantry_claim plan ${r.id}, set its status to doing, and work it to its done line. Heartbeat every ten minutes and release when you finish.` },
+      { label: "Open plan", kind: "link", value: `/plan/${encodeURIComponent(r.id)}` },
+    ],
+  }));
+  const next: NextRow = { ready: queue[0] ?? null, queue, skipped };
 
   return { generated: input.now, project: input.project, inFlight, waiting, drift, next, notes };
 }
 
 function toBriefSession(s: SessionRow): BriefSession {
-  return { id: short(s.id), state: s.state, lastSeenAt: s.lastSeenAt, paths: s.paths, pathsOmitted: s.pathsOmitted };
+  return { id: short(s.id), state: s.state, lastSeenAt: s.lastSeenAt, paths: s.paths, pathsOmitted: s.pathsOmitted, lastTool: s.lastTool, idleSeconds: s.idleSeconds };
 }
 
 /** Read the disk and assemble. Each source that fails becomes a note, never a 500. */
@@ -253,7 +262,7 @@ export async function buildBrief(
     notes.push(`Plans could not be read: ${err instanceof Error ? err.message : String(err)}.`);
   }
   try {
-    decisions = (await buildDecisionsPayload(config, now)).decisions.map((d) => ({ id: d.id, status: d.status, blocks: d.blocks, title: d.title, unblocks: d.unblocks }));
+    decisions = (await buildDecisionsPayload(config, now)).decisions.map((d) => ({ id: d.id, status: d.status, blocks: d.blocks, title: d.title, unblocks: d.unblocks ?? null, options: d.options, recommendation: d.recommendation ?? null, file: d.file }));
   } catch (err) {
     notes.push(`The decision inbox could not be read: ${err instanceof Error ? err.message : String(err)}. Anything waiting on you may be missing.`);
   }

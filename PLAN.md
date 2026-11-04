@@ -11,6 +11,16 @@
 > features. See §The reshape.**
 > Canonical plan: this file. Cross-layer sequencing is Track F in [ROADMAP.md](https://github.com/tjakoen/bread/blob/main/ROADMAP.md).
 
+## The command center (2026-11-04, later the same day)
+
+The home page is now a command center, drawn from the same brief: three columns on one screen.
+Agents shows what each in-flight plan's sessions are doing and flags writes outside the plan.
+Queue lists every ready plan in pantry_next order with a start prompt. Inbox answers decisions in
+place through the existing answer log, lists plans only the owner can move, and folds drift below.
+It refreshes itself every twenty seconds and takes j, k, c, o and r from the keyboard. It stays
+pull-only, by the owner's call on 2026-11-04: PANTRY starts and messages no session, and every
+control records an answer, opens a page, or copies a prompt.
+
 ## The alignment brief is the home page (2026-11-04)
 
 PANTRY's front door is now the [alignment brief](plans/pantry-brief.md): an operations page for the

@@ -1,84 +1,204 @@
 /**
- * The brief's three projections: the page (the home page when the surface is on), the JSON twin, and
- * the Markdown the agent reads through pantry_orient. One payload feeds all three, so the owner and
- * the agent can never be told two different things.
+ * The command center: PANTRY's home page, drawn from the alignment brief (brief.ts). Three columns,
+ * one question each, so the first screen answers everything without scrolling:
+ *
+ *   Agents  what the AI is doing now, and whether it strayed from the plan it is meant to be on
+ *   Queue   what it can take next, in the order pantry_next will hand it out
+ *   Inbox   what needs the owner: decisions answered in place, plans only he can move, drift
+ *
+ * PANTRY stays pull-only. Nothing here starts or messages an agent session; every control either
+ * records an answer in the one log PANTRY writes, opens the page that settles a row, or copies a
+ * prompt for the owner to give the agent. The page refreshes itself, so it can be left open beside
+ * the chat as the place the work is watched from.
+ *
+ * One payload feeds three projections (this page, /brief.json, /brief.txt), so the owner and the
+ * agent are never told two different things.
  */
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
-import { briefText, buildBrief, type BriefAction, type BriefPayload } from "./brief.ts";
+import { briefText, buildBrief, type BriefAction, type BriefPayload, type InFlightRow, type WaitingRow } from "./brief.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
 
 const e = (s: string) => escapeHtml(s);
 
+/** Seconds the page waits between refreshes. Slow enough not to load the hub, quick enough to watch. */
+export const REFRESH_SECONDS = 20;
+
 function actions(list: BriefAction[]): string {
   if (!list.length) return "";
-  return `<div class="brief-actions">${list.map((a) => a.kind === "link"
-    ? `<a class="brief-act" href="${e(a.value)}">${e(a.label)}</a>`
-    : `<button type="button" class="brief-act" data-copy="${e(a.value)}">${e(a.label)}</button>`).join("")}</div>`;
-}
-
-function section(title: string, count: number, empty: string, body: string, tone = ""): string {
-  return `<section class="brief-section${tone}"><h2>${e(title)} <span class="brief-count">${count}</span></h2>${count ? body : `<p class="brief-empty">${e(empty)}</p>`}</section>`;
+  return `<div class="cc-actions">${list.map((a) => a.kind === "link"
+    ? `<a class="cc-btn" href="${e(a.value)}">${e(a.label)}</a>`
+    : `<button type="button" class="cc-btn${a.label.startsWith("Copy") && list.indexOf(a) === 0 ? " is-primary" : ""}" data-copy="${e(a.value)}">${e(a.label)}</button>`).join("")}</div>`;
 }
 
 const ago = (iso: string, now: string) => {
   const m = Math.max(0, Math.round((Date.parse(now) - Date.parse(iso)) / 60000));
-  return m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
+  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`;
 };
 
+function column(id: string, title: string, question: string, count: number, body: string): string {
+  return `<section class="cc-col" id="cc-${id}" aria-labelledby="cc-${id}-h">
+  <header class="cc-col-head"><h2 id="cc-${id}-h">${e(title)} <span class="cc-count">${count}</span></h2><p>${e(question)}</p></header>
+  <div class="cc-col-body">${body}</div>
+</section>`;
+}
+
+const empty = (text: string) => `<p class="cc-empty">${e(text)}</p>`;
+
+function agentCard(r: InFlightRow, now: string): string {
+  const tag = r.claim
+    ? `<span class="cc-tag">${e(r.claim.tool)} · ${e(r.claim.state)}</span>`
+    : r.planId ? `<span class="cc-tag is-warn">no claim</span>` : `<span class="cc-tag is-alert">unplanned</span>`;
+  const sessions = r.sessions.map((s) => {
+    const live = s.state === "alive" ? "is-live" : s.state === "idle" ? "is-idle" : "is-ended";
+    const doing = s.state === "ended" ? `ended ${ago(s.lastSeenAt, now)}` : `${s.lastTool ? `last: ${s.lastTool}` : "no tool yet"} · ${ago(s.lastSeenAt, now)}`;
+    return `<li class="cc-session ${live}"><span class="cc-dot" aria-hidden="true"></span><code>${e(s.id)}</code> ${e(doing)}</li>`;
+  }).join("");
+  const stray = r.outOfScope.length
+    ? `<div class="cc-stray"><strong>${r.planId ? `Wrote ${r.outOfScope.length} file(s) outside the plan` : `Wrote ${r.outOfScope.length} file(s) with no plan`}</strong><ul>${r.outOfScope.slice(0, 6).map((f) => `<li><code>${e(f)}</code></li>`).join("")}${r.outOfScope.length > 6 ? `<li>and ${r.outOfScope.length - 6} more</li>` : ""}</ul>${r.unrecorded ? `<p class="cc-meta">${r.unrecorded} more writes were not recorded.</p>` : ""}</div>`
+    : "";
+  const title = r.planId ? `<a href="/plan/${encodeURIComponent(r.planId)}">${e(r.title)}</a>` : e(r.title);
+  return `<article class="cc-card${r.outOfScope.length ? " is-alert" : ""}" tabindex="0">
+  <header><h3>${title}</h3>${tag}</header>
+  ${sessions ? `<ul class="cc-sessions">${sessions}</ul>` : `<p class="cc-meta">No session has written inside this plan yet.</p>`}
+  ${stray}${actions(r.actions)}
+</article>`;
+}
+
+function decisionCard(w: WaitingRow): string {
+  const d = w.decision!;
+  const opts = d.options.map((o, i) => `<label class="cc-opt"><input type="radio" name="opt-${e(w.id)}" value="${e(o)}"${i === 0 && !d.recommendation ? "" : ""}> <span>${e(o)}${d.recommendation && o.trim() === d.recommendation.trim() ? ` <em class="cc-rec">recommended</em>` : ""}</span></label>`).join("");
+  return `<article class="cc-card cc-decision" tabindex="0" data-decision="${e(JSON.stringify({ id: w.id, title: w.title, file: d.file, options: d.options, recommendation: d.recommendation, unblocks: d.unblocks }))}">
+  <header><h3>${e(w.title)}</h3><span class="cc-tag is-warn">decide</span></header>
+  <p class="cc-meta">${e(w.detail)}</p>
+  ${d.recommendation && !d.options.some((o) => o.trim() === d.recommendation!.trim()) ? `<p class="cc-meta">Recommended: ${e(d.recommendation)}</p>` : ""}
+  ${opts ? `<fieldset class="cc-opts"><legend class="cc-sr">Options</legend>${opts}</fieldset>` : ""}
+  <details class="cc-note"><summary>Add a note</summary><textarea rows="3" aria-label="Note for the agent"></textarea></details>
+  <div class="cc-actions"><button type="button" class="cc-btn is-primary" data-record>Record answer</button>${actions(w.actions).replace(/^<div class="cc-actions">|<\/div>$/g, "")}</div>
+  <p class="cc-status" role="status" hidden></p>
+</article>`;
+}
+
+function plainCard(w: WaitingRow): string {
+  return `<article class="cc-card" tabindex="0"><header><h3>${e(w.title)}</h3><span class="cc-tag">${w.kind === "human-plan" ? "yours" : "blocked"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
+}
+
 export function briefBody(b: BriefPayload): string {
-  const offScope = b.inFlight.filter((r) => r.outOfScope.length).length;
-  const stats = [
-    ["In flight", b.inFlight.length, ""],
-    ["Out of scope", offScope, offScope ? " is-alert" : ""],
-    ["Waiting on you", b.waiting.length, b.waiting.length ? " is-warn" : ""],
-    ["Drift", b.drift.length, b.drift.length ? " is-warn" : ""],
+  const strayed = b.inFlight.filter((r) => r.outOfScope.length).length;
+  const decisions = b.waiting.filter((w) => w.kind === "decision" && w.decision);
+  const otherWaiting = b.waiting.filter((w) => !(w.kind === "decision" && w.decision));
+  const inboxCount = b.waiting.length;
+
+  const chips = [
+    ["agents", "Agents", b.inFlight.length, ""],
+    ["agents", "Strayed", strayed, strayed ? " is-alert" : ""],
+    ["queue", "Ready", b.next.queue.length, ""],
+    ["inbox", "Needs you", inboxCount, inboxCount ? " is-warn" : ""],
+    ["inbox", "Drift", b.drift.length, b.drift.length ? " is-warn" : ""],
   ] as const;
 
-  const inFlight = b.inFlight.map((r) => {
-    const claim = r.claim
-      ? `<span class="brief-tag">${e(r.claim.tool)} ${e(r.claim.sessionId)} · ${e(r.claim.state)} · ${e(ago(r.claim.lastAt, b.generated))}</span>`
-      : r.planId ? `<span class="brief-tag is-warn">no claim</span>` : `<span class="brief-tag is-alert">unplanned</span>`;
-    const sessions = r.sessions.length
-      ? `<p class="brief-meta">${r.sessions.map((s) => `${e(s.id)} (${e(s.state)}, ${e(ago(s.lastSeenAt, b.generated))})`).join(", ")}</p>`
-      : `<p class="brief-meta">No session has written inside this plan's touches yet.</p>`;
-    const scope = r.outOfScope.length
-      ? `<div class="brief-scope"><strong>${r.planId ? "Written outside every in-flight plan" : "Written with no plan"}:</strong><ul>${r.outOfScope.map((f) => `<li><code>${e(f)}</code></li>`).join("")}</ul>${r.unrecorded ? `<p class="brief-meta">and ${r.unrecorded} more not recorded</p>` : ""}</div>`
-      : r.unrecorded ? `<p class="brief-meta">${r.unrecorded} written paths were not recorded, so scope is not fully checked.</p>` : "";
-    return `<article class="brief-row${r.outOfScope.length ? " is-alert" : ""}">
-  <header><h3>${r.planId ? `<a href="/plan/${encodeURIComponent(r.planId)}">${e(r.title)}</a>` : e(r.title)}</h3>${claim}</header>
-  ${r.touches.length ? `<p class="brief-meta">Meant to touch: ${r.touches.map((t) => `<code>${e(t)}</code>`).join(" ")}</p>` : ""}
-  ${sessions}${scope}${actions(r.actions)}
-</article>`;
-  }).join("");
+  const agents = b.inFlight.length
+    ? b.inFlight.map((r) => agentCard(r, b.generated)).join("")
+    : empty("No agent is at work. No plan is doing or claimed, and no session wrote files. Take one from the queue.");
 
-  const waiting = b.waiting.map((w) => `<article class="brief-row"><header><h3>${e(w.title)}</h3><span class="brief-tag">${e(w.kind)}</span></header><p>${e(w.detail)}</p>${actions(w.actions)}</article>`).join("");
-  const drift = b.drift.map((d) => `<article class="brief-row"><header><h3>${e(d.label)}</h3><span class="brief-tag is-${d.severity === "error" ? "alert" : "warn"}">${e(d.severity)}</span></header><p>${e(d.detail)}</p>${actions(d.actions)}</article>`).join("");
-  const next = b.next.ready
-    ? `<article class="brief-row is-next"><header><h3>${e(b.next.ready.title)}</h3><span class="brief-tag">ready</span></header>${actions(b.next.ready.actions)}</article>`
-    : "";
-  const skipped = b.next.skipped.length
-    ? `<details class="brief-skipped"><summary>${b.next.skipped.length} plan(s) not ready, and why</summary><ul>${b.next.skipped.map((s) => `<li><a href="/plan/${encodeURIComponent(s.id)}">${e(s.title)}</a>: ${e(s.reasons.join("; "))}</li>`).join("")}</ul></details>`
-    : "";
+  const queue = (b.next.queue.length
+    ? `<ol class="cc-queue">${b.next.queue.map((q, i) => `<li><article class="cc-card${i === 0 ? " is-next" : ""}" tabindex="0">
+  <header><h3><a href="/plan/${encodeURIComponent(q.id)}">${e(q.title)}</a></h3>${i === 0 ? `<span class="cc-tag">next</span>` : ""}</header>
+  ${q.touches.length ? `<p class="cc-meta">Touches ${q.touches.slice(0, 4).map((t) => `<code>${e(t)}</code>`).join(" ")}${q.touches.length > 4 ? ` and ${q.touches.length - 4} more` : ""}</p>` : `<p class="cc-meta">No touches listed, so scope cannot be checked.</p>`}
+  ${actions(q.actions)}
+</article></li>`).join("")}</ol>`
+    : empty("Nothing is ready for an agent to take."))
+    + (b.next.skipped.length
+      ? `<details class="cc-more" data-key="skipped"><summary>${b.next.skipped.length} not ready, and why</summary><ul>${b.next.skipped.map((s) => `<li><a href="/plan/${encodeURIComponent(s.id)}">${e(s.title)}</a><span class="cc-meta"> ${e(s.reasons.join("; "))}</span></li>`).join("")}</ul></details>`
+      : "");
 
-  return `<header class="brief-head">
-  <h1 class="proof-masthead">${e(b.project)}</h1>
-  <p class="proof-lede">Where the AI work stands: what is in flight, what strayed from its plan, what waits on you, and what comes next. Read from files on disk; PANTRY runs no model. <a href="/brief.json">JSON</a> · <a href="/brief.txt">the agent's copy</a> · <a href="/plans">plan board</a></p>
+  const drift = b.drift.length
+    ? `<details class="cc-more" data-key="drift"${decisions.length + otherWaiting.length === 0 ? " open" : ""}><summary>Drift: ${b.drift.length} check(s) due</summary>${b.drift.map((d) => `<article class="cc-card cc-drift" tabindex="0"><header><h3>${e(d.label)}</h3><span class="cc-tag${d.severity === "error" ? " is-alert" : ""}">${e(d.severity)}</span></header><p class="cc-meta">${e(d.detail)}</p>${actions(d.actions)}</article>`).join("")}</details>`
+    : `<p class="cc-empty">The doctor's quick checks pass.</p>`;
+
+  const inbox = (decisions.length || otherWaiting.length
+    ? decisions.map(decisionCard).join("") + otherWaiting.map(plainCard).join("")
+    : empty("Nothing is waiting on you."))
+    + drift;
+
+  return `<div class="cc" id="cc" data-generated="${e(b.generated)}">
+<header class="cc-head">
+  <div class="cc-title"><h1>${e(b.project)}</h1><p>Command center for this project's AI. Read from disk, refreshed every ${REFRESH_SECONDS} s; PANTRY runs no model and starts no session.</p></div>
+  <nav class="cc-chips" aria-label="Summary">${chips.map(([to, l, n, t]) => `<a class="cc-chip${t}" href="#cc-${to}"><span class="cc-chip-n">${n}</span> ${e(l)}</a>`).join("")}</nav>
+  <p class="cc-sub"><span class="cc-live" data-live>updated ${e(b.generated.slice(11, 19))} UTC</span> · <a href="/plans">board</a> · <a href="/brief.json">json</a> · <a href="/brief.txt">agent's copy</a> · <span class="cc-keys">j k move · c copy · o open · r refresh</span></p>
+  ${b.notes.length ? `<ul class="cc-notes">${b.notes.map((n) => `<li>${e(n)}</li>`).join("")}</ul>` : ""}
 </header>
-<div class="brief-stats">${stats.map(([l, n, t]) => `<div class="brief-stat${t}"><span class="brief-stat-n">${n}</span><span class="brief-stat-l">${e(l)}</span></div>`).join("")}</div>
-${b.notes.length ? `<ul class="brief-notes">${b.notes.map((n) => `<li>${e(n)}</li>`).join("")}</ul>` : ""}
-${section("In flight", b.inFlight.length, "Nothing is in flight. No plan is doing or claimed, and no session wrote files.", inFlight)}
-${section("Waiting on you", b.waiting.length, "Nothing is waiting on you.", waiting)}
-${section("Next", b.next.ready ? 1 : 0, "Nothing is ready for an agent to take.", next)}${skipped}
-${section("Drift", b.drift.length, "The doctor's quick checks are all passing.", drift)}
-<script>
-document.addEventListener("click", async (ev) => {
-  const b = ev.target.closest("[data-copy]");
-  if (!b) return;
-  try { await navigator.clipboard.writeText(b.dataset.copy); const t = b.textContent; b.textContent = "Copied"; setTimeout(() => (b.textContent = t), 1500); }
-  catch { prompt("Copy this:", b.dataset.copy); }
-});
-</script>`;
+<div class="cc-grid">
+${column("agents", "Agents", "What the AI is doing, and whether it kept to its plan.", b.inFlight.length, agents)}
+${column("queue", "Queue", "What it can take next, in the order it will be handed out.", b.next.queue.length, queue)}
+${column("inbox", "Inbox", "What needs you before the work can move.", inboxCount, inbox)}
+</div>
+</div>
+<script>${CLIENT}</script>`;
 }
+
+/** The page's behaviour: copy, record an answer, keyboard moves, and the refresh. Plain JS, no build. */
+const CLIENT = `(() => {
+  const meta = document.querySelector('meta[name="pantry-base"]');
+  const base = (meta && meta.getAttribute("content")) || "";
+  const flash = (el, text) => { const t = el.textContent; el.textContent = text; setTimeout(() => (el.textContent = t), 1500); };
+  async function copy(el) {
+    try { await navigator.clipboard.writeText(el.dataset.copy); flash(el, "Copied"); }
+    catch { window.prompt("Copy this:", el.dataset.copy); }
+  }
+  async function record(card, btn) {
+    const d = JSON.parse(card.dataset.decision);
+    const picked = card.querySelector("input[type=radio]:checked");
+    const choice = picked ? picked.value : "";
+    const notes = (card.querySelector("textarea")?.value || "").trim();
+    const status = card.querySelector(".cc-status");
+    const say = (m) => { status.hidden = false; status.textContent = m; };
+    if (!choice && !notes) return say("Pick an option or add a note first.");
+    const composed = "Decision " + d.id + " (" + d.title + ") is answered: " + (choice || "see note") + "." + (notes ? " Note: " + notes : "") + (d.file ? " Act on it, then mark " + d.file + " resolved." : "");
+    btn.disabled = true;
+    try {
+      const res = await fetch(base + "/answers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        via: "pantry-brief", choice, notes, composed,
+        request: { source: "decision", ref: d.id, file: d.file || undefined, question: d.title, options: d.options, recommendation: d.recommendation || undefined, unblocks: d.unblocks || undefined },
+      }) });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) { btn.disabled = false; return say(body.error || "Not recorded (" + res.status + ")."); }
+      card.classList.add("is-done");
+      say("Recorded. The next session reads it from the answer log.");
+      const c = document.createElement("button"); c.type = "button"; c.className = "cc-btn"; c.dataset.copy = composed; c.textContent = "Copy prompt for a running session";
+      status.after(c);
+    } catch (err) { btn.disabled = false; say("Not recorded: " + err); }
+  }
+  document.addEventListener("click", (ev) => {
+    const c = ev.target.closest("[data-copy]"); if (c) return copy(c);
+    const r = ev.target.closest("[data-record]"); if (r) return record(r.closest(".cc-decision"), r);
+  });
+  const cards = () => [...document.querySelectorAll(".cc-card")];
+  document.addEventListener("keydown", (ev) => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
+    const list = cards(); const i = list.indexOf(document.activeElement?.closest(".cc-card"));
+    if (ev.key === "j" || ev.key === "k") { ev.preventDefault(); const n = list[Math.min(list.length - 1, Math.max(0, i + (ev.key === "j" ? 1 : -1)))] || list[0]; n?.focus(); n?.scrollIntoView({ block: "nearest" }); }
+    else if (ev.key === "c" && i >= 0) { const b = list[i].querySelector("[data-copy]"); if (b) copy(b); }
+    else if (ev.key === "o" && i >= 0) { const a = list[i].querySelector("a[href]"); if (a) location.href = a.href; }
+    else if (ev.key === "r") refresh();
+  });
+  // The refresh swaps the whole center for a fresh render, and skips a turn while the owner is in the
+  // middle of something: typing a note, or with an option picked and not yet recorded.
+  async function refresh() {
+    const busy = document.querySelector(".cc-decision:not(.is-done) input:checked, .cc textarea:focus") || (document.querySelector(".cc textarea") && [...document.querySelectorAll(".cc textarea")].some((t) => t.value));
+    if (busy) return;
+    try {
+      const res = await fetch(location.pathname, { headers: { Accept: "text/html" } });
+      if (!res.ok) throw new Error(String(res.status));
+      const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+      const next = doc.getElementById("cc"); const cur = document.getElementById("cc");
+      if (!next || !cur) return;
+      const open = new Set([...cur.querySelectorAll("details[data-key][open]")].map((d) => d.dataset.key));
+      cur.replaceWith(next);
+      for (const d of next.querySelectorAll("details[data-key]")) if (open.has(d.dataset.key)) d.open = true;
+    } catch { const l = document.querySelector("[data-live]"); if (l) l.textContent = "refresh failed; showing the last good read"; }
+  }
+  setInterval(refresh, ${REFRESH_SECONDS} * 1000);
+})();`;
 
 /** The brief's routes, or null when the path is not one of them. `/` is included when on. */
 export async function briefRoute(
@@ -91,5 +211,5 @@ export async function briefRoute(
   const payload = await buildBrief(config, new Date().toISOString());
   if (path === "/brief.json") return Response.json(payload);
   if (path === "/brief.txt") return new Response(briefText(payload), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
-  return new Response(page("Brief", briefBody(payload)), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  return new Response(page("Command center", briefBody(payload)), { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }

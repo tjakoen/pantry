@@ -605,35 +605,67 @@
    because this page cannot see the log; it is only marked as no longer worth believing. */
 .pantry-session[data-stale] { opacity: 0.65; border-style: dashed; }
 
-/* --- the alignment brief (brief-routes.ts) ---
-   Status is carried by weight and rule thickness, never by hue, as across GRAIN: an alert row has a
-   heavy left rule and a bold tag, a warning a medium one, a calm row a hairline. */
-.brief-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-3); margin: var(--space-4) 0; }
-.brief-stat { border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-radius: var(--radius, 0.5rem); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
-.brief-stat-n { font-size: var(--text-xl); font-weight: 400; color: var(--ink); }
-.brief-stat-l { font-size: var(--text-sm); color: var(--ink-muted); }
-.brief-stat.is-warn .brief-stat-n { font-weight: 600; }
-.brief-stat.is-alert { border-width: 2px; border-color: var(--ink); }
-.brief-stat.is-alert .brief-stat-n { font-weight: 800; }
-.brief-notes { font-size: var(--text-sm); color: var(--ink-muted); margin: 0 0 var(--space-4); padding-left: var(--space-4); }
-.brief-section { margin: var(--space-6) 0 var(--space-3); }
-.brief-section h2 { font-size: var(--text-lg); display: flex; align-items: baseline; gap: var(--space-2); }
-.brief-count { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-muted); }
-.brief-empty { color: var(--ink-muted); font-size: var(--text-sm); }
-.brief-row { border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-left-width: 3px; border-radius: var(--radius, 0.5rem); padding: var(--space-3) var(--space-4); margin: var(--space-2) 0; }
-.brief-row.is-alert { border-left-width: 6px; border-left-color: var(--ink); }
-.brief-row.is-next { border-left-color: var(--ink-muted); }
-.brief-row > header { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
-.brief-row h3 { font-size: var(--text-base); margin: 0; }
-.brief-row p { margin: var(--space-1) 0; }
-.brief-meta { font-size: var(--text-sm); color: var(--ink-muted); }
-.brief-meta code, .brief-scope code { font-family: var(--font-mono); font-size: var(--text-xs); }
-.brief-tag { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted); border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-radius: var(--radius, 0.5rem); padding: 0.1em 0.5em; white-space: nowrap; }
-.brief-tag.is-warn { color: var(--ink); font-weight: 600; }
-.brief-tag.is-alert { color: var(--ink); font-weight: 800; border-color: var(--ink); }
-.brief-scope { margin: var(--space-2) 0; font-size: var(--text-sm); }
-.brief-scope ul { margin: var(--space-1) 0; padding-left: var(--space-4); }
-.brief-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
-.brief-act { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--paper); border: 1px solid color-mix(in srgb, var(--hairline) 35%, transparent); border-radius: var(--radius, 0.5rem); padding: 0.25em 0.75em; cursor: pointer; text-decoration: none; }
-.brief-act:hover, .brief-act:focus-visible { border-color: var(--ink); }
-.brief-skipped { font-size: var(--text-sm); color: var(--ink-muted); margin: var(--space-2) 0; }
+/* --- the command center (brief-routes.ts) ---
+   Three columns on one screen: Agents, Queue, Inbox. Status is carried by weight and rule thickness,
+   never by hue, as across GRAIN. Borders spell out their width: in this token set --hairline is a
+   colour and --rule a whole border value, so `var(--hairline, 1px) solid` draws nothing. */
+.pantry-main:has(> .cc) { max-width: min(100%, 110rem); }
+.cc { --cc-line: color-mix(in srgb, var(--hairline) 28%, transparent); --cc-line-strong: color-mix(in srgb, var(--hairline) 60%, transparent); }
+.cc-head { display: grid; gap: var(--space-2); margin-bottom: var(--space-4); }
+.cc-title h1 { font-size: var(--text-xl); margin: 0; }
+.cc-title p, .cc-sub { margin: 0; font-size: var(--text-sm); color: var(--ink-muted); }
+.cc-keys { font-family: var(--font-mono); font-size: var(--text-xs); }
+.cc-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.cc-chip { display: inline-flex; align-items: baseline; gap: 0.4em; padding: 0.3em 0.8em; border: 1px solid var(--cc-line); border-radius: 999px; color: var(--ink-muted); text-decoration: none; font-size: var(--text-sm); }
+.cc-chip-n { color: var(--ink); font-family: var(--font-mono); }
+.cc-chip.is-warn .cc-chip-n { font-weight: 700; }
+.cc-chip.is-alert { border: 2px solid var(--ink); color: var(--ink); }
+.cc-chip.is-alert .cc-chip-n { font-weight: 800; }
+.cc-notes { margin: 0; padding-left: var(--space-4); font-size: var(--text-xs); color: var(--ink-faint, var(--ink-muted)); }
+.cc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+@media (max-width: 64rem) { .cc-grid { grid-template-columns: 1fr; } }
+.cc-col { border: 1px solid var(--cc-line); border-radius: var(--radius, 0.5rem); padding: var(--space-3); min-height: 12rem; }
+.cc-col-head { border-bottom: 1px solid var(--cc-line); padding-bottom: var(--space-2); margin-bottom: var(--space-3); }
+.cc-col-head h2 { font-size: var(--text-lg); margin: 0; display: flex; gap: var(--space-2); align-items: baseline; }
+.cc-col-head p { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--ink-muted); }
+.cc-count { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-muted); }
+.cc-col-body { display: grid; gap: var(--space-2); }
+.cc-empty { color: var(--ink-muted); font-size: var(--text-sm); margin: 0; }
+.cc-card { border: 1px solid var(--cc-line); border-left-width: 3px; border-radius: var(--radius, 0.5rem); padding: var(--space-2) var(--space-3); background: var(--paper); outline: none; }
+.cc-card:focus-visible { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
+.cc-card.is-alert { border-left: 6px solid var(--ink); }
+.cc-card.is-next { border-left-color: var(--cc-line-strong); }
+.cc-card.is-done { opacity: 0.55; }
+.cc-card > header { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-2); }
+.cc-card h3 { font-size: var(--text-sm); font-weight: 600; margin: 0; line-height: 1.35; }
+.cc-card p { margin: var(--space-1) 0; }
+.cc-meta { font-size: var(--text-xs); color: var(--ink-muted); }
+.cc-meta code, .cc-stray code, .cc-session code { font-family: var(--font-mono); font-size: var(--text-xs); }
+.cc-tag { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted); border: 1px solid var(--cc-line); border-radius: 999px; padding: 0 0.5em; white-space: nowrap; }
+.cc-tag.is-warn { color: var(--ink); font-weight: 600; }
+.cc-tag.is-alert { color: var(--ink); font-weight: 800; border: 1px solid var(--ink); }
+.cc-sessions { list-style: none; margin: var(--space-1) 0; padding: 0; font-size: var(--text-xs); color: var(--ink-muted); }
+.cc-session { display: flex; gap: 0.4em; align-items: center; }
+.cc-dot { width: 0.5em; height: 0.5em; border-radius: 50%; border: 1px solid var(--ink-muted); flex: none; }
+.cc-session.is-live .cc-dot { background: var(--ink); border-color: var(--ink); animation: cc-pulse 2s ease-in-out infinite; }
+.cc-session.is-idle .cc-dot { background: var(--ink-muted); }
+@keyframes cc-pulse { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .cc-session.is-live .cc-dot { animation: none; } }
+.cc-stray { font-size: var(--text-xs); margin: var(--space-1) 0; }
+.cc-stray ul { margin: 0.2em 0; padding-left: var(--space-4); }
+.cc-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); counter-reset: q; }
+.cc-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
+.cc-btn { font: inherit; font-size: var(--text-xs); color: var(--ink); background: transparent; border: 1px solid var(--cc-line-strong); border-radius: var(--radius, 0.5rem); padding: 0.2em 0.6em; cursor: pointer; text-decoration: none; }
+.cc-btn.is-primary { border-color: var(--ink); font-weight: 600; }
+.cc-btn:hover, .cc-btn:focus-visible { border-color: var(--ink); }
+.cc-btn:disabled { opacity: 0.5; cursor: default; }
+.cc-opts { border: 0; margin: var(--space-1) 0; padding: 0; display: grid; gap: 0.2em; }
+.cc-opt { display: flex; gap: 0.4em; align-items: baseline; font-size: var(--text-xs); cursor: pointer; }
+.cc-rec { font-style: normal; font-family: var(--font-mono); color: var(--ink-muted); }
+.cc-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.cc-note summary, .cc-more summary { font-size: var(--text-xs); color: var(--ink-muted); cursor: pointer; }
+.cc-note textarea { width: 100%; margin-top: var(--space-1); font: inherit; font-size: var(--text-xs); color: var(--ink); background: transparent; border: 1px solid var(--cc-line-strong); border-radius: var(--radius, 0.5rem); padding: var(--space-1); }
+.cc-status { font-size: var(--text-xs); margin: var(--space-1) 0 0; }
+.cc-more { margin-top: var(--space-2); }
+.cc-more > ul { font-size: var(--text-xs); padding-left: var(--space-4); }
+.cc-more > .cc-card { margin-top: var(--space-2); }

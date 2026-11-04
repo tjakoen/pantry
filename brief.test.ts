@@ -79,7 +79,7 @@ describe("waiting on the owner", () => {
 
   test("an open decision links to its answer page", () => {
     const b = assembleBrief(inputs({ decisions: [{ id: "d1", status: "open", blocks: ["a"], title: "Pick one" }] }));
-    expect(b.waiting[0].actions[0]).toEqual({ label: "Answer", kind: "link", value: "/decisions/d1" });
+    expect(b.waiting[0].actions[0]).toEqual({ label: "Open", kind: "link", value: "/decisions/d1" });
   });
 });
 
@@ -114,7 +114,7 @@ describe("projections", () => {
     const text = briefText(b);
     for (const h of ["## In flight", "## Waiting on the owner", "## Drift", "## Next"]) expect(text).toContain(h);
     const html = briefBody(b);
-    for (const h of ["In flight", "Waiting on you", "Drift", "Next"]) expect(html).toContain(h);
+    for (const h of ["Agents", "Queue", "Inbox"]) expect(html).toContain(h);
   });
 
   test("copy values are escaped into the attribute", () => {
