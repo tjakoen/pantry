@@ -72,3 +72,9 @@ describe("the session reader folds subagents", () => {
     expect(row.paths).toEqual(["/repo/a.ts"]);
   });
 });
+
+test("every class the activity and timeline pages draw with has a rule in pantry.css", async () => {
+  const css = await Bun.file(new URL("./pantry.css", import.meta.url)).text();
+  for (const cls of ["act-card", "act-stats", "act-legend", "act-window", "act-row", "act-track", "act-bar", "act-write", "act-sticky", "tl-row", "tl-seg", "ax-type", "ax-tree"])
+    expect(css).toContain(`.${cls}`);
+});
