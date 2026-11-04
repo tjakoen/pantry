@@ -29,6 +29,59 @@ export interface ArtifactEntry {
   size: number;
   /** ISO string from fs stat — the real file's mtime, NOT the injected generatedAt */
   mtime: string;
+  /** what the artifact IS, read from its folder and name, as a person would sort a drawer */
+  type: ArtifactType;
+  /** ISO, when the artifact was made: a date in its name wins, then the file's birth time, then mtime */
+  created: string;
+  /** where `created` came from, so the page never presents a guess as a fact */
+  createdFrom: "name" | "file" | "modified";
+}
+
+/** The artifact types the explorer filters by. `kind` decides how a file previews; `type` says what
+ *  it is for. A Markdown file is one kind and several types: a run report, a brief, an audit. */
+export type ArtifactType = "run-report" | "brief" | "audit" | "screenshot" | "image" | "diff" | "page" | "data" | "log" | "note" | "file";
+
+export const ARTIFACT_TYPES: Record<ArtifactType, { label: string; glyph: string; about: string }> = {
+  "run-report": { label: "Run report", glyph: "▤", about: "What a session did, its gate output and what it left undone" },
+  brief: { label: "Brief", glyph: "✎", about: "A handoff or plan brief written for the next session" },
+  audit: { label: "Audit", glyph: "◎", about: "A review of the codebase against a rubric" },
+  screenshot: { label: "Screenshot", glyph: "▣", about: "A picture of a rendered page, taken as evidence" },
+  image: { label: "Image", glyph: "◫", about: "A figure or other picture" },
+  diff: { label: "Diff", glyph: "±", about: "A patch or diff of a change" },
+  page: { label: "HTML page", glyph: "⌘", about: "A standalone page, opened in a sandbox" },
+  data: { label: "Data", glyph: "{}", about: "JSON or CSV a run produced" },
+  log: { label: "Log", glyph: "≡", about: "Plain text output from a command or a run" },
+  note: { label: "Note", glyph: "¶", about: "Any other Markdown" },
+  file: { label: "Other", glyph: "·", about: "A file with no preview" },
+};
+
+/** Classify by folder first, then name, then extension. Folder names are matched as whole segments. */
+export function artifactType(relPath: string): ArtifactType {
+  const lower = relPath.toLowerCase();
+  const segs = lower.split("/");
+  const dirs = new Set(segs.slice(0, -1));
+  const name = segs.at(-1) ?? "";
+  const kind = classifyArtifact(name);
+  if ((kind === "image" && ["screenshots", "shots", "reviews", "captures", "tours"].some((d) => dirs.has(d))) || (kind === "image" && /screen|shot|capture/.test(name))) return "screenshot";
+  if (kind === "image") return "image";
+  if (kind === "diff") return "diff";
+  if (kind === "html") return "page";
+  if (/\.(json|jsonl|csv|tsv|ya?ml)$/.test(name)) return "data";
+  if (/\.(log|txt|out)$/.test(name)) return "log";
+  if (dirs.has("audits") || dirs.has("audit") || /(^|[-_.])audit([-_.]|$)/.test(name)) return "audit";
+  if (dirs.has("runs") || dirs.has("run-reports")) return "run-report";
+  if (dirs.has("briefs") || dirs.has("handoffs") || /(^|[-_.])(brief|handoff)([-_.]|$)/.test(name)) return "brief";
+  if (kind === "report") return "note";
+  return "file";
+}
+
+/** A YYYY-MM-DD at the start of the name, or of any folder above it, is the date the author gave it. */
+export function datedName(relPath: string): string | null {
+  for (const seg of relPath.split("/").toReversed()) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(seg);
+    if (m && !Number.isNaN(Date.parse(`${m[1]}-${m[2]}-${m[3]}T00:00:00Z`))) return `${m[1]}-${m[2]}-${m[3]}T00:00:00.000Z`;
+  }
+  return null;
 }
 
 export interface ArtifactsPayload {
@@ -107,12 +160,20 @@ async function walk(realBase: string, root: string, dir: string, depth: number, 
     // README.md at the artifacts root is documentation-about-the-dir, not evidence — skip it (same
     // rule decisions.ts applies to its own dir). Only the top-level one; a per-run README is evidence.
     if (relPath.toLowerCase() === "readme.md") continue;
+    // Birth time is only trusted when the filesystem reports one that makes sense: a bind mount in
+    // a container often answers with the epoch, and a copy can carry a birth time after its mtime.
+    const named = datedName(relPath);
+    const born = st.birthtime?.getTime?.() ?? 0;
+    const bornOk = born > Date.UTC(2000, 0, 1) && born <= st.mtime.getTime() + 1000;
     out.push({
       relPath,
       name: basename(full),
       kind: classifyArtifact(name),
       size: st.size,
       mtime: st.mtime.toISOString(),
+      type: artifactType(relPath),
+      created: named ?? (bornOk ? new Date(born).toISOString() : st.mtime.toISOString()),
+      createdFrom: named ? "name" : bornOk ? "file" : "modified",
     });
   }
 }

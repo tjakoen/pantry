@@ -50,6 +50,7 @@ import { buildRunsPayload, type RunsPayload, type RunReport, type RunPair, type 
 import { runDoctor, type DoctorReport, type DoctorCheck } from "./doctor.ts";
 import { buildTimelinePayload, cachedTimelinePayload, type TimelinePayload, type TimelinePlan } from "./timeline.ts";
 
+import { opensPath, readOpens, recordOpen } from "./artifact-opens.ts";
 import { artifactsIndexBody, explorerView, readPreview, serveArtifactRaw } from "./artifacts-page.ts";
 import { nav, pantryPage, styleLinks } from "./chrome.ts";
 import { controlBody } from "./control-page.ts";
@@ -344,6 +345,8 @@ export interface PantryOptions {
   cwd?: string;
   /** override GRAIN's location (defaults to the resolved package) */
   grainRoot?: string;
+  /** where artifact opens are recorded (defaults to the PANTRY home); tests point it at a temp dir */
+  opensFile?: string;
 }
 
 const defaultConfig = (plansDir: string): ResolvedPantryConfig => ({
@@ -380,7 +383,7 @@ export function createPantryHandler(opts: PantryOptions) {
   // explicit opts.cwd still wins for a caller that overrides.
   const cwd = opts.cwd ?? config.cwd;
   const grainRoot = opts.grainRoot ?? GRAIN_ROOT;
-  const page = (title: string, body: string) => pantryPage(title, body, surfaces, { review: !!config.previewTarget });
+  const page = (title: string, body: string) => pantryPage(title, body, surfaces, { review: !!config.previewTarget, project: config.projectName });
 
   const serveStyles = makeStatic(bunRuntime, join(grainRoot, "styles"));
   // GRAIN's own client scripts, served from the package rather than copied. The cockpit only needs
@@ -715,8 +718,14 @@ export function createPantryHandler(opts: PantryOptions) {
     {
       const payload = await buildArtifactsPayload(config, new Date().toISOString());
       const view = explorerView(url.searchParams);
-      const preview = view.file ? await readPreview(config.artifactsDir, payload.artifacts.find((a) => a.relPath === view.file)) : null;
-      return html(page("Artifacts", artifactsIndexBody(payload, view, preview)));
+      const entry = view.file ? payload.artifacts.find((a) => a.relPath === view.file) : undefined;
+      const preview = view.file ? await readPreview(config.artifactsDir, entry) : null;
+      // Read the opens before recording this one, so the pane can say when it was last opened before now.
+      const opensFile = opts.opensFile ?? opensPath(config.projectName);
+      const opens = readOpens(opensFile);
+      const body = artifactsIndexBody(payload, view, preview, opens);
+      if (entry) recordOpen(opensFile, entry.relPath);
+      return html(page("Artifacts", body));
     }
     if (surfaces.artifacts && path.startsWith("/artifacts/raw/")) {
       const reqPath = decodeURIComponent(path.slice("/artifacts/raw/".length));
@@ -773,7 +782,7 @@ export function createPantryHandler(opts: PantryOptions) {
     // nothing to point at otherwise.
     if (previewTarget && path === "/review") {
       const tours = await resolveToursSource(previewTarget, !!crumbRoutes);
-      return html(pantryPage("Review", reviewBody(previewTarget, surfaces, tours), surfaces, { review: true, fullBleed: true }));
+      return html(pantryPage("Review", reviewBody(previewTarget, surfaces, tours), surfaces, { review: true, fullBleed: true, project: config.projectName }));
     }
 
     if (path === "/about") return html(page("About", aboutBody()));

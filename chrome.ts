@@ -14,19 +14,32 @@ export const styleLinks = STYLESHEETS.map((h) => `<link rel="stylesheet" href="$
 // own front door (Plans) + Standards + About; /docs·/reference·/catalog are DEMOTED out of the human
 // nav (they stay mounted + AI-retrievable, reached from the home "Reference surfaces" row) — cutting
 // them would undo PANTRY's founding pivot (see PLAN §The reshape).
-/** The hub's address, when this server is a hub child (the hub sets PANTRY_PROJECT). */
-function hubUrl(): string | null {
+/** The hub registry, when this server is a hub child (the hub sets PANTRY_PROJECT). Read per page
+ *  render: it is a small file and a project registered a minute ago should show up in the switcher. */
+function hubRegistry(): { url: string; projects: string[] } | null {
   if (!process.env.PANTRY_PROJECT) return null;
   try {
     const home = process.env.PANTRY_HOME ?? `${process.env.HOME ?? ""}/.pantry`;
-    const reg = JSON.parse(readFileSync(`${home}/projects.json`, "utf8")) as { hubPort?: number };
-    return `http://localhost:${reg.hubPort ?? 4400}/`;
+    const reg = JSON.parse(readFileSync(`${home}/projects.json`, "utf8")) as { hubPort?: number; projects?: { name: string }[] };
+    return { url: `http://localhost:${reg.hubPort ?? 4400}/`, projects: (reg.projects ?? []).map((p) => p.name).sort((x, y) => x.localeCompare(y)) };
   } catch {
-    return "http://localhost:4400/";
+    return { url: "http://localhost:4400/", projects: [] };
   }
 }
 
-export function nav(surfaces: PantrySurfaces, review: boolean): string {
+// The project this PANTRY is serving, said in the header on every page, with a switcher to the
+// others when the hub runs it. Eighteen projects look identical in a browser tab otherwise.
+function projectSwitch(project: string | undefined, hub: ReturnType<typeof hubRegistry>): string {
+  if (!project) return "";
+  const name = `<span class="pantry-nav__project-name">${escapeHtml(project)}</span>`;
+  if (!hub || hub.projects.length < 2) return `<span class="pantry-nav__project" title="The project this PANTRY is serving">${name}</span>`;
+  const items = hub.projects.map((p) => p === project
+    ? `<span class="pantry-nav__current" aria-current="true">${escapeHtml(p)}</span>`
+    : `<a href="${hub.url}open/${encodeURIComponent(p)}">${escapeHtml(p)}</a>`).join("");
+  return `<details class="pantry-nav__menu pantry-nav__project"><summary title="Switch project">${name}</summary><div class="pantry-nav__drop pantry-nav__drop--projects"><a class="pantry-nav__hub" href="${hub.url}">All projects</a>${items}</div></details>`;
+}
+
+export function nav(surfaces: PantrySurfaces, review: boolean, project?: string): string {
   // Three areas, so the bar stays short as surfaces grow. The command center is the front door; Work
   // is everything an agent produces or waits on; Project is how the codebase and its rules read. Each
   // menu is a native details element, so it opens without a script and closes on its own toggle.
@@ -43,21 +56,20 @@ export function nav(surfaces: PantrySurfaces, review: boolean): string {
     surfaces.timeline && `<a href="/timeline">Plan timeline</a>`,
     surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
   ]);
-  const project = menu("Project", [
+  const projectMenu = menu("Project", [
     `<a href="/map">Map</a>`,
     surfaces.standards && `<a href="/standards">Standards</a>`,
     `<a href="/llms.txt">llms.txt</a>`,
     `<a href="/about">About</a>`,
   ]);
-  const hub = hubUrl();
+  const hub = hubRegistry();
   const links = [
     surfaces.brief && `<a href="/">Command center</a>`,
     work,
-    project,
+    projectMenu,
     // Only when the proxy is on, because it is the only time there is anything to review. A nav
     // entry that leads to an empty frame is worse than no entry.
     review && `<a href="/review">Review</a>`,
-    hub && `<a class="pantry-nav__hub" href="${hub}">All projects</a>`,
   ].filter(Boolean).join("\n  ");
   // The theming controls are GRAIN's, driven by attributes rather than by any code here: theme.js
   // binds anything carrying data-toggle-scheme or data-cycle-theme, and writes the current flavor
@@ -65,6 +77,7 @@ export function nav(surfaces: PantrySurfaces, review: boolean): string {
   // it owns none of the logic, which is the point (the cockpit consumes the stack, never forks it).
   return `<nav class="pantry-nav">
   <a class="pantry-nav__brand" href="/">PANTRY</a>
+  ${projectSwitch(project, hub)}
   ${links}
   <span class="pantry-nav__theme">
     <button type="button" class="pantry-nav__themebtn" data-cycle-theme title="Change flavor"><span data-theme-name>sourdough</span></button>
@@ -81,6 +94,8 @@ export interface PantryPageOptions {
   /** the review shell fills the viewport and draws its own footer-free layout, so it opts out of
    *  the centred column and the made-with footer that every reading surface wants */
   fullBleed?: boolean;
+  /** the project's name, shown in the header and the tab title */
+  project?: string;
 }
 
 export function pantryPage(title: string, body: string, surfaces: PantrySurfaces, opts: PantryPageOptions = {}): string {
@@ -94,12 +109,12 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${escapeHtml(title)} · PANTRY</title>
+  <title>${escapeHtml(title)}${opts.project ? ` · ${escapeHtml(opts.project)}` : ""} · PANTRY</title>
   <script src="/scripts/theme-boot.js"></script>
   ${styleLinks}
 </head>
 <body class="pantry-body${opts.fullBleed ? " pantry-body--full" : ""}" data-grade="smooth">
-  ${nav(surfaces, opts.review ?? false)}
+  ${nav(surfaces, opts.review ?? false, opts.project)}
   <main class="pantry-main${opts.fullBleed ? " pantry-main--full" : ""}">${body}</main>
   ${opts.fullBleed ? "" : madeWith()}
   <script src="/scripts/theme.js" defer></script>

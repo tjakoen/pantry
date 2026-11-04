@@ -555,7 +555,8 @@ describe("run artifacts (piece 11e sub-unit 1)", () => {
     const artifactsDir = join(tmpdir(), `pantry-app-artifacts-${Date.now()}`);
     await Bun.write(join(artifactsDir, "old-report.md"), "# an old report");
     await Bun.write(join(artifactsDir, "run-1", "shot.png"), "not-really-a-png");
-    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), artifactsDir } });
+    const opensFile = join(artifactsDir, "..", `opens-${Date.now()}.json`);
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: { ...configWith(), artifactsDir }, opensFile });
 
     const index = await (await get(handler, "/artifacts")).text();
     expect(index).toContain("old-report.md");
@@ -565,6 +566,9 @@ describe("run artifacts (piece 11e sub-unit 1)", () => {
     const preview = await (await get(handler, "/artifacts?file=old-report.md")).text();
     expect(preview).toContain("ax-preview");
     expect(preview).toContain("an old report");
+    // the open is recorded, so a second visit can sort by it and the pane says when it was last opened
+    expect(JSON.parse(await Bun.file(opensFile).text())["old-report.md"]).toBeTruthy();
+    expect(await (await get(handler, "/artifacts?sort=opened")).text()).toMatch(/old-report\.md[\s\S]*just now/);
 
     const j = await (await get(handler, "/artifacts.json")).json();
     expect(j.available).toBe(true);

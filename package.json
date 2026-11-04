@@ -22,6 +22,7 @@
     "NOTICE",
     "PLAN.md",
     "activity.ts",
+    "artifact-opens.ts",
     "answers.ts",
     "app.ts",
     "artifacts-page.ts",

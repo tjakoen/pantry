@@ -162,6 +162,14 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         }
         return Response.json({ ok: true, projects: await Promise.all(reg.projects.map(status)) });
       }
+      // The header's project switcher links here, because only the hub knows where each project
+      // answers right now (its port, and whether it serves PANTRY at the root or under the prefix).
+      if (url.pathname.startsWith("/open/")) {
+        const name = decodeURIComponent(url.pathname.slice("/open/".length));
+        const p = reg.projects.find((x) => x.name === name);
+        if (!p) return new Response("No such project", { status: 404 });
+        return Response.redirect((await status(p)).url, 302);
+      }
       if (url.pathname === "/" ) {
         const { hubRows, hubHomePage } = await import("./hub-home.ts");
         const rows = await hubRows(await Promise.all(reg.projects.map(status)));
