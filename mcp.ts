@@ -105,7 +105,7 @@ async function fetchSurface(p: HubProject, route: string): Promise<string | null
 export async function unreadAnswers(projectPath: string, decisions: { id: string; blocks: string[] }[], planId: string): Promise<{ answers?: unknown[]; answersNote?: string }> {
   try {
     const { loadPantryConfig } = await import("./config.ts");
-    const { readAnswerLog, unacked } = await import("./answers.ts");
+    const { readAnswerLog, unacked, answerHandoff, ANSWER_ROUTING } = await import("./answers.ts");
     const pending = unacked(await readAnswerLog((await loadPantryConfig(projectPath)).answersLog));
     if (!pending.length) return {};
     const rows = pending.map((a) => ({
@@ -115,8 +115,9 @@ export async function unreadAnswers(projectPath: string, decisions: { id: string
       answer: a.choice,
       ...(a.notes ? { notes: a.notes } : {}),
       forYourPlan: decisions.some((d) => d.id === a.request.ref && d.blocks.includes(planId)),
+      handoff: answerHandoff(a),
     })).sort((x, y) => Number(y.forYourPlan) - Number(x.forYourPlan));
-    return { answers: rows, answersNote: "The owner answered these. Act on the ones that concern your work, then run: pantry answers ack <id>" };
+    return { answers: rows, answersNote: `The owner answered these. ${ANSWER_ROUTING}` };
   } catch {
     return {};
   }

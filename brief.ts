@@ -19,7 +19,7 @@ import { buildSessionsPayload, planTouchesPath, type SessionRow } from "./sessio
 import { claimsFile, foldClaims, loadProjectWork, readClaims, readyPlans, ttlMs, type ClaimView, type DecisionLike, type PlanLike } from "./orchestrator.ts";
 import { buildDecisionsPayload } from "./decisions.ts";
 import { runDoctor, type DoctorCheck } from "./doctor.ts";
-import { readAnswerLog, unacked, type AnswerEntry } from "./answers.ts";
+import { ANSWER_ROUTING, answerHandoff, readAnswerLog, unacked, type AnswerEntry } from "./answers.ts";
 
 /** Sessions that ended this recently still count, so unplanned work does not vanish on close. */
 export const ENDED_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -95,6 +95,8 @@ export interface AnsweredRow {
   notes: string | null;
   /** the plans an open decision with this id holds, so an agent on one of them knows it is for it */
   holds: string[];
+  /** a self-contained brief for a separate session, when the answer is not the current session's work */
+  handoff: string;
   actions: BriefAction[];
 }
 
@@ -265,7 +267,8 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
     choice: a.choice,
     notes: a.notes ?? null,
     holds: input.decisions.find((d) => d.id === a.request.ref)?.blocks ?? [],
-    actions: [{ label: "Copy prompt", kind: "copy", value: a.composed || `The owner answered ${a.request.ref} (${a.request.question}): ${a.choice || "see note"}.${a.notes ? ` Note: ${a.notes}` : ""} Act on it, then run: pantry answers ack ${a.id}` }],
+    handoff: answerHandoff(a),
+    actions: [{ label: "Copy session brief", kind: "copy", value: answerHandoff(a) }, { label: "Copy prompt", kind: "copy", value: a.composed || `The owner answered ${a.request.ref} (${a.request.question}): ${a.choice || "see note"}.${a.notes ? ` Note: ${a.notes}` : ""} Act on it, then run: pantry answers ack ${a.id}` }],
   }));
 
   return { generated: input.now, project: input.project, inFlight, waiting, drift, next, answered, notes };
@@ -347,9 +350,11 @@ export function briefText(b: BriefPayload): string {
   }
   out.push("", "## Answered by the owner, not yet acted on", "");
   if (!b.answered.length) out.push("No unread answers.");
+  else out.push(ANSWER_ROUTING, "");
   for (const a of b.answered) {
     out.push(`- ${a.id} on ${a.ref}${a.holds.length ? ` (holds ${a.holds.join(", ")})` : ""}: ${a.question} Answer: ${a.choice || "(see note)"}${a.notes ? `. Note: ${a.notes}` : ""}`);
     out.push(`  - when acted on, run: pantry answers ack ${a.id}`);
+    out.push(`  - handoff brief for a separate session:`, ...a.handoff.split("\n").map((l) => `    > ${l}`));
   }
   out.push("", "## Waiting on the owner", "");
   if (!b.waiting.length) out.push("Nothing is waiting on the owner.");

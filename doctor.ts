@@ -1089,7 +1089,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
           severity: "warn",
           ok: false,
           label: "answer log",
-          detail: `${pending.length} answers no session has acted on: ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""} — read them with pantry answers, then act or ack`,
+          detail: `${pending.length} answers no session has acted on: ${named.join(", ")}${rest > 0 ? `, and ${rest} more` : ""} — read them with pantry answers; act on the ones about your work, and offer the owner a separate session (its own worktree if it changes files) for the rest`,
         });
       }
     }

@@ -565,6 +565,28 @@ export async function waitForAnswer(
 }
 
 /** One entry as a human line, for the CLI and for a handoff that has to quote one. */
+/**
+ * What an agent does with an unread answer that is not about its own work. Said wherever an agent
+ * meets one (claim and heartbeat replies, the brief, the doctor), so the rule reaches it whichever
+ * door it came in by. PANTRY still starts nothing: the agent offers, the owner says yes, and the
+ * agent's own harness opens the session.
+ */
+export const ANSWER_ROUTING =
+  "If an answer concerns the work you are on, act on it, then ack it. If it does not, leave it out of your current work: offer the owner a separate session for it, a child of yours where your harness supports one, in its own git worktree if it will change files, and give that session the handoff brief that comes with the answer. Ack only after that session has acted.";
+
+/** A brief a fresh session can act on with nothing else: the question, the answer, and the finish line. */
+export function answerHandoff(a: AnswerEntry): string {
+  const r = a.request;
+  return [
+    `The owner answered a decision and no session has acted on it yet. Act on this answer and nothing else.`,
+    `Decision: ${r.ref}${r.file ? ` (${r.file})` : ""}.`,
+    `Question: ${r.question}`,
+    `Answer: ${a.choice || "see the note"}.${a.notes ? ` Note: ${a.notes}` : ""}`,
+    r.unblocks ? `What it unblocks: ${r.unblocks}` : "",
+    `Work in your own git worktree if you will change files. Make the change the answer calls for, set the decision file to status: resolved, commit, then run: pantry answers ack ${a.id}`,
+  ].filter(Boolean).join("\n");
+}
+
 export function formatAnswer(a: AnswerEntry, opts: { acked?: boolean } = {}): string {
   const head = `${a.id}  ${a.at}  [${a.request.source}] ${a.request.ref}${opts.acked ? "" : "  ← unread"}`;
   const lines = [head, `  Q: ${a.request.question}`];

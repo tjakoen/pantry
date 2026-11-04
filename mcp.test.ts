@@ -119,5 +119,7 @@ describe("unread answers reach a running agent", () => {
       + line({ kind: "answer", id: "a-2", at: "2026-11-04T10:01:00Z", via: "t", choice: "C", request: { source: "decision", ref: "d2", question: "Other?" } }));
     const r = await unreadAnswers(root, [{ id: "d2", blocks: ["p1"] }], "p1") as { answers: { id: string; forYourPlan: boolean }[] };
     expect(r.answers.map((a) => [a.id, a.forYourPlan])).toEqual([["a-2", true], ["a-1", false]]);
+    expect((r as unknown as { answersNote: string }).answersNote).toContain("separate session");
+    expect((r.answers[0] as unknown as { handoff: string }).handoff).toContain("pantry answers ack a-2");
   });
 });

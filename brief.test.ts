@@ -139,3 +139,14 @@ test("an unread answer is carried with the plans its decision holds, and an ack 
   expect(briefText(b)).toContain("pantry answers ack a-1");
   expect(b.answered[0].actions[0].value).toContain("pantry answers ack a-1");
 });
+
+test("an unread answer carries a handoff brief and the routing rule for a session on other work", () => {
+  const answer = { kind: "answer" as const, id: "a-9", at: NOW, via: "t", choice: "B", request: { source: "decision" as const, ref: "d9", question: "Pick?", file: "plans/decisions/d9.md" } };
+  const b = assembleBrief(inputs({ answers: [answer] }));
+  expect(b.answered[0].handoff).toContain("Act on this answer and nothing else");
+  expect(b.answered[0].handoff).toContain("own git worktree");
+  expect(b.answered[0].handoff).toContain("pantry answers ack a-9");
+  const text = briefText(b);
+  expect(text).toContain("offer the owner a separate session");
+  expect(text).toContain("> Decision: d9 (plans/decisions/d9.md).");
+});
