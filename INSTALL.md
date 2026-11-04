@@ -99,6 +99,29 @@ Three things it deliberately does not do:
   the pixels in the folder are the pixels of the embed, and motion is disabled so every shot is a
   settled state rather than a frame of a transition.
 
+## The always-on hub (one PANTRY for every project)
+
+`pantry serve` serves the project it was started in. The hub serves every registered project at
+once, from one Docker container that restarts with the machine, so any agent in any project finds
+its PANTRY already running.
+
+```sh
+bunx pantry register                       # in each project; prints the project's port
+PANTRY_CODE_ROOT=$HOME/Local docker compose up -d --build   # once, in the pantry repo
+```
+
+The registry is `~/.pantry/projects.json`. Port 4400 is the hub itself (`/` lists the projects,
+`/health` reports each one, and `/health?path=<dir>` answers for the project containing that
+directory); each project gets its own port from 4401 to 4449, so every page keeps working exactly as
+it does under `pantry serve`. The code root is mounted read-only at the same absolute path it has on
+the host, and every port is published on `127.0.0.1` only. `PANTRY_TRUST_CONTAINER_NETWORK`, set by
+the image, treats the container network as loopback because of that binding; never publish these
+ports on another interface. The session-start checklist in the owner's agent config reads
+`/health?path=` to decide whether a project's PANTRY is serving.
+
+The hub serves pages. The checks (`doctor`, `drift`, `capture`) stay commands you run in the
+checkout, because they must see the exact working tree an agent is editing.
+
 ## The two things PANTRY writes
 
 Every other surface is a pure read. There are exactly two exceptions, and both are small enough to

@@ -147,6 +147,31 @@ async function main() {
     return;
   }
 
+  // The always-on hub (hub.ts): one PANTRY per machine for every registered project.
+  if (cmd === "hub") {
+    const { runHub } = await import("./hub.ts");
+    await runHub();
+    return;
+  }
+  if (cmd === "register" || cmd === "unregister" || cmd === "projects") {
+    const hub = await import("./hub.ts");
+    let reg = hub.readRegistry();
+    if (cmd === "register") {
+      const r = hub.registerProject(reg, dir ?? process.cwd(), flags.name);
+      if (r.added) hub.writeRegistry(r.reg);
+      console.log(`${r.added ? "Registered" : "Already registered"}: ${r.project.name} on port ${r.project.port} (${r.project.path})`);
+      return;
+    }
+    if (cmd === "unregister") {
+      reg = hub.unregisterProject(reg, dir ?? process.cwd());
+      hub.writeRegistry(reg);
+      console.log(`Unregistered ${dir ?? process.cwd()}`);
+      return;
+    }
+    for (const p of reg.projects) console.log(`${p.name}\t${p.port}\t${p.path}`);
+    return;
+  }
+
   if (cmd === "check") {
     const report = await checkPantryDrift({ cwd: process.cwd() });
     console.log(formatDriftReport(report));
