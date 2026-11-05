@@ -173,8 +173,10 @@ async function gitHead(cwd: string, git: GitRunner): Promise<string | null> {
 // Prose, pictures and lockfiles do not move a symbol. GRAPH.md §4 is explicit that the per-edit
 // refresh re-extracts CODE, so a run of doc commits legitimately leaves the graph current and warning
 // about it would be crying wolf. Found the honest way: the first live run of the commit check flagged
-// the portfolio, whose only churn since the graph was built was one markdown file.
-const NON_INVALIDATING = /\.(md|mdx|txt|png|jpe?g|gif|svg|webp|ico|lock)$|(^|\/)(bun\.lock|package-lock\.json|yarn\.lock)$/i;
+// the portfolio, whose only churn since the graph was built was one markdown file. Append-only logs
+// (.jsonl, the answer log first among them) join the list: graphify never extracts them, so a commit
+// that records an answer used to leave a warning no `graphify update` could clear.
+const NON_INVALIDATING = /\.(md|mdx|txt|jsonl|png|jpe?g|gif|svg|webp|ico|lock)$|(^|\/)(bun\.lock|package-lock\.json|yarn\.lock)$/i;
 
 // `GRAPH_REPORT.md` describes `graph.json` — the extraction `graphify update` ran. It says nothing
 // about `merged-graph.json`, which `pantry graph merge` produces from the SIBLINGS' graphs and which

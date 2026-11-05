@@ -393,6 +393,18 @@ describe("pantry doctor — staleness (graph, e2e)", () => {
     expect(c.detail).toContain("run graphify update .");
   });
 
+  test("behind HEAD, only the answer log changed → ok, because graphify never extracts a .jsonl", async () => {
+    await compliantKit();
+    const graphDir = join(dir, "graphify-out");
+    await mkdir(graphDir);
+    const graph = join(graphDir, "graph.json");
+    await writeFile(graph, "{}");
+    await writeFile(join(graphDir, "GRAPH_REPORT.md"), "- Built from commit: `18017a67`\n");
+    const gitRunner = fakeGraphifyGit("deadbeef", "plans/decisions/answers.jsonl\n");
+    const r = await run({ graphPath: graph }, { gitRunner });
+    expect(byId(r, "graphify-freshness").ok).toBe(true);
+  });
+
   test("behind HEAD, only a doc file changed → ok, \"docs only, graph still current\"", async () => {
     await compliantKit();
     const graphDir = join(dir, "graphify-out");
