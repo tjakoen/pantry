@@ -888,3 +888,29 @@
 .pantry-nav__current::before { content: "● "; font-size: 0.7em; }
 .pantry-nav__drop--projects .pantry-nav__hub { border-bottom: 1px solid color-mix(in srgb, var(--hairline) 30%, transparent); }
 .pantry-nav:not(:has(.pantry-nav__project)) .pantry-nav__brand { margin-right: auto; }
+
+/* The release gate on /control: a row of tiles, adapted from the C.R.I.S.S.P. Tests dashboard
+   (github.com/richardedens/crissp, Apache-2.0). Status is weight, never hue: a closed gate reads
+   heavier than an open one, in ink alone. */
+.pantry-gate__tiles {
+  list-style: none; padding: 0; margin: 0;
+  display: grid; gap: var(--space-3, 0.75rem);
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+}
+.pantry-gate__tile {
+  position: relative; display: grid; gap: 0.25rem; align-content: start;
+  padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+  border: 1px solid var(--ink-faint); border-radius: var(--radius-md, 0.5rem);
+}
+.pantry-gate__label {
+  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ink-muted);
+}
+.pantry-gate__value { font-size: var(--text-xl, 1.5rem); font-weight: 600; color: var(--ink); line-height: 1.1; }
+.pantry-gate__note { font-size: var(--text-sm, 0.875rem); color: var(--ink-muted); }
+.pantry-gate[data-open="false"] .pantry-gate__tile:first-child { border: 2px solid var(--ink); }
+.pantry-gate[data-open="false"] .pantry-gate__tile:first-child .pantry-gate__value { font-weight: 800; }
+.pantry-gate__ring { position: absolute; inset-block-start: 0.75rem; inset-inline-end: 0.75rem; inline-size: 2.25rem; block-size: 2.25rem; }
+.pantry-gate__track { fill: none; stroke: var(--ink-faint); stroke-width: 4; }
+.pantry-gate__fill { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+.pantry-gate__problems { margin: var(--space-2, 0.5rem) 0 0; padding-inline-start: 1.25rem; color: var(--ink-muted); font-size: var(--text-sm, 0.875rem); }

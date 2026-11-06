@@ -1,5 +1,12 @@
 {
   "projectName": "pantry",
   "plansDir": "./plans",
-  "docsDirs": []
+  "docsDirs": [],
+  "gates": {
+    "full": "bun run check && bun test --coverage --timeout 30000",
+    "check": "bun run check && bun test --timeout 30000"
+  },
+  "surfaces": {
+    "control": true
+  }
 }

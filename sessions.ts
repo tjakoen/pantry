@@ -28,6 +28,8 @@
 // **What a row may honestly claim.** Alive, idle, or ended, from timestamps and a stop event. Not
 // what the model is thinking: nothing here observes that, and a surface that animates a thought it
 // cannot see is a lie with a spinner on it.
+import type { GateSummary } from "./certify.ts";
+import { summarizeGate } from "./certify.ts";
 import { existsSync } from "node:fs";
 import { open, readFile, stat } from "node:fs/promises";
 import { basename, isAbsolute, join, resolve, sep } from "node:path";
@@ -657,6 +659,8 @@ export interface ControlPayload {
   /** Set when the plans directory could not be read, so a page never renders zero plans as if the
    *  project had none. An empty board and an unreadable one are different claims. */
   planError: string | null;
+  /** The release certificate (certify.ts), or null outside a git repo. */
+  gate: GateSummary | null;
 }
 
 /** Left to right on the board, so the row a person needs first is the row they meet first. */
@@ -778,5 +782,6 @@ export async function buildControlPayload(
     unattached,
     waiting,
     planError,
+    gate: summarizeGate(repoRoot, new Date(nowIso)),
   };
 }

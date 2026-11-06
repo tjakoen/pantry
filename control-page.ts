@@ -64,6 +64,11 @@ export function controlBody(payload: ControlPayload): string {
   ${waiting}
 </section>`);
 
+  // The release gate, as a row of tiles: the verdict first, then the three numbers it rests on. The
+  // tile row is adapted from the Tests dashboard of C.R.I.S.S.P. by Richard Edens
+  // (github.com/richardedens/crissp, Apache-2.0); see NOTICE.
+  parts.push(gateSection(payload.gate, now));
+
   // The lamps. The wording here is doing real work: lit is a claim about THIS session, dark is a
   // claim about the run, and unobserved is a claim about the observer. Saying so on the page is the
   // difference between a grey lamp reading as a failure and reading as an absence of evidence.
@@ -127,4 +132,45 @@ export function controlBody(payload: ControlPayload): string {
   parts.push(`<p class="pantry-control-note">Rendered ${escapeHtml(payload.generated)} from files alone. Add a session id to the address to replay a run that has already ended.</p>
 <script src="/pantry-control.js" defer></script>`);
   return parts.join("\n");
+}
+
+function ring(done: number, total: number): string {
+  // A total of zero is a full ring: nothing after the full run means nothing left unchecked.
+  const frac = total === 0 ? 1 : done / total;
+  const c = 2 * Math.PI * 16;
+  return `<svg class="pantry-gate__ring" viewBox="0 0 40 40" role="img" aria-label="${done} of ${total} checked">
+  <circle cx="20" cy="20" r="16" class="pantry-gate__track"/>
+  <circle cx="20" cy="20" r="16" class="pantry-gate__fill" stroke-dasharray="${(frac * c).toFixed(2)} ${c.toFixed(2)}" transform="rotate(-90 20 20)"/>
+</svg>`;
+}
+
+export function gateSection(gate: ControlPayload["gate"], now: Date): string {
+  if (!gate) return "";
+  const head = `<h2 class="pantry-section-title">Release gate</h2>`;
+  if (!gate.recorded) {
+    return `<section class="pantry-control-section">${head}
+  <p class="pantry-member__role">No full run is on record for this repo, so nothing here may ship yet. Run <code>pantry certify full</code> on a clean tree to start the certificate.</p>
+</section>`;
+  }
+  const full = gate.full!;
+  const tile = (label: string, value: string, note: string, extra = "") =>
+    `<li class="pantry-gate__tile">${extra}<span class="pantry-gate__label">${label}</span><span class="pantry-gate__value">${value}</span><span class="pantry-gate__note">${note}</span></li>`;
+  const tiles = [
+    tile("Verdict", gate.open ? "Open" : "Closed",
+      gate.open ? `${escapeHtml(gate.head.slice(0, 7))} may ship` : escapeHtml(gate.problems[0] ?? "")),
+    tile("Last full run", full.ok ? "Green" : "Red",
+      `${escapeHtml(full.sha.slice(0, 7))}, ${escapeHtml(relativeAge(full.at, now))}; the limit is seven days`),
+    tile("Checked since", `${gate.checked} of ${gate.since}`,
+      gate.since === 0 ? "no commits after the full run" : "commits after the full run with a green check",
+      ring(gate.checked, gate.since)),
+    tile("Coverage", gate.coverageFloor === null ? "None" : `${gate.coverageFloor}%`,
+      gate.coverageFloor !== null ? "the floor: it may go up, never down"
+        : full.coverage !== undefined ? `${full.coverage}% on a red run, which sets no floor`
+        : "no coverage table in the full gate's output"),
+  ];
+  const more = gate.problems.length > 1
+    ? `<ul class="pantry-gate__problems">${gate.problems.slice(1).map((p) => `<li>${escapeHtml(p)}</li>`).join("")}</ul>` : "";
+  return `<section class="pantry-control-section pantry-gate" data-open="${gate.open}">${head}
+  <ul class="pantry-gate__tiles">${tiles.join("\n")}</ul>${more}
+</section>`;
 }

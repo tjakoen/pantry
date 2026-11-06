@@ -6,3 +6,6 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 The release certificate and coverage ratchet (certify.ts) adapt the release gate and coverage gate
 of C.R.I.S.S.P. by Richard Edens, https://github.com/richardedens/crissp, licensed under the Apache
 License, Version 2.0. No code was copied; the design is credited because the idea is theirs.
+
+The release gate tiles on /control (control-page.ts, pantry.css) adapt the tile row of the
+C.R.I.S.S.P. Tests dashboard, under the same licence and with the same credit.
