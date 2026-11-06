@@ -81,7 +81,7 @@ describe("release certificate", () => {
 describe("the release gate on /control", () => {
   test("names a missing certificate instead of rendering empty tiles", async () => {
     const { gateSection } = await import("./control-page.ts");
-    const html = gateSection({ recorded: false, open: false, head: "abc", problems: [], full: null, since: 0, checked: 0, coverageFloor: null }, new Date());
+    const html = gateSection({ recorded: false, open: false, head: "abc", problems: [], full: null, since: 0, checked: 0, anchored: false, coverageFloor: null }, new Date());
     expect(html).toContain("No full run is on record");
   });
 
@@ -89,7 +89,7 @@ describe("the release gate on /control", () => {
     const { gateSection } = await import("./control-page.ts");
     const html = gateSection({
       recorded: true, open: false, head: "1234567890", problems: ["first reason", "second reason"],
-      full: { sha: "abcdef1234", at: new Date().toISOString(), ok: false, coverage: 60 }, since: 2, checked: 1, coverageFloor: null,
+      full: { sha: "abcdef1234", at: new Date().toISOString(), ok: false, coverage: 60 }, since: 2, checked: 1, anchored: true, coverageFloor: null,
     }, new Date());
     expect(html).toContain('data-open="false"');
     expect(html).toContain("first reason");
@@ -106,5 +106,36 @@ describe("the release gate on /control", () => {
     expect(s.open).toBe(false);
     expect(s.since).toBe(1);
     expect(s.checked).toBe(0);
+  });
+});
+
+describe("a squash merge keeps the certificate", () => {
+  const sh = (dir: string, cmd: string) => Bun.spawnSync(["sh", "-c", cmd], { cwd: dir });
+
+  test("a full run on a branch tip vouches for its squash on main", () => {
+    const dir = repo({ full: "true", check: "true" });
+    sh(dir, "git branch -M main && git switch -q -c feature && echo a > a && git add a && git commit -qm a && echo b >> a && git commit -qam b");
+    expect(runGate(dir, "full").run.ok).toBe(true);
+    sh(dir, "git switch -q main && git merge -q --squash feature && git commit -qm squashed");
+    expect(verify(dir).ok).toBe(true);
+    expect(summarizeGate(dir)!.anchored).toBe(true);
+  });
+
+  test("different code on main does not ride on the branch's certificate", () => {
+    const dir = repo({ full: "true", check: "true" });
+    sh(dir, "git branch -M main && git switch -q -c feature && echo a > a && git add a && git commit -qm a");
+    runGate(dir, "full");
+    sh(dir, "git switch -q main && echo other > o && git add o && git commit -qm other");
+    const v = verify(dir);
+    expect(v.ok).toBe(false);
+    expect(v.problems.join()).toContain("nor its code");
+    expect(summarizeGate(dir)!.anchored).toBe(false);
+  });
+
+  test("an unanchored gate shows no ring", async () => {
+    const { gateSection } = await import("./control-page.ts");
+    const html = gateSection({ recorded: true, open: false, head: "1234567", problems: ["x"], full: { sha: "abcdef1", at: new Date().toISOString(), ok: true }, since: 0, checked: 0, anchored: false, coverageFloor: null }, new Date());
+    expect(html).not.toContain("pantry-gate__ring");
+    expect(html).toContain("not in this branch's history");
   });
 });

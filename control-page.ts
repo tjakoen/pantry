@@ -160,9 +160,13 @@ export function gateSection(gate: ControlPayload["gate"], now: Date): string {
       gate.open ? `${escapeHtml(gate.head.slice(0, 7))} may ship` : escapeHtml(gate.problems[0] ?? "")),
     tile("Last full run", full.ok ? "Green" : "Red",
       `${escapeHtml(full.sha.slice(0, 7))}, ${escapeHtml(relativeAge(full.at, now))}; the limit is seven days`),
-    tile("Checked since", `${gate.checked} of ${gate.since}`,
-      gate.since === 0 ? "no commits after the full run" : "commits after the full run with a green check",
-      ring(gate.checked, gate.since)),
+    // Unanchored means the walk never reached the full run, so there is no count to show. A full
+    // ring there would read as all clear on a gate that is closed.
+    gate.anchored
+      ? tile("Checked since", `${gate.checked} of ${gate.since}`,
+          gate.since === 0 ? "no commits after the full run" : "commits after the full run with a green check",
+          ring(gate.checked, gate.since))
+      : tile("Checked since", "None", "the full run is not in this branch's history; run pantry certify full"),
     tile("Coverage", gate.coverageFloor === null ? "None" : `${gate.coverageFloor}%`,
       gate.coverageFloor !== null ? "the floor: it may go up, never down"
         : full.coverage !== undefined ? `${full.coverage}% on a red run, which sets no floor`
