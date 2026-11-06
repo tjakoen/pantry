@@ -184,6 +184,24 @@ async function main() {
     process.exit(report.ok ? 0 : 1);   // nonzero on a broken kit → fails CI (warns/infos don't)
   }
 
+  if (cmd === "certify") {
+    const { runGate, verify, formatVerdict } = await import("./certify.ts");
+    const sub = rest[0];
+    if (sub === "full" || sub === "check") {
+      const r = runGate(process.cwd(), sub);
+      if (!r.run.ok) console.error(r.output.split("\n").slice(-30).join("\n"));
+      console.log(`${sub}: ${r.run.ok ? "green" : "red"}${r.run.sha ? ` on ${r.run.sha.slice(0, 7)}` : ""}${r.run.coverage !== undefined ? `, line coverage ${r.run.coverage}%` : ""}${r.reason ? ` (${r.reason})` : ""}`);
+      process.exit(r.run.ok ? 0 : 1);
+    }
+    if (sub === "verify") {
+      const v = verify(process.cwd());
+      console.log(formatVerdict(v));
+      process.exit(v.ok ? 0 : 1);
+    }
+    console.error("usage: pantry certify full | check | verify");
+    process.exit(2);
+  }
+
   if (cmd === "capture") {
     const tourId = rest[0];
     if (!tourId) {

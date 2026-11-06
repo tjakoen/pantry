@@ -578,3 +578,19 @@ The nav is three areas: the command center, a Work menu (plans, decisions, runs,
 timeline, artifacts) and a Project menu (map, standards, llms.txt, about), plus a link back to the
 hub when the project runs as a hub child. The page markup moved out of `app.ts` into `chrome.ts`
 and one `*-page.ts` module per surface; `app.ts` keeps the routing.
+
+## The release certificate, adapted from C.R.I.S.S.P. (2026-11-06)
+
+[C.R.I.S.S.P.](https://github.com/richardedens/crissp) by Richard Edens (Apache-2.0) is the same
+bet as this stack: the AI builds, scripts with no model in them say what is green, and a person
+decides. Its release gate was the piece PANTRY lacked, so `certify.ts` adapts it. A full run on a
+clean HEAD is recorded in `.pantry/certificate.json` (gitignored, per machine); a quick check is
+recorded per commit after it; `pantry certify verify` opens only for a green full run at most seven
+days old plus a green check on every commit since, and has no bypass. The full gate's line coverage,
+when its output carries an "All files" table, becomes a floor that only rises.
+
+Still to take from it, in order: the impact plan (run only the tests a change can reach, which
+tokensave already computes), then its dashboard presentation for `/control`: one dark surface with
+tests, board and advice side by side, decisions answered in place with Agree, Disagree or Later,
+and the before-and-after design view with Approve beneath it. Its UX persona rounds come last,
+because they cost a model run per round and need a decision on budget first.
