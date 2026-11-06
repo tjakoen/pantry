@@ -1,0 +1,5 @@
+[test]
+# Coverage counts PANTRY's own sources. One test packs the package into the OS temp dir and imports
+# from there, which would otherwise add a second, mostly unexercised copy of every file.
+coverageSkipTestFiles = true
+coveragePathIgnorePatterns = ["**/pantry-packed-*/**", "node_modules/**"]
