@@ -189,7 +189,12 @@ async function main() {
     const sub = rest[0];
     if (sub === "full" || sub === "check") {
       const r = runGate(process.cwd(), sub);
-      if (!r.run.ok) console.error(r.output.split("\n").slice(-30).join("\n"));
+      // A red run names its failures first: the tail alone is a coverage table and loses them.
+      if (!r.run.ok) {
+        const lines = r.output.split("\n");
+        const named = lines.filter((l) => /^\(fail\)|^error:|timed out/.test(l));
+        console.error([...named, ...(named.length ? [] : lines.slice(-30))].join("\n"));
+      }
       console.log(`${sub}: ${r.run.ok ? "green" : "red"}${r.run.sha ? ` on ${r.run.sha.slice(0, 7)}` : ""}${r.run.coverage !== undefined ? `, line coverage ${r.run.coverage}%` : ""}${r.reason ? ` (${r.reason})` : ""}`);
       process.exit(r.run.ok ? 0 : 1);
     }
