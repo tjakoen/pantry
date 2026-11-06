@@ -2,7 +2,7 @@ import { describe, expect, setDefaultTimeout, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parseCoverage, readCertificate, runGate, verify } from "./certify.ts";
+import { parseCoverage, readCertificate, runGate, summarizeGate, verify } from "./certify.ts";
 
 function repo(gates: { full: string; check: string }): string {
   const dir = mkdtempSync(join(tmpdir(), "pantry-certify-"));
@@ -75,5 +75,36 @@ describe("release certificate", () => {
   test("parses bun's coverage table", () => {
     expect(parseCoverage("File | % Funcs | % Lines\nAll files |   91.20 |   88.45 |")).toBe(88.45);
     expect(parseCoverage("no table")).toBeUndefined();
+  });
+});
+
+describe("the release gate on /control", () => {
+  test("names a missing certificate instead of rendering empty tiles", async () => {
+    const { gateSection } = await import("./control-page.ts");
+    const html = gateSection({ recorded: false, open: false, head: "abc", problems: [], full: null, since: 0, checked: 0, coverageFloor: null }, new Date());
+    expect(html).toContain("No full run is on record");
+  });
+
+  test("a closed gate shows its first reason in the verdict tile and the rest below", async () => {
+    const { gateSection } = await import("./control-page.ts");
+    const html = gateSection({
+      recorded: true, open: false, head: "1234567890", problems: ["first reason", "second reason"],
+      full: { sha: "abcdef1234", at: new Date().toISOString(), ok: false, coverage: 60 }, since: 2, checked: 1, coverageFloor: null,
+    }, new Date());
+    expect(html).toContain('data-open="false"');
+    expect(html).toContain("first reason");
+    expect(html).toContain("<li>second reason</li>");
+    expect(html).toContain("1 of 2");
+    expect(html).toContain("60% on a red run");
+  });
+
+  test("summarizeGate reads a real repo", () => {
+    const dir = repo({ full: "true", check: "true" });
+    runGate(dir, "full");
+    commit(dir, "two");
+    const s = summarizeGate(dir)!;
+    expect(s.open).toBe(false);
+    expect(s.since).toBe(1);
+    expect(s.checked).toBe(0);
   });
 });

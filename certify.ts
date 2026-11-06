@@ -124,3 +124,35 @@ export function formatVerdict(v: Verdict): string {
   if (v.ok) return `release gate: OPEN for ${v.head.slice(0, 7)}`;
   return [`release gate: CLOSED for ${v.head.slice(0, 7)}`, ...v.problems.map((p) => `  - ${p}`)].join("\n");
 }
+
+/** What /control shows about the gate: the verdict and the three numbers behind it. */
+export interface GateSummary {
+  recorded: boolean;
+  open: boolean;
+  head: string;
+  problems: string[];
+  full: GateRun | null;
+  /** commits after the full run, and how many of them carry a green check */
+  since: number;
+  checked: number;
+  coverageFloor: number | null;
+}
+
+export function summarizeGate(cwd: string, now = new Date()): GateSummary | null {
+  if (!existsSync(join(cwd, ".git"))) return null;
+  let head = "";
+  try { head = git(cwd, ["rev-parse", "HEAD"]); } catch { return null; }
+  const cert = readCertificate(cwd);
+  const v = verify(cwd, now);
+  let since = 0, checked = 0;
+  if (cert.full && Bun.spawnSync(["git", "merge-base", "--is-ancestor", cert.full.sha, head], { cwd }).exitCode === 0) {
+    const shas = git(cwd, ["rev-list", `${cert.full.sha}..${head}`]).split("\n").filter(Boolean);
+    const green = new Set(cert.checks.filter((c) => c.ok).map((c) => c.sha));
+    since = shas.length;
+    checked = shas.filter((s) => green.has(s)).length;
+  }
+  return {
+    recorded: cert.full !== undefined, open: v.ok, head, problems: v.problems,
+    full: cert.full ?? null, since, checked, coverageFloor: cert.coverageFloor ?? null,
+  };
+}
