@@ -13,7 +13,15 @@ import { join } from "node:path";
 export const MAX_FULL_AGE_DAYS = 7;
 const CERT_PATH = ".pantry/certificate.json";
 
-export interface GateRun { sha: string; at: string; ok: boolean; coverage?: number }
+export interface GateRun {
+  sha: string;
+  /** The commit's tree: the code itself. A squash or rebase gives the same code a new commit ID and
+   *  keeps this, so the certificate survives a merge that changed nothing. */
+  tree?: string;
+  at: string;
+  ok: boolean;
+  coverage?: number;
+}
 
 export interface Certificate {
   full?: GateRun;
@@ -70,10 +78,11 @@ export function runGate(cwd: string, kind: "full" | "check", now = new Date()): 
     return { run: { sha: "", at: now.toISOString(), ok: false }, output: "", reason: "the working tree has uncommitted changes; commit first" };
   }
   const sha = git(cwd, ["rev-parse", "HEAD"]);
+  const tree = git(cwd, ["rev-parse", "HEAD^{tree}"]);
   const cmd = readGates(cwd)[kind];
   const proc = Bun.spawnSync(["sh", "-c", cmd], { cwd, stdout: "pipe", stderr: "pipe" });
   const output = proc.stdout.toString() + proc.stderr.toString();
-  const run: GateRun = { sha, at: now.toISOString(), ok: proc.exitCode === 0 };
+  const run: GateRun = { sha, tree, at: now.toISOString(), ok: proc.exitCode === 0 };
   const cert = readCertificate(cwd);
   let reason: string | undefined = run.ok ? undefined : `\`${cmd}\` exited ${proc.exitCode}`;
 
@@ -109,15 +118,45 @@ export function verify(cwd: string, now = new Date()): Verdict {
   const ageDays = (now.getTime() - new Date(cert.full.at).getTime()) / 86_400_000;
   if (ageDays > MAX_FULL_AGE_DAYS) problems.push(`the last full run is ${Math.floor(ageDays)} days old; the limit is ${MAX_FULL_AGE_DAYS}`);
 
-  const isAncestor = Bun.spawnSync(["git", "merge-base", "--is-ancestor", cert.full.sha, head], { cwd }).exitCode === 0;
-  if (!isAncestor) {
-    problems.push(`the full run's commit ${cert.full.sha.slice(0, 7)} is not in this branch's history`);
+  const w = walkSince(cwd, cert, head);
+  if (!w.anchored) {
+    problems.push(`neither the full run's commit ${cert.full.sha.slice(0, 7)} nor its code is in this branch's history`);
   } else {
-    const since = git(cwd, ["rev-list", `${cert.full.sha}..${head}`]).split("\n").filter(Boolean);
-    const green = new Set(cert.checks.filter((c) => c.ok).map((c) => c.sha));
-    for (const sha of since) if (!green.has(sha)) problems.push(`commit ${sha.slice(0, 7)} has no green check`);
+    for (const sha of w.unchecked) problems.push(`commit ${sha.slice(0, 7)} has no green check`);
   }
   return { ok: problems.length === 0, head, problems };
+}
+
+function treeOf(cwd: string, run: GateRun): string | undefined {
+  if (run.tree) return run.tree;
+  // Records written before trees were kept: the commit may still be in the local object store.
+  const proc = Bun.spawnSync(["git", "rev-parse", "--verify", "--quiet", `${run.sha}^{tree}`], { cwd, stdout: "pipe" });
+  return proc.exitCode === 0 ? proc.stdout.toString().trim() : undefined;
+}
+
+export interface Walk { anchored: boolean; since: number; unchecked: string[] }
+
+/**
+ * Walks back from HEAD to the commit the full run vouches for: the same commit, or the newest one
+ * carrying the same tree. Every commit passed on the way needs a green check, matched the same way.
+ * The walk stops at 1000 commits, past which the seven-day limit has long since closed the gate.
+ */
+export function walkSince(cwd: string, cert: Certificate, head: string): Walk {
+  if (!cert.full) return { anchored: false, since: 0, unchecked: [] };
+  const fullTree = treeOf(cwd, cert.full);
+  const green = cert.checks.filter((c) => c.ok);
+  const greenShas = new Set(green.map((c) => c.sha));
+  const greenTrees = new Set(green.map((c) => treeOf(cwd, c)).filter(Boolean));
+  const rows = git(cwd, ["log", "--max-count=1000", "--format=%H %T", head]).split("\n").filter(Boolean);
+  const unchecked: string[] = [];
+  let since = 0;
+  for (const row of rows) {
+    const [sha, tree] = row.split(" ");
+    if (sha === cert.full.sha || tree === fullTree) return { anchored: true, since, unchecked };
+    since++;
+    if (!greenShas.has(sha!) && !greenTrees.has(tree)) unchecked.push(sha!);
+  }
+  return { anchored: false, since: 0, unchecked: [] };
 }
 
 export function formatVerdict(v: Verdict): string {
@@ -135,6 +174,8 @@ export interface GateSummary {
   /** commits after the full run, and how many of them carry a green check */
   since: number;
   checked: number;
+  /** false when the walk never reached the full run, so since and checked mean nothing */
+  anchored: boolean;
   coverageFloor: number | null;
 }
 
@@ -144,15 +185,10 @@ export function summarizeGate(cwd: string, now = new Date()): GateSummary | null
   try { head = git(cwd, ["rev-parse", "HEAD"]); } catch { return null; }
   const cert = readCertificate(cwd);
   const v = verify(cwd, now);
-  let since = 0, checked = 0;
-  if (cert.full && Bun.spawnSync(["git", "merge-base", "--is-ancestor", cert.full.sha, head], { cwd }).exitCode === 0) {
-    const shas = git(cwd, ["rev-list", `${cert.full.sha}..${head}`]).split("\n").filter(Boolean);
-    const green = new Set(cert.checks.filter((c) => c.ok).map((c) => c.sha));
-    since = shas.length;
-    checked = shas.filter((s) => green.has(s)).length;
-  }
+  const w = walkSince(cwd, cert, head);
+  const since = w.since, checked = w.since - w.unchecked.length;
   return {
     recorded: cert.full !== undefined, open: v.ok, head, problems: v.problems,
-    full: cert.full ?? null, since, checked, coverageFloor: cert.coverageFloor ?? null,
+    full: cert.full ?? null, since, checked, anchored: w.anchored, coverageFloor: cert.coverageFloor ?? null,
   };
 }
