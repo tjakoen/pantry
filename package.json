@@ -37,6 +37,7 @@
     "brief.ts",
     "brief-routes.ts",
     "capture.ts",
+    "certify.ts",
     "cli.ts",
     "cloud-hook.ts",
     "config.ts",

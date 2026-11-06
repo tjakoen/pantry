@@ -79,6 +79,14 @@ individual layer plans, `/reference`, `/catalog`, `/standards`, the host contrac
 live: the AI-retrieval endpoints (`/llms.txt`, `/knowledge.json`) and the whole-codebase mindmap
 (`/map`, `/map.json`). The full build order and current status live in [PLAN.md](PLAN.md).
 
+**The release certificate**: `pantry certify full` runs the project's full gate on a clean HEAD,
+`pantry certify check` runs the quick gate on each commit after it, and `pantry certify verify`
+opens only when the full run is green and at most seven days old and every commit since has a green
+check. There is no bypass flag. Line coverage is a ratchet: a full run may raise the floor and never
+lower it. The gates are shell commands set under `gates` in `pantry.config.json`. This design comes
+from [C.R.I.S.S.P.](https://github.com/richardedens/crissp) by Richard Edens (Apache-2.0), whose
+release gate and coverage gate it adapts; see [NOTICE](NOTICE).
+
 ## Non-goals
 
 Not a new layer, nothing imports PANTRY, it imports the layers. Not the personal site, no branding,
