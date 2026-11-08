@@ -1442,6 +1442,23 @@ describe("pantry doctor — cold-start context (what a session pays before any w
     expect(c.detail).toContain("IMPORTED.md is 30,000 of it");
   });
 
+  test("the machine front door is named but not counted, because no repo can move it", async () => {
+    await compliantKit();
+    await writeFile(join(harness, "CLAUDE.md"), "m".repeat(40_000));
+    const c = byId(await ctx(), "context-budget");
+    expect(c.ok).toBe(true);
+    expect(c.detail).toContain("inside the 20,000 budget");
+    expect(c.detail).toContain("the machine front door adds 40,000 and is not counted");
+  });
+
+  test("a machine front door over a repo with no front door reads info, not a warn", async () => {
+    await writeFile(join(harness, "CLAUDE.md"), "m".repeat(1_000));
+    const c = byId(await ctx(), "context-budget");
+    expect(c.severity).toBe("info");
+    expect(c.detail).toContain("No repo front door or memory index");
+    expect(c.detail).toContain("machine front door adds 1,000");
+  });
+
   test("a muted budget reports info and never warns", async () => {
     await compliantKit();
     await writeFile(join(memoryDir, "MEMORY.md"), "x".repeat(99_000));

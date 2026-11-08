@@ -423,6 +423,12 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   // door is due work, not a broken kit, and the one thing that would guarantee it gets muted is
   // failing CI over it. The detail always names the total and the largest single file, because "you
   // are over budget" is not actionable and "the memory index is 15,221 of it" is.
+  //
+  // THE BUDGET COVERS THE TWO SOURCES A REPO CAN ACT ON, the repo's own front door and the agent
+  // memory index. The machine front door is the third source and it is a constant on every repo on
+  // the box: budgeting it meant a repo with a trim front door and a tidy index still read as over,
+  // because 10,272 characters of ~/.claude arrived before the repo did anything. It is measured and
+  // named in the detail, never counted, so the number in the warning is one a session can move.
   if (runContext) {
     const budget = opts.contextBudgetChars ?? config.contextBudgetChars;
     if (!Number.isFinite(budget)) {
@@ -433,19 +439,37 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
         if (reading.empty) {
           checks.push({ id: "context-budget", severity: "info", ok: true, label: "Claude Code context", detail: `No Claude Code context files found under ${reading.configDir}; Codex context is not measured` });
         } else {
-          const biggest = reading.entries[0];
-          const share = `${basename(biggest.label)} is ${biggest.chars.toLocaleString("en-US")} of it`;
-          const size = `${reading.chars.toLocaleString("en-US")} chars over ${plural(reading.entries.length, "file")} (Claude Code, ${reading.configDir}; Codex context is not measured)`;
-          const over = reading.chars > budget;
-          checks.push({
-            id: "context-budget",
-            severity: "warn",
-            ok: !over,
-            label: "Claude Code context",
-            detail: over
-              ? `${size}, over the ${budget.toLocaleString("en-US")} budget — ${share}`
-              : `${size}, inside the ${budget.toLocaleString("en-US")} budget — ${share}`,
-          });
+          const counted = reading.entries.filter((entry) => entry.source !== "machine");
+          const machine = reading.entries.filter((entry) => entry.source === "machine");
+          const countedChars = counted.reduce((sum, entry) => sum + entry.chars, 0);
+          const machineChars = machine.reduce((sum, entry) => sum + entry.chars, 0);
+          const machineNote = machineChars
+            ? `; the machine front door adds ${machineChars.toLocaleString("en-US")} and is not counted, because no repo can move it`
+            : "";
+
+          if (!counted.length) {
+            checks.push({
+              id: "context-budget",
+              severity: "info",
+              ok: true,
+              label: "Claude Code context",
+              detail: `No repo front door or memory index to measure under ${reading.configDir}${machineNote}`,
+            });
+          } else {
+            const biggest = counted[0];
+            const share = `${basename(biggest.label)} is ${biggest.chars.toLocaleString("en-US")} of it`;
+            const size = `${countedChars.toLocaleString("en-US")} chars over ${plural(counted.length, "file")} this repo pays (its front door and the memory index)`;
+            const over = countedChars > budget;
+            checks.push({
+              id: "context-budget",
+              severity: "warn",
+              ok: !over,
+              label: "Claude Code context",
+              detail: over
+                ? `${size}, over the ${budget.toLocaleString("en-US")} budget — ${share}${machineNote}`
+                : `${size}, inside the ${budget.toLocaleString("en-US")} budget — ${share}${machineNote}`,
+            });
+          }
         }
       } catch (err) {
         checks.push({ id: "context-budget", severity: "info", ok: true, label: "Claude Code context", detail: `context check skipped: ${err instanceof Error ? err.message : String(err)}` });

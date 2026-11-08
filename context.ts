@@ -58,7 +58,10 @@ export interface ContextOptions {
 }
 
 /**
- * The estate-wide budget, in characters.
+ * The estate-wide budget, in characters, for the two sources a repo can act on: its own CLAUDE.md
+ * and the agent memory index. The machine front door under the harness config dir is measured and
+ * reported beside the total, never counted, because it is the same on every repo and no repository
+ * that reads it can move it.
  *
  * **An owner decision as of 2026-08-18, not a measurement.** It is derived from what the portfolio
  * has actually carried: 14,163 characters on 2026-08-05 read as comfortable, and 24,243 on
