@@ -16,6 +16,7 @@
 //                               called by doctor; see graph.ts's header)
 //   pantry scope <file...>      what a change to these files is likely to reach, asked BEFORE the work
 //                               so the declared scope in a run report can be right the first time
+//   pantry usage [dir] [--json] token usage by model, claimed plan and area, from the transcripts
 //   pantry capture <tour>       drive the reviewed project through the proxy, resolve every step's
 //                               data-surface address, and write the states into
 //                               <artifacts>/reviews/<id>/. Exits nonzero on an address that is
@@ -205,6 +206,16 @@ async function main() {
     }
     console.error("usage: pantry certify full | check | verify");
     process.exit(2);
+  }
+
+  if (cmd === "usage") {
+    // Token usage per model, per claimed plan and per area, read from the harness transcripts.
+    // A surface, not a gate: it always exits 0. --json prints the same payload /usage.json serves.
+    const { buildUsageForConfig, formatUsage } = await import("./usage.ts");
+    const target = rest[0] ? (isAbsolute(rest[0]) ? rest[0] : join(process.cwd(), rest[0])) : process.cwd();
+    const payload = await buildUsageForConfig(await loadPantryConfig(target), new Date().toISOString());
+    console.log("json" in flags || Bun.argv.includes("--json") ? JSON.stringify(payload, null, 2) : formatUsage(payload));
+    return;
   }
 
   if (cmd === "capture") {

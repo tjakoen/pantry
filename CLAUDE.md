@@ -30,6 +30,7 @@ bun test           # unit + integration
 bun cli.ts serve   # run the cockpit locally (what hosts run as `bunx pantry serve`)
 bun cli.ts check   # lint the docs for dead references (CI-able; exits nonzero on a break)
 bun cli.ts init    # scaffold plans/ + pantry.config.json (host-side)
+bun cli.ts usage   # token usage by model, claimed plan and area, from the harness transcripts (--json for the payload)
 ```
 
 ## Non-negotiables (the host contract — INSTALL.md restates these to hosts)

@@ -29,7 +29,8 @@ export function aiSurfaceTeasers(surfaces: PantrySurfaces): { title: string; rol
   return [
     ...AI_SURFACES,
     ...(surfaces.runs
-      ? [{ title: "Runs", role: "The run ledger — what each closed run did, its gate output verbatim, and which of LOOP §9's evidence items it is missing. Machine twin at /runs.json.", href: "/runs", status: "live" }]
+      ? [{ title: "Runs", role: "The run ledger — what each closed run did, its gate output verbatim, and which of LOOP §9's evidence items it is missing. Machine twin at /runs.json.", href: "/runs", status: "live" },
+         { title: "Usage", role: "Where the tokens went — per model, per claimed plan and per area of the project, read from the harness transcripts. Machine twin at /usage.json.", href: "/usage", status: "live" }]
       : []),
     ...(surfaces.artifacts
       ? [{ title: "Artifacts", role: "Run evidence — screenshots, audit reports, diffs — served read-only. Machine twin at /artifacts.json.", href: "/artifacts", status: "live" }]

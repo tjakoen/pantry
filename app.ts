@@ -58,6 +58,8 @@ import { type PantryServer, answersBody, decisionDetailBody, decisionsIndexBody,
 import { aboutBody, docsBody, homeBody } from "./home-page.ts";
 import { mapBody } from "./map-page.ts";
 import { runDetailBody, runsIndexBody } from "./runs-page.ts";
+import { usageBody } from "./usage-page.ts";
+import { buildUsageForConfig } from "./usage.ts";
 import { timelineBody } from "./timeline-page.ts";
 import { ACTIVITY_WINDOWS, activityBody, buildActivity } from "./activity.ts";
 export { homeBody } from "./home-page.ts";
@@ -228,6 +230,7 @@ function reviewBody(previewTarget: string, surfaces: PantrySurfaces, tours: Tour
   const railLinks = [
     surfaces.plans && ["/plans", "Plans"],
     surfaces.runs && ["/runs", "Runs"],
+    surfaces.runs && ["/usage", "Usage"],
     surfaces.decisions && ["/decisions", "Decisions"],
     surfaces.decisions && ["/answers", "Answers"],
     surfaces.artifacts && ["/artifacts", "Artifacts"],
@@ -695,6 +698,12 @@ export function createPantryHandler(opts: PantryOptions) {
     // so /artifacts/raw/runs/<file>.md serves the bytes with the containment that route enforces. That
     // only holds while runsDir sits under artifactsDir; a host that points runsDir elsewhere gets the
     // parsed views here and no raw route, which is a deliberate limit rather than a promise to keep. ---
+    // --- token usage: per model, per claimed plan, per area, read from the harness transcripts. Behind
+    // the runs flag because it is the same kind of after-the-fact ledger. ---
+    if (surfaces.runs && path === "/usage.json")
+      return Response.json(await buildUsageForConfig(config, new Date().toISOString()));
+    if (surfaces.runs && path === "/usage")
+      return html(page("Usage", usageBody(await buildUsageForConfig(config, new Date().toISOString()))));
     if (surfaces.runs && path === "/runs.json")
       return Response.json(await buildRunsPayload(config, new Date().toISOString()));
     if (surfaces.runs && path === "/runs")

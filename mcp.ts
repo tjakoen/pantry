@@ -23,7 +23,7 @@ import {
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 
-const SURFACES = ["brief", "knowledge", "decisions", "answers", "runs", "timeline", "artifacts", "map"] as const;
+const SURFACES = ["brief", "knowledge", "decisions", "answers", "runs", "timeline", "artifacts", "map", "usage"] as const;
 
 const pathArg = {
   path: { type: "string", description: "An absolute directory inside the project, normally your working directory." },
@@ -42,7 +42,7 @@ export const TOOLS = [
   },
   {
     name: "pantry_read",
-    description: `Read one of the project's machine-readable PANTRY surfaces as JSON: ${SURFACES.join(", ")}. brief is the alignment brief, knowledge the full retrieval payload, decisions the open questions for the owner, answers the owner's recorded answers, runs the run ledger, timeline the plan timeline, artifacts the review artifacts, map the codebase mindmap.`,
+    description: `Read one of the project's machine-readable PANTRY surfaces as JSON: ${SURFACES.join(", ")}. brief is the alignment brief, knowledge the full retrieval payload, decisions the open questions for the owner, answers the owner's recorded answers, runs the run ledger, timeline the plan timeline, artifacts the review artifacts, map the codebase mindmap, usage the token usage by model, plan and area.`,
     inputSchema: {
       type: "object",
       properties: { ...pathArg, surface: { type: "string", enum: [...SURFACES] } },

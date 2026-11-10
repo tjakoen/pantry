@@ -914,3 +914,18 @@
 .pantry-gate__track { fill: none; stroke: var(--ink-faint); stroke-width: 4; }
 .pantry-gate__fill { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
 .pantry-gate__problems { margin: var(--space-2, 0.5rem) 0 0; padding-inline-start: 1.25rem; color: var(--ink-muted); font-size: var(--text-sm, 0.875rem); }
+
+/* Usage: token tables. The bar is a share of fresh tokens, drawn from the row's --share. */
+.pantry-usage__stats { display: flex; flex-wrap: wrap; gap: var(--space-3, 0.75rem); margin-block: var(--space-4, 1rem); }
+.pantry-usage__stat { display: grid; gap: 0.15rem; padding: 0.6rem 0.9rem; border: 1px solid var(--line, currentColor); border-radius: var(--radius-md, 8px); min-width: 8rem; }
+.pantry-usage__stat span { font-size: var(--text-sm); color: var(--ink-muted); }
+.pantry-usage__stat strong { font-variant-numeric: tabular-nums; font-size: var(--text-lg, 1.15rem); }
+.pantry-usage { margin-block: var(--space-6, 1.5rem); }
+.pantry-usage__scroll { overflow-x: auto; }
+.pantry-usage__table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.pantry-usage__table th, .pantry-usage__table td { padding: 0.4rem 0.6rem; text-align: right; border-bottom: 1px solid var(--line, color-mix(in srgb, currentColor 15%, transparent)); white-space: nowrap; }
+.pantry-usage__table th:first-child { text-align: left; font-weight: 500; }
+.pantry-usage__table thead th { color: var(--ink-muted); font-weight: 500; }
+.pantry-usage__table td:nth-child(2), .pantry-usage__table thead th:nth-child(2) { text-align: left; min-width: 9rem; }
+.pantry-usage__bar { display: inline-block; vertical-align: middle; height: 0.5rem; width: calc(var(--share) * 0.7); min-width: 2px; max-width: 70%; border-radius: 999px; background: var(--accent, currentColor); margin-right: 0.4rem; }
+.pantry-usage__pct { color: var(--ink-muted); }

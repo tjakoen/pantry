@@ -51,6 +51,7 @@ export function nav(surfaces: PantrySurfaces, review: boolean, project?: string)
     surfaces.plans && `<a href="/plans">Plans</a>`,
     surfaces.decisions && `<a href="/decisions">Decisions</a>`,
     surfaces.runs && `<a href="/runs">Runs</a>`,
+    surfaces.runs && `<a href="/usage">Usage</a>`,
     (surfaces.brief || surfaces.control) && `<a href="/activity">Activity</a>`,
     surfaces.control && `<a href="/control">Sessions by plan</a>`,
     surfaces.timeline && `<a href="/timeline">Plan timeline</a>`,
