@@ -17,12 +17,9 @@ Which parts of the workflow you need, and which are the owner's own habits, is i
 PANTRY is moving from a web app you run in Docker to a desktop app with a command line beside it.
 All three ways below end at the same hub on port 4400.
 
-1. **The desktop app (coming).** Releases will be published on the repository's
-   [Releases page](https://github.com/tjakoen/pantry/releases): a macOS disk image and a Windows
-   installer built from the Tauri shell in *app/*. The app shows the hub in a window, starts it
-   with *pantry hub ensure* when it is down, keeps the count of what needs you in the menu bar, and
-   opens *pantry://* project links. Not released yet: the shell exists on a branch and has not had
-   its first build. Until it ships, use the command line.
+1. **The desktop app (placeholder).** Not decided yet: there is no build, and how releases are
+   signed, shipped and updated is still an open call. This section will name the downloads once
+   they exist. Until then, run from source with the command line below.
 2. **The command line.** Install the package into a project and run the hub yourself:
 
    ```sh

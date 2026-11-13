@@ -27,8 +27,12 @@ change lives in init.ts, which cli.ts already calls, so no CLI edit is needed.
 - [x] Report what a history scrub would need
 - [x] Install docs: releases (desktop app, coming), command line, Docker, the Claude desktop app, skills
 
-Left for others: the note link in docs/WORKFLOW.md is a placeholder until the note has a URL, and
-the release asset names in INSTALL.md wait for the Tauri app's first build (the pantry-app plan).
+## Open items
+
+- The note link in docs/WORKFLOW.md is a placeholder (/notes/pantry-workflow). The owner wants the
+  note written last, after the app, the public release and the Claude pane.
+- The desktop app section of INSTALL.md is a marked placeholder with no asset names. Signing,
+  shipping and updates are open owner calls in plans/pantry-app.md.
 
 ## How the tiers landed
 
