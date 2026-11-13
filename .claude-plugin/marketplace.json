@@ -1,0 +1,11 @@
+{
+  "name": "pantry",
+  "owner": { "name": "Tjakoen Stolk" },
+  "plugins": [
+    {
+      "name": "pantry-pane",
+      "source": "./claude-plugin",
+      "description": "PANTRY's command center beside the chat, with the Needs you count in the status line"
+    }
+  ]
+}

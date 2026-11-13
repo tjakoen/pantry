@@ -2,4 +2,6 @@
 # Coverage counts PANTRY's own sources. One test packs the package into the OS temp dir and imports
 # from there, which would otherwise add a second, mostly unexercised copy of every file.
 coverageSkipTestFiles = true
+# The Claude Code plugin's tests run under `claude plugin test`, which supplies claude-code/testing.
+pathIgnorePatterns = ["claude-plugin/**"]
 coveragePathIgnorePatterns = ["**/pantry-packed-*/**", "node_modules/**"]

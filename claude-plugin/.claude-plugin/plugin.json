@@ -1,0 +1,1 @@
+{ "name": "pantry-pane", "version": "0.1.0", "description": "PANTRY's command center beside the chat, with the Needs you count in the status line", "types": "./types/index.d.ts" }
