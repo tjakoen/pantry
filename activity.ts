@@ -32,6 +32,11 @@ export interface ActivityLane {
   /** the worktree folder name, which is the nearest thing a session has to a title */
   worktree: string | null;
   /** what the subagent was asked to do; null on a session lane */
+  /** the model a subagent ran on, null for a session lane or a subagent logged before the hook read it */
+  model: string | null;
+  /** tokens a subagent spent, input and output, zero when unrecorded */
+  tokensIn: number;
+  tokensOut: number;
   task: string | null;
   /** the plans whose touches this lane's writes fall inside, so the lane says what it was working on */
   plans: string[];
@@ -65,11 +70,12 @@ export interface ActivityPayload {
 
 interface LaneAcc {
   id: string; label: string; task: string | null; worktree: string | null; times: number[]; ended: boolean;
+  model: string | null; tokensIn: number; tokensOut: number;
   writes: Map<string, Write>; tools: Map<string, number>; agents: Map<string, LaneAcc>;
 }
 
 const newAcc = (id: string, label: string): LaneAcc =>
-  ({ id, label, task: null, worktree: null, times: [], ended: false, writes: new Map(), tools: new Map(), agents: new Map() });
+  ({ id, label, task: null, worktree: null, times: [], ended: false, model: null, tokensIn: 0, tokensOut: 0, writes: new Map(), tools: new Map(), agents: new Map() });
 
 /** Split a sorted list of event times into busy stretches. */
 export function segmentsOf(times: number[], gap = IDLE_GAP_MS): Segment[] {
@@ -111,6 +117,9 @@ export function assembleActivity(input: {
       if (!a) { a = newAcc(ev.agent, ev.agentType ?? "subagent"); s.agents.set(ev.agent, a); }
       if (ev.agentType && a.label === "subagent") a.label = ev.agentType;
       if (ev.task && !a.task) a.task = ev.task;
+      if (ev.model) a.model = ev.model;
+      if (ev.tokensIn !== undefined) a.tokensIn = ev.tokensIn;
+      if (ev.tokensOut !== undefined) a.tokensOut = ev.tokensOut;
       lane = a;
     }
     lane.times.push(t);
@@ -128,7 +137,7 @@ export function assembleActivity(input: {
     const times = a.times.toSorted((x, y) => x - y);
     const segments = segmentsOf(times);
     return {
-      id: a.id, label: a.label, worktree: a.worktree, task: a.task, plans: plansFor(a.writes), segments,
+      id: a.id, label: a.label, worktree: a.worktree, task: a.task, model: a.model, tokensIn: a.tokensIn, tokensOut: a.tokensOut, plans: plansFor(a.writes), segments,
       firstAt: new Date(times[0]).toISOString(), lastAt: new Date(times.at(-1)!).toISOString(),
       busyMs: busyOf(segments), ended: a.ended,
       writes: [...a.writes.values()].sort((x, y) => x.at.localeCompare(y.at)),
@@ -198,10 +207,20 @@ export function laneSummary(l: ActivityLane): string {
   return bits.join(", ") + ".";
 }
 
+/** The model a subagent ran on and what it spent, as one short phrase: "claude-haiku-5-5, 41k in, 2k out".
+ *  Empty when the stop event carried neither, which is every subagent logged before the hook read them. */
+function spend(a: ActivityLane): string {
+  const k = (n: number) => n >= 1000 ? `${Math.round(n / 1000)}k` : String(n);
+  const bits: string[] = [];
+  if (a.model) bits.push(e(a.model.replace(/^claude-/, "")));
+  if (a.tokensIn || a.tokensOut) bits.push(`${k(a.tokensIn)} in, ${k(a.tokensOut)} out`);
+  return bits.join(", ");
+}
+
 function agentRow(a: ActivityLane, from: number, span: number): string {
   return `<div class="act-row is-agent${a.ended ? " is-ended" : ""}">
   <div class="act-name"><span class="act-type">${e(a.label)}</span><span class="act-task">${a.task ? e(a.task) : "no task recorded"}</span>
-  <span class="act-meta">${clock(a.firstAt)} · ${dur(a.busyMs)}${a.writes.length ? ` · ${a.writes.length} write(s)` : ""}${a.ended ? "" : " · still going"}</span></div>
+  <span class="act-meta">${clock(a.firstAt)} · ${dur(a.busyMs)}${spend(a) ? ` · ${spend(a)}` : ""}${a.writes.length ? ` · ${a.writes.length} write(s)` : ""}${a.ended ? "" : " · still going"}</span></div>
   ${track(a, from, span)}
 </div>`;
 }
@@ -215,7 +234,7 @@ function sessionCard(l: ActivityLane, from: number, span: number): string {
     ? `<ol class="act-files">${l.writes.map((w) => `<li>${clock(w.at)} <code>${e(w.path)}</code>${w.by ? ` <span class="act-by">by ${e(w.by)}</span>` : ""}</li>`).join("")}</ol>`
     : `<p class="cc-meta">No files written.</p>`;
   const agents = l.agents.length
-    ? `<ul class="act-agentlist">${l.agents.map((a) => `<li><strong>${e(a.label)}</strong> ${a.task ? e(a.task) : "<em>no task recorded</em>"} <span class="act-meta">${clock(a.firstAt)}, ${dur(a.busyMs)}${toolLine(a.tools) ? `, ${toolLine(a.tools)}` : ""}</span></li>`).join("")}</ul>` : "";
+    ? `<ul class="act-agentlist">${l.agents.map((a) => `<li><strong>${e(a.label)}</strong> ${a.task ? e(a.task) : "<em>no task recorded</em>"} <span class="act-meta">${clock(a.firstAt)}, ${dur(a.busyMs)}${spend(a) ? `, ${spend(a)}` : ""}${toolLine(a.tools) ? `, ${toolLine(a.tools)}` : ""}</span></li>`).join("")}</ul>` : "";
   return `<article class="act-card${live ? " is-live" : ""}${l.ended ? " is-ended" : ""}">
   <header class="act-card-head">
     <div><h2>${live ? `<span class="cc-dot" aria-hidden="true"></span>` : ""}${e(title)}</h2>

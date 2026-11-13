@@ -66,6 +66,11 @@ export interface SessionEvent {
   agentType?: string;
   /** the few words the parent used to describe the subagent's task, on its start and stop events */
   task?: string;
+  /** the model a subagent ran on, read from its own transcript, on its stop event */
+  model?: string;
+  /** what a subagent spent, input (fresh, cache write and cache read together) and output, on its stop event */
+  tokensIn?: number;
+  tokensOut?: number;
   /** the git worktree the session ran in, when it was not the main checkout */
   worktree?: string;
 }
@@ -225,6 +230,9 @@ export function parseSessionLine(line: string): SessionEvent | "unknown-kind" | 
   if (typeof o.agent === "string" && o.agent) event.agent = o.agent;
   if (typeof o.agentType === "string" && o.agentType) event.agentType = o.agentType;
   if (typeof o.task === "string" && o.task) event.task = o.task;
+  if (typeof o.model === "string" && o.model) event.model = o.model;
+  if (typeof o.tokensIn === "number" && o.tokensIn >= 0) event.tokensIn = o.tokensIn;
+  if (typeof o.tokensOut === "number" && o.tokensOut >= 0) event.tokensOut = o.tokensOut;
   if (typeof o.worktree === "string" && o.worktree) event.worktree = o.worktree;
   return event;
 }

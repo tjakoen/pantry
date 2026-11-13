@@ -78,3 +78,25 @@ test("every class the activity and timeline pages draw with has a rule in pantry
   for (const cls of ["act-card", "act-stats", "act-legend", "act-window", "act-row", "act-track", "act-bar", "act-write", "act-sticky", "tl-row", "tl-seg", "ax-type", "ax-tree"])
     expect(css).toContain(`.${cls}`);
 });
+
+describe("subagent spend", () => {
+  test("the stop event's model and tokens land on the subagent lane and show on the page", () => {
+    const a = build([
+      ev(12, { kind: "start" }),
+      ev(10, { kind: "agent-start", agent: "a1", agentType: "locator" }),
+      ev(9, { agent: "a1", agentType: "locator", tool: "Grep" }),
+      ev(8, { kind: "agent-stop", agent: "a1", agentType: "locator", model: "claude-haiku-5-5", tokensIn: 41_200, tokensOut: 1_800 }),
+    ]);
+    const [agent] = a.lanes[0].agents;
+    expect(agent).toMatchObject({ model: "claude-haiku-5-5", tokensIn: 41_200, tokensOut: 1_800 });
+    expect(a.lanes[0].model).toBeNull();
+    expect(activityBody(a)).toContain("haiku-5-5, 41k in, 2k out");
+  });
+
+  test("the stop line parses the new fields and drops a negative count", () => {
+    const line = JSON.stringify({ kind: "agent-stop", at: NOW, session: "s1", cwd: "/repo", agent: "a1", model: "claude-sonnet-5-5", tokensIn: 5, tokensOut: -1 });
+    const parsed = parseSessionLine(line);
+    expect(parsed).toMatchObject({ model: "claude-sonnet-5-5", tokensIn: 5 });
+    expect(typeof parsed === "object" && parsed !== null && "tokensOut" in parsed).toBe(false);
+  });
+});
