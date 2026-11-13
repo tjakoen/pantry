@@ -1,6 +1,6 @@
 ---
 id: pantry-dashboard
-status: todo
+status: done
 track: ui
 depends: []
 touches: [brief-routes.ts, pantry.css, brief.test.ts, app.test.ts]
@@ -31,16 +31,22 @@ lead the summary row.
 
 ## Tasks
 
-- [x] Sidebar with projects and the folded worktrees (need counts per project still to come)
+- [x] Sidebar with projects and the folded worktrees
 - [x] Fold the navigation into Now, Plans, Review and Project
-- [ ] Stat tiles that link to their own filtered view, so no two chips share a target
-- [ ] Collapse finished sessions and drop empty cards
-- [ ] Right preview pane, with the decision answer form inside it
-- [ ] Check every page in Safari as well as Chromium, since the app in pantry-app renders through
+- [x] Stat tiles that link to their own filtered view, so no two chips share a target
+- [x] Collapse finished sessions and drop empty cards
+- [x] Right preview pane, with the decision answer form inside it
+- [x] Check every page in Safari as well as Chromium, since the app in pantry-app renders through
       WebKit on macOS
-- [ ] Screenshot each view before calling it done
+- [x] Screenshot each view before calling it done
 
 ## Done when
 
 The command center opens to the tiles and the Needs you list without scrolling, every item opens in
 the pane, and the tests and a Safari check both pass.
+
+## Left
+
+- Need counts per project in the sidebar. The hub registry (`~/.pantry/projects.json`) holds names
+  and ports only, so a count would mean building every project's brief on each page render. It
+  needs the hub to cache a per-project count first; until then the sidebar shows names alone.

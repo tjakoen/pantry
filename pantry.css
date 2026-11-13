@@ -963,3 +963,31 @@
   .pantry-body:has(> .pantry-side) > :not(.pantry-side) { grid-column: 1; }
   .pantry-side { position: static; height: auto; grid-row: auto; border-right: 0; border-bottom: var(--hairline, 1px) solid var(--rule); }
 }
+
+/* The command center as a dashboard: four tiles, the Needs you list, Working now and Up next side by
+   side, and a reading pane on the right that a selected item opens into. */
+.cc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
+.cc-tile { display: grid; gap: 0.1em; padding: var(--space-2) var(--space-3); border: 1px solid var(--cc-line); border-radius: var(--radius, 0.5rem); color: var(--ink-muted); text-decoration: none; background: var(--paper); }
+.cc-tile:hover, .cc-tile:focus-visible { border-color: var(--cc-line-strong); color: var(--ink); }
+.cc-tile-n { font-family: var(--font-mono); font-size: 1.75rem; line-height: 1.1; color: var(--ink); }
+.cc-tile-l { font-size: var(--text-sm); }
+.cc-tile.is-warn .cc-tile-n { font-weight: 700; }
+.cc-tile.is-alert { border: 2px solid var(--ink); }
+.cc-tile.is-current { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--ink); color: var(--ink); }
+.cc-tile--all { align-content: center; justify-items: center; font-size: var(--text-sm); }
+.cc-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; margin-top: var(--space-3); }
+.cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr) minmax(20rem, 34rem); }
+.cc-center { display: grid; gap: var(--space-4); min-width: 0; }
+.cc-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.cc-center .cc-col { min-height: 0; }
+.cc-finished { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--ink-muted); }
+.cc-card[data-preview] { cursor: pointer; }
+.cc-card.is-selected { border-color: var(--ink); border-left-color: var(--ink); }
+.cc-pane { display: none; position: sticky; top: var(--space-3); max-height: calc(100vh - 2 * var(--space-3)); overflow: auto; border: 1px solid var(--cc-line); border-radius: var(--radius, 0.5rem); padding: var(--space-3); background: var(--paper); }
+.cc-pane.is-open { display: block; }
+.cc-pane-head { display: flex; gap: var(--space-2); justify-content: flex-end; margin-bottom: var(--space-2); }
+.cc-pane .cc-decision { margin-bottom: var(--space-3); }
+.cc-pane-doc { font-size: var(--text-sm); }
+.cc-pane-doc h1, .cc-pane-doc h2 { font-size: var(--text-base, 1rem); margin: var(--space-3) 0 var(--space-1); }
+@media (max-width: 72rem) { .cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr); } .cc-pane { position: static; max-height: none; } }
+@media (max-width: 56rem) { .cc-pair { grid-template-columns: 1fr; } }

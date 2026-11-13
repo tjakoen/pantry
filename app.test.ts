@@ -869,12 +869,32 @@ describe("the alignment brief", () => {
   const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ brief: true }) });
   const off = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ brief: false }) });
 
+  test("a tile's filtered view shows its own section alone", async () => {
+    const a = await (await get(on, "/?view=drift")).text();
+    expect(a).toContain('id="cc-drift"');
+    expect(a).not.toContain('id="cc-inbox"');
+    expect(a).toContain('aria-current="page"');
+  });
+
+  test("the preview pane renders a plan, and names a missing one", async () => {
+    const plans = await (await get(on, "/brief.json")).json() as { next: { queue: { id: string }[]; skipped: { id: string }[] } };
+    const id = [...plans.next.queue, ...plans.next.skipped][0]?.id;
+    if (id) {
+      const ok = await get(on, `/brief/preview?plan=${encodeURIComponent(id)}`);
+      expect(ok.status).toBe(200);
+      expect(await ok.text()).toContain("Open full page");
+    }
+    const miss = await get(on, "/brief/preview?plan=no-such-plan");
+    expect(miss.status).toBe(404);
+    expect((await get(on, "/brief/preview?plan=..%2Fsecret")).status).toBe(404);
+  });
+
   test("/ is the brief when the surface is on, and the older home when it is off", async () => {
     const a = await (await get(on, "/")).text();
-    expect(a).toContain("Command center for this project");
-    expect(a).toContain("Inbox");
+    expect(a).toContain('class="cc-tiles"');
+    expect(a).toContain("Needs you");
     const b = await (await get(off, "/")).text();
-    expect(b).not.toContain("Command center for this project");
+    expect(b).not.toContain('class="cc-tiles"');
     expect(b).toContain("test-project");
   }, 30_000);
 

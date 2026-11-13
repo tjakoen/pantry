@@ -17,6 +17,9 @@
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
 import { briefText, buildBrief, type BriefAction, type BriefAgent, type BriefPayload, type InFlightRow, type WaitingRow } from "./brief.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import { renderAgentBody } from "./decisions-page.ts";
+import { join } from "node:path";
+import { readdir } from "node:fs/promises";
 
 const e = (s: string) => escapeHtml(s);
 
@@ -65,16 +68,18 @@ function agentCard(r: InFlightRow, now: string): string {
   const tag = r.claim
     ? `<span class="cc-tag">${e(r.claim.tool)} · ${e(r.claim.state)}</span>`
     : r.planId ? `<span class="cc-tag is-warn">no claim</span>` : `<span class="cc-tag is-alert">unplanned</span>`;
-  const sessions = r.sessions.map((s) => {
+  const ended = r.sessions.filter((s) => s.state === "ended");
+  const shownSessions = r.sessions.length > ended.length ? r.sessions.filter((s) => s.state !== "ended") : r.sessions;
+  const sessions = shownSessions.map((s) => {
     const live = s.state === "alive" ? "is-live" : s.state === "idle" ? "is-idle" : "is-ended";
     const doing = s.state === "ended" ? `ended ${ago(s.lastSeenAt, now)}` : `${s.lastTool ? `last: ${s.lastTool}` : "no tool yet"} · ${ago(s.lastSeenAt, now)}`;
     return `<li class="cc-session ${live}"><span class="cc-dot" aria-hidden="true"></span><code>${e(s.id)}</code> ${e(doing)}</li>${subagents(s.agents, now)}`;
-  }).join("");
+  }).join("") + (shownSessions.length < r.sessions.length ? `<li class="cc-session is-ended">${ended.length} finished</li>` : "");
   const stray = r.outOfScope.length
     ? `<div class="cc-stray"><strong>${r.planId ? `Wrote ${r.outOfScope.length} file(s) outside the plan` : `Wrote ${r.outOfScope.length} file(s) with no plan`}</strong><ul>${r.outOfScope.slice(0, 6).map((f) => `<li><code>${e(f)}</code></li>`).join("")}${r.outOfScope.length > 6 ? `<li>and ${r.outOfScope.length - 6} more</li>` : ""}</ul>${r.unrecorded ? `<p class="cc-meta">${r.unrecorded} more writes were not recorded.</p>` : ""}</div>`
     : "";
   const title = r.planId ? `<a href="/plan/${encodeURIComponent(r.planId)}">${e(r.title)}</a>` : e(r.title);
-  return `<article class="cc-card${r.outOfScope.length ? " is-alert" : ""}" tabindex="0">
+  return `<article class="cc-card${r.outOfScope.length ? " is-alert" : ""}" tabindex="0"${r.planId ? ` data-preview="${e(previewHref("plan", r.planId))}"` : ""}>
   <header><h3>${title}</h3>${tag}</header>
   ${sessions ? `<ul class="cc-sessions">${sessions}</ul>` : `<p class="cc-meta">No session has written inside this plan yet.</p>`}
   ${stray}${actions(r.actions)}
@@ -84,7 +89,7 @@ function agentCard(r: InFlightRow, now: string): string {
 function decisionCard(w: WaitingRow): string {
   const d = w.decision!;
   const opts = d.options.map((o, i) => `<label class="cc-opt"><input type="radio" name="opt-${e(w.id)}" value="${e(o)}"${i === 0 && !d.recommendation ? "" : ""}> <span>${e(o)}${d.recommendation && o.trim() === d.recommendation.trim() ? ` <em class="cc-rec">recommended</em>` : ""}</span></label>`).join("");
-  return `<article class="cc-card cc-decision" tabindex="0" data-decision="${e(JSON.stringify({ id: w.id, title: w.title, file: d.file, options: d.options, recommendation: d.recommendation, unblocks: d.unblocks }))}">
+  return `<article class="cc-card cc-decision" tabindex="0" data-preview="${e(previewHref("decision", w.id))}" data-decision="${e(JSON.stringify({ id: w.id, title: w.title, file: d.file, options: d.options, recommendation: d.recommendation, unblocks: d.unblocks }))}">
   <header><h3>${e(w.title)}</h3><span class="cc-tag is-warn">decide</span></header>
   <p class="cc-meta">${e(w.detail)}</p>
   ${d.recommendation && !d.options.some((o) => o.trim() === d.recommendation!.trim()) ? `<p class="cc-meta">Recommended: ${e(d.recommendation)}</p>` : ""}
@@ -121,65 +126,110 @@ function answeredCard(a: BriefPayload["answered"][number], now: string): string 
 }
 
 function plainCard(w: WaitingRow): string {
-  return `<article class="cc-card" tabindex="0"><header><h3>${e(w.title)}</h3><span class="cc-tag">${w.kind === "human-plan" ? "yours" : "blocked"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
+  const prev = w.kind !== "decision" ? ` data-preview="${e(previewHref("plan", w.id))}"` : "";
+  return `<article class="cc-card" tabindex="0"${prev}><header><h3>${e(w.title)}</h3><span class="cc-tag">${w.kind === "human-plan" ? "yours" : "blocked"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
 }
 
-export function briefBody(b: BriefPayload): string {
-  const strayed = b.inFlight.filter((r) => r.outOfScope.length).length;
+/** The four filtered views a tile opens. Each tile has its own, so no two share a target. */
+export const VIEWS = ["needs", "working", "ready", "drift"] as const;
+export type BriefView = (typeof VIEWS)[number];
+
+// A row is finished when every session on it has ended and nothing holds it: no live claim and no
+// file written out of scope. Those collapse into one line rather than a card each.
+const isFinished = (r: InFlightRow) => !r.outOfScope.length && r.sessions.length > 0 && r.sessions.every((s) => s.state === "ended") && (!r.claim || r.claim.state !== "active");
+// A card with nothing written in it (no session, no claim, no stray file) says nothing; it is dropped.
+const isEmpty = (r: InFlightRow) => !r.sessions.length && !r.claim && !r.outOfScope.length;
+
+const previewHref = (kind: "plan" | "decision", id: string) => `/brief/preview?${kind}=${encodeURIComponent(id)}`;
+
+export function briefBody(b: BriefPayload, view?: BriefView): string {
   const decisions = b.waiting.filter((w) => w.kind === "decision" && w.decision);
   const otherWaiting = b.waiting.filter((w) => !(w.kind === "decision" && w.decision));
   const inboxCount = b.waiting.filter((w) => !b.answered.some((a) => a.ref === w.id)).length;
+  const finished = b.inFlight.filter(isFinished);
+  const working = b.inFlight.filter((r) => !isFinished(r) && !isEmpty(r));
 
-  const chips = [
-    ["inbox", "Needs you", inboxCount, inboxCount ? " is-warn" : ""],
-    ["inbox", "Drift", b.drift.length, b.drift.length ? " is-warn" : ""],
-    ["agents", "Agents", b.inFlight.length, ""],
-    ["agents", "Strayed", strayed, strayed ? " is-alert" : ""],
-    ["queue", "Ready", b.next.queue.length, ""],
+  const tiles = [
+    ["needs", "Needs you", inboxCount, inboxCount ? " is-warn" : ""],
+    ["working", "Working", working.length, working.some((r) => r.outOfScope.length) ? " is-alert" : ""],
+    ["ready", "Ready", b.next.queue.length, ""],
+    ["drift", "Drift", b.drift.length, b.drift.length ? " is-warn" : ""],
   ] as const;
 
-  const agents = b.inFlight.length
-    ? b.inFlight.map((r) => agentCard(r, b.generated)).join("")
-    : empty("No agent is at work. No plan is doing or claimed, and no session wrote files. Take one from the queue.");
+  const finishedLine = finished.length
+    ? `<p class="cc-finished">${finished.length} finished today: ${finished.map((r) => r.planId ? `<a href="/plan/${encodeURIComponent(r.planId)}" data-preview="${e(previewHref("plan", r.planId))}">${e(r.title)}</a>` : e(r.title)).join(", ")}</p>`
+    : "";
+  const agents = (working.length
+    ? working.map((r) => agentCard(r, b.generated)).join("")
+    : empty("No agent is at work. Take a plan from Up next.")) + finishedLine;
 
   const queue = (b.next.queue.length
-    ? `<ol class="cc-queue">${b.next.queue.map((q, i) => `<li><article class="cc-card${i === 0 ? " is-next" : ""}" tabindex="0">
+    ? `<ol class="cc-queue">${b.next.queue.map((q, i) => `<li><article class="cc-card${i === 0 ? " is-next" : ""}" tabindex="0" data-preview="${e(previewHref("plan", q.id))}">
   <header><h3><a href="/plan/${encodeURIComponent(q.id)}">${e(q.title)}</a></h3>${i === 0 ? `<span class="cc-tag">next</span>` : ""}</header>
   ${q.touches.length ? `<p class="cc-meta">Touches ${q.touches.slice(0, 4).map((t) => `<code>${e(t)}</code>`).join(" ")}${q.touches.length > 4 ? ` and ${q.touches.length - 4} more` : ""}</p>` : `<p class="cc-meta">No touches listed, so scope cannot be checked.</p>`}
   ${actions(q.actions)}
 </article></li>`).join("")}</ol>`
     : empty("Nothing is ready for an agent to take."))
     + (b.next.skipped.length
-      ? `<details class="cc-more" data-key="skipped"><summary>${b.next.skipped.length} not ready, and why</summary><ul>${b.next.skipped.map((s) => `<li><a href="/plan/${encodeURIComponent(s.id)}">${e(s.title)}</a><span class="cc-meta"> ${e(s.reasons.join("; "))}</span></li>`).join("")}</ul></details>`
+      ? `<details class="cc-more" data-key="skipped"><summary>${b.next.skipped.length} not ready, and why</summary><ul>${b.next.skipped.map((s) => `<li><a href="/plan/${encodeURIComponent(s.id)}" data-preview="${e(previewHref("plan", s.id))}">${e(s.title)}</a><span class="cc-meta"> ${e(s.reasons.join("; "))}</span></li>`).join("")}</ul></details>`
       : "");
 
-  const drift = b.drift.length
-    ? `<details class="cc-more" data-key="drift"${decisions.length + otherWaiting.length === 0 ? " open" : ""}><summary>Drift: ${b.drift.length} check(s) due</summary>${b.drift.map((d) => `<article class="cc-card cc-drift" tabindex="0"><header><h3>${e(d.label)}</h3><span class="cc-tag${d.severity === "error" ? " is-alert" : ""}">${e(d.severity)}</span></header><p class="cc-meta">${e(d.detail)}</p>${actions(d.actions)}</article>`).join("")}</details>`
-    : `<p class="cc-empty">The doctor's quick checks pass.</p>`;
+  const driftCards = b.drift.map((d) => `<article class="cc-card cc-drift" tabindex="0"><header><h3>${e(d.label)}</h3><span class="cc-tag${d.severity === "error" ? " is-alert" : ""}">${e(d.severity)}</span></header><p class="cc-meta">${e(d.detail)}</p>${actions(d.actions)}</article>`).join("");
+  const drift = b.drift.length ? driftCards : empty("The doctor's quick checks pass.");
 
   const answeredIds = new Set(b.answered.map((a) => a.ref));
   const open = decisions.filter((w) => !answeredIds.has(w.id));
   const inbox = (open.length || otherWaiting.length
     ? open.map(decisionCard).join("") + otherWaiting.map(plainCard).join("")
     : empty("Nothing is waiting on you."))
-    + (b.answered.length ? `<details class="cc-more" data-key="answered" open><summary>Answered, waiting for an agent: ${b.answered.length}</summary>${b.answered.map((a) => answeredCard(a, b.generated)).join("")}</details>` : "")
-    + drift;
+    + (b.answered.length ? `<details class="cc-more" data-key="answered"><summary>Answered, waiting for an agent: ${b.answered.length}</summary>${b.answered.map((a) => answeredCard(a, b.generated)).join("")}</details>` : "");
 
-  return `<div class="cc" id="cc" data-generated="${e(b.generated)}">
+  const sections = {
+    needs: column("inbox", "Needs you", "What needs you before the work can move.", inboxCount, inbox),
+    working: column("agents", "Working now", "What the AI is doing, and whether it kept to its plan.", working.length, agents),
+    ready: column("queue", "Up next", "What it can take next, in the order it will be handed out.", b.next.queue.length, queue),
+    drift: column("drift", "Drift", "The doctor's quick checks that are due.", b.drift.length, drift),
+  };
+  const middle = view
+    ? `<div class="cc-view">${sections[view]}</div>`
+    : `${sections.needs}<div class="cc-pair">${sections.working}${sections.ready}</div>`;
+
+  return `<div class="cc" id="cc" data-generated="${e(b.generated)}"${view ? ` data-view="${view}"` : ""}>
 <header class="cc-head">
-  <div class="cc-title"><h1>${e(b.project)}</h1><p>Command center for this project's AI. Read from disk, refreshed every ${REFRESH_SECONDS} s; PANTRY runs no model and starts no session.</p></div>
-  <nav class="cc-chips" aria-label="Summary">${chips.map(([to, l, n, t]) => `<a class="cc-chip${t}" href="#cc-${to}"><span class="cc-chip-n">${n}</span> ${e(l)}</a>`).join("")}</nav>
-  <p class="cc-sub"><span class="cc-live" data-live>updated ${e(b.generated.slice(11, 19))} UTC</span> · <a href="/plans">board</a> · <a href="/brief.json">json</a> · <a href="/brief.txt">agent's copy</a> · <span class="cc-keys">j k move · c copy · o open · r refresh</span></p>
-  ${howItWorks()}
+  <div class="cc-title"><h1>${e(b.project)}</h1><p class="cc-sub"><span class="cc-live" data-live>updated ${e(b.generated.slice(11, 19))} UTC</span> · <a href="/brief.json">json</a> · <a href="/brief.txt">agent's copy</a> · <span class="cc-keys">j k move · enter preview · c copy · o open · r refresh</span></p></div>
+  <nav class="cc-tiles" aria-label="Summary">${view ? `<a class="cc-tile cc-tile--all" href="/">All</a>` : ""}${tiles.map(([to, l, n, t]) => `<a class="cc-tile${t}${view === to ? " is-current" : ""}" href="/?view=${to}"${view === to ? ` aria-current="page"` : ""}><span class="cc-tile-n">${n}</span><span class="cc-tile-l">${e(l)}</span></a>`).join("")}</nav>
   ${b.notes.length ? `<ul class="cc-notes">${b.notes.map((n) => `<li>${e(n)}</li>`).join("")}</ul>` : ""}
 </header>
-<div class="cc-grid">
-${column("inbox", "Needs you", "What needs you before the work can move.", inboxCount, inbox)}
-${column("agents", "Agents", "What the AI is doing, and whether it kept to its plan.", b.inFlight.length, agents)}
-${column("queue", "Queue", "What it can take next, in the order it will be handed out.", b.next.queue.length, queue)}
+<div class="cc-layout">
+  <div class="cc-center">${middle}${view ? "" : howItWorks()}</div>
+  <aside class="cc-pane" id="cc-pane" aria-label="Preview" aria-live="polite"><p class="cc-empty">Select an item to read it here. Decisions can be answered in this pane.</p></aside>
 </div>
 </div>
 <script>${CLIENT}</script>`;
+}
+
+/** The preview pane's fragment: a plan or a decision rendered as Markdown, with the answer form on
+ *  top for an open decision. Returns null when the id names no file. */
+export async function briefPreview(config: ResolvedPantryConfig, b: BriefPayload, kind: "plan" | "decision", id: string): Promise<string | null> {
+  if (!/^[\w.-]+$/.test(id)) return null;
+  const dir = kind === "plan" ? config.plansDir : config.decisionsDir;
+  let md: string | null = null;
+  try { md = await Bun.file(join(dir, `${id}.md`)).text(); } catch { md = null; }
+  if (md === null && kind === "plan") {
+    // A plan's id can differ from its filename; fall back to scanning the frontmatter.
+    for (const f of await readdir(dir).catch(() => [] as string[])) {
+      if (!f.endsWith(".md")) continue;
+      const text = await Bun.file(join(dir, f)).text().catch(() => "");
+      if (new RegExp(`^id:\\s*${id.replace(/[.]/g, "\\.")}\\s*$`, "m").test(text)) { md = text; break; }
+    }
+  }
+  if (md === null) return null;
+  const full = kind === "plan" ? `/plan/${encodeURIComponent(id)}` : `/decisions/${encodeURIComponent(id)}`;
+  const w = kind === "decision" ? b.waiting.find((x) => x.id === id && x.decision) : undefined;
+  const answered = b.answered.some((a) => a.ref === id);
+  return `<div class="cc-pane-head"><a class="cc-btn" href="${full}">Open full page</a><button type="button" class="cc-btn" data-pane-close>Close</button></div>
+${w && !answered ? decisionCard(w) : ""}
+<div class="cc-pane-doc">${renderAgentBody(md)}</div>`;
 }
 
 /** The page's behaviour: copy, record an answer, keyboard moves, and the refresh. Plain JS, no build. */
@@ -214,23 +264,45 @@ const CLIENT = `(() => {
       status.after(c);
     } catch (err) { btn.disabled = false; say("Not recorded: " + err); }
   }
+  // The preview pane: selecting an item loads its plan or decision, rendered, into the right pane.
+  // A plain click on a card (or its title link) previews; a modified click still opens the page.
+  async function preview(el) {
+    const pane = document.getElementById("cc-pane"); if (!pane) return;
+    document.querySelectorAll(".cc-card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+    el.closest(".cc-card")?.classList.add("is-selected");
+    pane.classList.add("is-open");
+    try {
+      const res = await fetch(base + el.dataset.preview);
+      pane.innerHTML = await res.text();
+    } catch (err) { pane.textContent = "Could not load the preview: " + err; }
+  }
   document.addEventListener("click", (ev) => {
     const c = ev.target.closest("[data-copy]"); if (c) return copy(c);
     const r = ev.target.closest("[data-record]"); if (r) return record(r.closest(".cc-decision"), r);
+    if (ev.target.closest("[data-pane-close]")) { const p = document.getElementById("cc-pane"); p?.classList.remove("is-open"); document.querySelectorAll(".cc-card.is-selected").forEach((c) => c.classList.remove("is-selected")); return; }
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.button !== 0) return;
+    if (ev.target.closest(".cc-pane")) return;
+    if (ev.target.closest("button, input, textarea, label, summary, .cc-actions a")) return;
+    const own = ev.target.closest("a[data-preview]");
+    const card = ev.target.closest(".cc-card[data-preview]");
+    const link = ev.target.closest("a[href]");
+    const t = own || (card && (!link || card.querySelector("h3 a") === link) ? card : null);
+    if (t) { ev.preventDefault(); preview(t); }
   });
-  const cards = () => [...document.querySelectorAll(".cc-card")];
+  const cards = () => [...document.querySelectorAll(".cc-center .cc-card")];
   document.addEventListener("keydown", (ev) => {
     if (ev.metaKey || ev.ctrlKey || ev.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
     const list = cards(); const i = list.indexOf(document.activeElement?.closest(".cc-card"));
     if (ev.key === "j" || ev.key === "k") { ev.preventDefault(); const n = list[Math.min(list.length - 1, Math.max(0, i + (ev.key === "j" ? 1 : -1)))] || list[0]; n?.focus(); n?.scrollIntoView({ block: "nearest" }); }
     else if (ev.key === "c" && i >= 0) { const b = list[i].querySelector("[data-copy]"); if (b) copy(b); }
+    else if (ev.key === "Enter" && i >= 0 && list[i].dataset.preview && document.activeElement === list[i]) { ev.preventDefault(); preview(list[i]); }
     else if (ev.key === "o" && i >= 0) { const a = list[i].querySelector("a[href]"); if (a) location.href = a.href; }
     else if (ev.key === "r") refresh();
   });
   // The refresh swaps the whole center for a fresh render, and skips a turn while the owner is in the
   // middle of something: typing a note, or with an option picked and not yet recorded.
   async function refresh() {
-    const busy = document.querySelector(".cc-decision:not(.is-done) input:checked, .cc textarea:focus") || (document.querySelector(".cc textarea") && [...document.querySelectorAll(".cc textarea")].some((t) => t.value));
+    const busy = document.querySelector(".cc-decision:not(.is-done) input:checked, .cc textarea:focus, .cc-pane .cc-decision:not(.is-done)") || (document.querySelector(".cc textarea") && [...document.querySelectorAll(".cc textarea")].some((t) => t.value));
     if (busy) return;
     try {
       const res = await fetch(location.pathname, { headers: { Accept: "text/html" } });
@@ -238,6 +310,10 @@ const CLIENT = `(() => {
       const doc = new DOMParser().parseFromString(await res.text(), "text/html");
       const next = doc.getElementById("cc"); const cur = document.getElementById("cc");
       if (!next || !cur) return;
+      const pane = cur.querySelector("#cc-pane"); const fresh = next.querySelector("#cc-pane");
+      if (pane && fresh) fresh.replaceWith(pane);
+      const sel = cur.querySelector(".cc-card.is-selected")?.dataset.preview;
+      if (sel) for (const c of next.querySelectorAll(".cc-card[data-preview]")) if (c.dataset.preview === sel) c.classList.add("is-selected");
       const open = new Set([...cur.querySelectorAll("details[data-key][open]")].map((d) => d.dataset.key));
       cur.replaceWith(next);
       for (const d of next.querySelectorAll("details[data-key]")) if (open.has(d.dataset.key)) d.open = true;
@@ -251,11 +327,22 @@ export async function briefRoute(
   path: string,
   config: ResolvedPantryConfig,
   page: (title: string, body: string) => string,
+  query?: URLSearchParams,
 ): Promise<Response | null> {
   if (!config.surfaces.brief) return null;
-  if (path !== "/" && path !== "/brief" && path !== "/brief.json" && path !== "/brief.txt") return null;
+  if (path !== "/" && path !== "/brief" && path !== "/brief.json" && path !== "/brief.txt" && path !== "/brief/preview") return null;
   const payload = await buildBrief(config, new Date().toISOString());
+  if (path === "/brief/preview") {
+    const kind = query?.get("decision") ? "decision" : "plan";
+    const id = query?.get(kind) ?? "";
+    const html = await briefPreview(config, payload, kind, id);
+    return html === null
+      ? new Response(`<p class="cc-empty">No ${kind} named ${e(id)}.</p>`, { status: 404, headers: { "Content-Type": "text/html; charset=utf-8" } })
+      : new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  }
+  const v = query?.get("view");
+  const view = (VIEWS as readonly string[]).includes(v ?? "") ? (v as BriefView) : undefined;
   if (path === "/brief.json") return Response.json(payload);
   if (path === "/brief.txt") return new Response(briefText(payload), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
-  return new Response(page("Command center", briefBody(payload)), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  return new Response(page("Command center", briefBody(payload, view)), { headers: { "Content-Type": "text/html; charset=utf-8" } });
 }

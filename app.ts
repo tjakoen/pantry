@@ -771,7 +771,7 @@ export function createPantryHandler(opts: PantryOptions) {
 
     // --- landings PANTRY owns ---
     // The alignment brief (plans/pantry-brief.md) is the home page while its surface is on.
-    const brief = await briefRoute(path, config, page);
+    const brief = await briefRoute(path, config, page, url.searchParams);
     if (brief) return brief;
     if (path === "/") {
       // The heartbeat row: doctor's staleness checks, computed at request time with `now` injected for
