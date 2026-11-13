@@ -114,7 +114,8 @@ describe("projections", () => {
     const text = briefText(b);
     for (const h of ["## In flight", "## Waiting on the owner", "## Drift", "## Next"]) expect(text).toContain(h);
     const html = briefBody(b);
-    for (const h of ["Agents", "Queue", "Inbox"]) expect(html).toContain(h);
+    for (const h of ["Needs you", "Agents", "Queue"]) expect(html).toContain(h);
+    expect(html.indexOf("id=\"cc-inbox\"")).toBeLessThan(html.indexOf("id=\"cc-agents\""));
   });
 
   test("copy values are escaped into the attribute", () => {

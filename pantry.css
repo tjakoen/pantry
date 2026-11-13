@@ -929,3 +929,37 @@
 .pantry-usage__table td:nth-child(2), .pantry-usage__table thead th:nth-child(2) { text-align: left; min-width: 9rem; }
 .pantry-usage__bar { display: inline-block; vertical-align: middle; height: 0.5rem; width: calc(var(--share) * 0.7); min-width: 2px; max-width: 70%; border-radius: 999px; background: var(--accent, currentColor); margin-right: 0.4rem; }
 .pantry-usage__pct { color: var(--ink-muted); }
+
+/* The sidebar shell (plans/pantry-dashboard.md). The nav sits in a fixed left column and the page
+   scrolls beside it, so the workspace keeps its shape the way a desktop app does. */
+.pantry-body:has(> .pantry-side) { display: grid; grid-template-columns: 14rem minmax(0, 1fr); min-height: 100vh; }
+.pantry-body:has(> .pantry-side) > :not(.pantry-side) { grid-column: 2; }
+.pantry-side {
+  grid-column: 1; grid-row: 1 / span 3; position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto;
+  display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-4, 1rem);
+  padding: var(--space-4, 1rem) var(--space-3, 0.75rem); box-sizing: border-box;
+  border-bottom: 0; border-right: var(--hairline, 1px) solid var(--rule);
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+}
+.pantry-side .pantry-nav__brand { padding: 0 0.5rem; }
+.pantry-side__group { display: flex; flex-direction: column; gap: 1px; }
+.pantry-side__label { margin: 0 0 0.25rem; padding: 0 0.5rem; font-size: var(--text-xs); color: var(--ink-muted); display: flex; justify-content: space-between; cursor: default; }
+.pantry-side__more > summary { cursor: pointer; list-style: none; }
+.pantry-side__more > summary::-webkit-details-marker { display: none; }
+.pantry-side__more > summary::after { content: "▾"; }
+.pantry-side__more:not([open]) > summary::after { content: "▸"; }
+.pantry-side a.pantry-side__hub { font-size: var(--text-xs); }
+.pantry-side .pantry-side__item { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.3rem 0.5rem; border-radius: 4px; font-size: var(--text-sm); color: var(--ink-muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pantry-side .pantry-side__item:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.pantry-side .pantry-side__item.is-current { color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, transparent); font-weight: 600; }
+.pantry-side__icon { width: 1rem; text-align: center; font-size: 0.85em; }
+.pantry-side__fold { padding-left: 0.75rem; }
+.pantry-side__fold > summary { padding: 0.15rem 0.5rem; font-size: var(--text-xs); color: var(--ink-muted); cursor: pointer; }
+.pantry-side .pantry-nav__theme { margin: auto 0 0; padding: 0 0.5rem; }
+.pantry-body--full { height: 100vh; overflow: hidden; }
+.pantry-body--full > .pantry-main--full { height: 100vh; }
+@media (max-width: 48rem) {
+  .pantry-body:has(> .pantry-side) { grid-template-columns: minmax(0, 1fr); }
+  .pantry-body:has(> .pantry-side) > :not(.pantry-side) { grid-column: 1; }
+  .pantry-side { position: static; height: auto; grid-row: auto; border-right: 0; border-bottom: var(--hairline, 1px) solid var(--rule); }
+}

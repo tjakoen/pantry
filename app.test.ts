@@ -59,7 +59,7 @@ describe("pantry cockpit surfaces", () => {
   test("docs/reference/catalog are DEMOTED from the front nav but still mounted + reachable", async () => {
     const home = await (await get(handler, "/")).text();
     // the front nav (its own <nav class="pantry-nav">…</nav> block) no longer carries the demoted surfaces
-    const frontNav = home.slice(home.indexOf(`<nav class="pantry-nav">`), home.indexOf("</nav>"));
+    const frontNav = home.slice(home.indexOf(`<nav class="pantry-nav`), home.indexOf("</nav>"));
     for (const s of ["/docs", "/reference", "/catalog"]) expect(frontNav).not.toContain(s);
     expect(frontNav).toContain("/plans");
     expect(frontNav).toContain("/about");
@@ -896,12 +896,13 @@ describe("the alignment brief", () => {
   });
 });
 
-test("the nav groups surfaces into Work and Project menus", async () => {
+test("the sidebar leads with four views and folds the rest under More", async () => {
   const { pantryPage } = await import("./app.ts");
   const html = pantryPage("t", "", { plans: true, decisions: true, control: true, runs: true, artifacts: true, timeline: true, standards: true, docs: true, reference: true, brief: true } as never);
-  const nav = html.slice(html.indexOf(`<nav class="pantry-nav">`), html.indexOf("</nav>"));
-  expect(nav).toContain(`<summary>Work</summary>`);
-  expect(nav).toContain(`<summary>Project</summary>`);
+  const nav = html.slice(html.indexOf(`<nav class="pantry-nav pantry-side"`), html.indexOf("</nav>"));
+  expect(nav).toContain(">Views</p>");
+  for (const v of [">Now<", ">Plans<", ">Project<"]) expect(nav).toContain(v);
+  expect(nav).toContain(`>More</summary>`);
   expect(nav).toContain(`href="/activity"`);
-  expect(nav.indexOf("Command center")).toBeLessThan(nav.indexOf("<summary>Work"));
+  expect(nav.indexOf(">Now<")).toBeLessThan(nav.indexOf(">More</summary>"));
 });

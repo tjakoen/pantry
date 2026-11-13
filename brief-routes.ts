@@ -131,11 +131,11 @@ export function briefBody(b: BriefPayload): string {
   const inboxCount = b.waiting.filter((w) => !b.answered.some((a) => a.ref === w.id)).length;
 
   const chips = [
+    ["inbox", "Needs you", inboxCount, inboxCount ? " is-warn" : ""],
+    ["inbox", "Drift", b.drift.length, b.drift.length ? " is-warn" : ""],
     ["agents", "Agents", b.inFlight.length, ""],
     ["agents", "Strayed", strayed, strayed ? " is-alert" : ""],
     ["queue", "Ready", b.next.queue.length, ""],
-    ["inbox", "Needs you", inboxCount, inboxCount ? " is-warn" : ""],
-    ["inbox", "Drift", b.drift.length, b.drift.length ? " is-warn" : ""],
   ] as const;
 
   const agents = b.inFlight.length
@@ -174,9 +174,9 @@ export function briefBody(b: BriefPayload): string {
   ${b.notes.length ? `<ul class="cc-notes">${b.notes.map((n) => `<li>${e(n)}</li>`).join("")}</ul>` : ""}
 </header>
 <div class="cc-grid">
+${column("inbox", "Needs you", "What needs you before the work can move.", inboxCount, inbox)}
 ${column("agents", "Agents", "What the AI is doing, and whether it kept to its plan.", b.inFlight.length, agents)}
 ${column("queue", "Queue", "What it can take next, in the order it will be handed out.", b.next.queue.length, queue)}
-${column("inbox", "Inbox", "What needs you before the work can move.", inboxCount, inbox)}
 </div>
 </div>
 <script>${CLIENT}</script>`;
