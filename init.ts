@@ -85,7 +85,7 @@ Kit next steps (do these before anything else):
    It was seeded from the published starter; it is yours now. Run bunx pantry doctor to confirm the
    kit is green.
 `
-    : `PANTRY scaffold written (plans/ + pantry.config.json).`;
+    : `PANTRY scaffold written (plans/ + pantry.config.json + .mcp.json): tier 1 of docs/WORKFLOW.md.`;
   return `${kitLine}
 
 Next steps:
@@ -96,6 +96,9 @@ Next steps:
    move or copy those docs into this project's plans/ or anywhere else PANTRY owns.
 3. Run bunx proof check to lint the scaffolded plans.
 4. Run bunx pantry serve and confirm both the plan board and the docs render.
+5. Run bunx pantry doctor. Only the contract (tier 1) can fail it; the loop (tier 2) warns with
+   a fix. Codex reads its MCP servers from ~/.codex/config.toml instead of .mcp.json; the
+   snippet is in docs/WORKFLOW.md.
 
 Hard rules, worth repeating:
 
@@ -131,9 +134,37 @@ export async function runPantryInit(
     created.push(CONFIG_FILE);
   }
 
+  await scaffoldMcp(targetDir, created, skipped);
+
   if (kit) await scaffoldKit(targetDir, created, skipped);
 
   return { created, skipped, instructions: buildInstructions(kit) };
+}
+
+// Tier 1 of docs/WORKFLOW.md is plans/ in the schema plus the MCP server registered, so init writes
+// the project-scoped registration Claude Code reads from .mcp.json. An existing file is merged, never
+// replaced: the host's other servers stay exactly as they were.
+export const MCP_FILE = ".mcp.json";
+export const PANTRY_MCP_URL = "http://127.0.0.1:4400/mcp";
+
+async function scaffoldMcp(targetDir: string, created: string[], skipped: string[]): Promise<void> {
+  const path = join(targetDir, MCP_FILE);
+  let current: { mcpServers?: Record<string, unknown> } = {};
+  if (await exists(path)) {
+    try {
+      current = JSON.parse(await Bun.file(path).text());
+    } catch {
+      skipped.push(`${MCP_FILE} (exists but is not JSON; add the pantry server by hand)`);
+      return;
+    }
+    if (current.mcpServers && "pantry" in current.mcpServers) {
+      skipped.push(`${MCP_FILE} (pantry already registered)`);
+      return;
+    }
+  }
+  const next = { ...current, mcpServers: { ...current.mcpServers, pantry: { type: "http", url: PANTRY_MCP_URL } } };
+  await writeFile(path, JSON.stringify(next, null, 2) + "\n", "utf8");
+  created.push(MCP_FILE);
 }
 
 // The `--kit` extension: seed CLAUDE.md from the published starter, add the AGENTS -> CLAUDE.md

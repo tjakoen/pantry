@@ -29,6 +29,7 @@ import { affectedBy, loadGraph, unreconciledFiles } from "./graph.ts";
 import { commitsSince, daysBetween, isSet, plural, readHygieneState, type HygieneThresholds } from "./hygiene.ts";
 import { readContext } from "./context.ts";
 import type { GitRunner } from "./timeline.ts";
+import { applyTiers, hubCheck, tierOneChecks, type DoctorTier } from "./tiers.ts";
 
 export type DoctorSeverity = "error" | "warn" | "info";
 
@@ -39,6 +40,10 @@ export interface DoctorCheck {
   ok: boolean;
   label: string;
   detail: string;
+  /** 1 the contract, 2 the loop, 3 the owner's layer (tiers.ts, docs/WORKFLOW.md) */
+  tier?: DoctorTier;
+  /** a tier 3 check in a host that has not opted in: kept in the payload, never printed or failed */
+  silenced?: boolean;
 }
 
 export interface DoctorReport {
@@ -48,6 +53,12 @@ export interface DoctorReport {
 }
 
 export interface DoctorOptions {
+  /** the home directory the MCP-registration check reads (tests); default os.homedir() */
+  home?: string;
+  /** the hub registry the hub check reads (tests); default ~/.pantry/projects.json */
+  registryFile?: string;
+  /** override the host config's ownerLayer (tests); default config.ownerLayer */
+  ownerLayer?: boolean;
   /** the host project root; default process.cwd() */
   cwd?: string;
   /** injected for deterministic age math (tests); default new Date() */
@@ -593,6 +604,10 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     label: "plans/ present",
     detail: plansOk ? config.plansDir : `missing at ${config.plansDir} — run pantry init`,
   });
+
+  // The rest of the contract (tiers.ts): plan files in the schema, the MCP server known to an agent,
+  // and the loop's hub registration.
+  checks.push(...(tierOneChecks(cwd, config.plansDir, opts.home) as DoctorCheck[]), hubCheck(cwd, opts.registryFile) as DoctorCheck);
 
   // pantry.config present (a kit repo should carry one; a bare repo can still serve, so warn not error).
   const configOk = ["pantry.config.json", "pantry.config.ts", "pantry.config.js"].some((f) => existsSync(join(cwd, f)));
@@ -1215,8 +1230,9 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
     }
   }
 
-  const ok = !checks.some((c) => !c.ok && c.severity === "error");
-  return { ok, checks };
+  const tiered = applyTiers(checks, opts.ownerLayer ?? config.ownerLayer ?? false);
+  const ok = !tiered.some((c) => !c.ok && !c.silenced && c.severity === "error");
+  return { ok, checks: tiered };
 }
 
 // Plain-text report for a terminal / CI log — same posture as formatDriftReport: no backticks, no ANSI
@@ -1228,10 +1244,13 @@ export function formatDoctorReport(report: DoctorReport): string {
     if (c.severity === "warn") return "warn";
     return "info";
   };
-  const lines = report.checks.map((c) => `[${mark(c)}] ${c.label}: ${c.detail}`);
-  const failing = report.checks.filter((c) => !c.ok && c.severity === "error").length;
-  const due = report.checks.filter((c) => !c.ok && c.severity === "warn").length;
-  lines.push(`${report.checks.length} checks, ${failing} failing, ${due} due`);
+  const shown = report.checks.filter((c) => !c.silenced);
+  const lines = shown.map((c) => `[${mark(c)}] ${c.label}: ${c.detail}`);
+  const failing = shown.filter((c) => !c.ok && c.severity === "error").length;
+  const due = shown.filter((c) => !c.ok && c.severity === "warn").length;
+  const quiet = report.checks.length - shown.length;
+  if (quiet > 0) lines.push(`${quiet} owner-layer check(s) silent; set "ownerLayer": true in pantry.config.json to see them`);
+  lines.push(`${shown.length} checks, ${failing} failing, ${due} due`);
   lines.push(report.ok ? "OK" : "FAIL");
   return lines.join("\n");
 }

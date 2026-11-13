@@ -7,6 +7,7 @@ import { test, expect, describe, beforeEach, afterEach } from "bun:test";
 import { mkdtemp, writeFile, mkdir, symlink, utimes, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import type { ResolvedPantryConfig } from "./config.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
 import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
@@ -56,8 +57,12 @@ async function compliantKit() {
 // runContext is off by default here for the same reason runDrift and runDeps are: left on, it reads
 // the real ~/.claude of whoever runs the suite, so every unrelated test would carry that machine's
 // front door into its result. The context tests below turn it back on against a temp config dir.
+const FIXTURE_HOME = mkdtempSync(join(tmpdir(), "pantry-doctor-home-"));
+mkdirSync(join(FIXTURE_HOME, ".codex"), { recursive: true });
+writeFileSync(join(FIXTURE_HOME, ".codex", "config.toml"), "[mcp_servers.pantry]\nurl = \"http://127.0.0.1:4400/mcp\"\n");
+
 const run = (over: Partial<ResolvedPantryConfig> = {}, more = {}): Promise<DoctorReport> =>
-  runDoctor({ cwd: dir, now: NOW, config: cfg(over), runDrift: false, runDeps: false, runContext: false, ...more });
+  runDoctor({ cwd: dir, now: NOW, config: cfg(over), runDrift: false, runDeps: false, runContext: false, ownerLayer: true, home: FIXTURE_HOME, registryFile: join(FIXTURE_HOME, "none.json"), ...more });
 
 const byId = (r: DoctorReport, id: string) => r.checks.find((c) => c.id === id)!;
 
@@ -794,7 +799,7 @@ describe("pantry doctor — staleness (graph, e2e)", () => {
 describe("pantry doctor — drift fold-in (the single CI entry point)", () => {
   test("clean host docs → doc-drift check passes at error severity, report ok", async () => {
     await compliantKit(); // no docs/ dir → only the bundled framework docs, which resolve clean
-    const r = await runDoctor({ cwd: dir, now: NOW });
+    const r = await runDoctor({ cwd: dir, now: NOW , ownerLayer: true, home: FIXTURE_HOME });
     const c = byId(r, "doc-drift");
     expect(c.severity).toBe("error");
     expect(c.ok).toBe(true);
@@ -806,7 +811,7 @@ describe("pantry doctor — drift fold-in (the single CI entry point)", () => {
     await mkdir(join(dir, "docs"));
     await writeFile(join(dir, "docs", "guide.md"), "See [a gone plan](/plans/plan/nope).");
     await writeFile(join(dir, "pantry.config.json"), JSON.stringify({ docsDirs: ["./docs"] }) + "\n");
-    const r = await runDoctor({ cwd: dir, now: NOW });
+    const r = await runDoctor({ cwd: dir, now: NOW , ownerLayer: true, home: FIXTURE_HOME });
     const c = byId(r, "doc-drift");
     expect(c.severity).toBe("error");
     expect(c.ok).toBe(false);
@@ -831,7 +836,7 @@ describe("pantry doctor — layer-pin drift fold-in (warn tier)", () => {
       await writeFile(join(host, "package.json"), JSON.stringify({ devDependencies: { "@tjakoen/mill": "^0.1.2" } }));
       await mkdir(join(monorepo, "grain", "packages", "mill"), { recursive: true });
       await writeFile(join(monorepo, "grain", "packages", "mill", "package.json"), JSON.stringify({ version: "0.2.0" }));
-      const r = await runDoctor({ cwd: host, now: NOW, runDrift: false, layersRoot: monorepo });
+      const r = await runDoctor({ cwd: host, now: NOW, runDrift: false, layersRoot: monorepo , ownerLayer: true, home: FIXTURE_HOME });
       const c = byId(r, "deps-drift");
       expect(c.severity).toBe("warn");
       expect(c.ok).toBe(false);
@@ -844,7 +849,7 @@ describe("pantry doctor — layer-pin drift fold-in (warn tier)", () => {
 
   test("a repo with no @tjakoen/* pins gets an info, not a warn", async () => {
     await compliantKit();
-    const r = await runDoctor({ cwd: dir, now: NOW, config: cfg(), runDrift: false });
+    const r = await runDoctor({ cwd: dir, now: NOW, config: cfg(), runDrift: false , ownerLayer: true, home: FIXTURE_HOME });
     const c = byId(r, "deps-drift");
     expect(c.severity).toBe("info");
     expect(c.ok).toBe(true);

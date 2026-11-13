@@ -103,3 +103,22 @@ describe("pantry init --kit — the loop kit scaffold", () => {
     expect(result.created).toContain("pantry.config.json");
   });
 });
+
+describe("pantry init scaffolds tier 1", () => {
+  test("writes .mcp.json with the pantry server, and merges into an existing one", async () => {
+    const { mkdtempSync, writeFileSync, readFileSync } = await import("node:fs");
+    const fresh = mkdtempSync(join(tmpdir(), "pantry-init-mcp-"));
+    const r = await runPantryInit(fresh);
+    expect(r.created).toContain(".mcp.json");
+    expect(JSON.parse(readFileSync(join(fresh, ".mcp.json"), "utf8")).mcpServers.pantry.url).toBe("http://127.0.0.1:4400/mcp");
+
+    const host = mkdtempSync(join(tmpdir(), "pantry-init-mcp-host-"));
+    writeFileSync(join(host, ".mcp.json"), JSON.stringify({ mcpServers: { other: { command: "x" } } }));
+    await runPantryInit(host);
+    const merged = JSON.parse(readFileSync(join(host, ".mcp.json"), "utf8")).mcpServers;
+    expect(Object.keys(merged).toSorted()).toEqual(["other", "pantry"]);
+
+    const again = await runPantryInit(host);
+    expect(again.skipped).toContain(".mcp.json (pantry already registered)");
+  });
+});

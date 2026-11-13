@@ -19,6 +19,11 @@ For the plain-language walkthrough (what each surface is for, why it exists), se
 **[What it composes](https://tjakoen.github.io/pantry/docs/what-it-composes)** · or the landing page
 at **[tjakoen.github.io/pantry](https://tjakoen.github.io/pantry/)**.
 
+A fair warning before you install: PANTRY was built around one person's way of working with AI
+agents. **[The workflow, in three tiers](docs/WORKFLOW.md)** says which part is the contract you
+need, which part is a loop worth trying, and which part is my own layer that stays quiet unless you
+ask for it.
+
 ## Quickstart
 
 ```sh
