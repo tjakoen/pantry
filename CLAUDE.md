@@ -53,6 +53,13 @@ bun cli.ts usage   # token usage by model, claimed plan and area, from the harne
 - **A missing package disables its surface — visibly, never a crash.**
 - **Tests are part of the work.** `tsc` + `bun test` green before "done".
 
+## Doctor tiers
+
+Every doctor check has a tier in tiers.ts (docs/WORKFLOW.md explains them). Tier 1, the contract,
+can fail; tier 2, the loop, only warns for strangers; tier 3, the owner's layer, is silent unless
+pantry.config.json sets ownerLayer. A new check goes into the CHECK_TIERS table, or it defaults to
+tier 3.
+
 ## Definition of done
 
 Code + colocated tests + `tsc` and `bun test` green + `PLAN.md`/`INSTALL.md` synced (the host

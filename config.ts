@@ -148,6 +148,8 @@ export interface PantryConfig {
    *  forked-standards check skips it. Every other repo references the standards by URL (LOOP.md §3),
    *  so a local canon file there IS a fork and should flag. Default: undefined (not the home). */
   standardsSource?: "canon";
+  /** opt in to doctor's tier 3 checks, the owner's own layer (docs/WORKFLOW.md). Default false. */
+  ownerLayer?: boolean;
 }
 
 /** A PantryConfig with every field filled and every path made absolute. */
@@ -200,6 +202,8 @@ export interface ResolvedPantryConfig {
   contextBudgetChars: number;
   /** "canon" only for the standards home; undefined everywhere else. Doctor reads this. */
   standardsSource?: "canon";
+  /** true only when the host opted in to doctor's tier 3 checks */
+  ownerLayer?: boolean;
 }
 
 // Named for what it is rather than for what it used to be: every surface that renders the repo is
@@ -289,6 +293,7 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
         ? raw.contextBudgetChars
         : Infinity,
     standardsSource: raw.standardsSource,
+    ownerLayer: raw.ownerLayer === true,
   };
 }
 

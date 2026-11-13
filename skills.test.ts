@@ -256,7 +256,9 @@ describe("pantry skills list", () => {
 });
 
 describe("doctor skills-freshness", () => {
-  const doctorHere = () => runDoctor({ cwd: host, config: cfg(), canonDir: canon, runDrift: false, runDeps: false });
+  // home and registryFile point inside the fixture, so the tier 1 MCP check and the hub check read
+  // nothing from the machine running the suite (a CI runner has no pantry registration).
+  const doctorHere = () => runDoctor({ cwd: host, config: cfg(), canonDir: canon, runDrift: false, runDeps: false, home: host, registryFile: join(host, "projects.json") });
 
   test("a kit repo with a stale mount warns and names it", async () => {
     await writeFile(join(host, "CLAUDE.md"), "kit", "utf8");
@@ -279,6 +281,7 @@ describe("doctor skills-freshness", () => {
     await writeFile(join(host, "CLAUDE.md"), "kit", "utf8");
     await symlink("CLAUDE.md", join(host, "AGENTS.md"));
     await mkdir(join(host, "plans"), { recursive: true });
+    await writeFile(join(host, ".mcp.json"), JSON.stringify({ mcpServers: { pantry: { type: "http", url: "http://127.0.0.1:4400/mcp" } } }), "utf8");
     await sync();
     await rm(SKILL("voice"));
 

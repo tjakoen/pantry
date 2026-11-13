@@ -9,6 +9,41 @@ anything your project owns; it renders your files in place. The canonical plan f
 There are two paths below. Both do exactly the same steps. Pick the AI path if you are handing
 this off to an agent; pick the manual path if you want to run each command yourself.
 
+Which parts of the workflow you need, and which are the owner's own habits, is in
+[docs/WORKFLOW.md](docs/WORKFLOW.md). Read that first if you are not the owner.
+
+## Three ways in
+
+PANTRY is moving from a web app you run in Docker to a desktop app with a command line beside it.
+All three ways below end at the same hub on port 4400.
+
+1. **The desktop app (placeholder).** Not decided yet: there is no build, and how releases are
+   signed, shipped and updated is still an open call. This section will name the downloads once
+   they exist. Until then, run from source with the command line below.
+2. **The command line.** Install the package into a project and run the hub yourself:
+
+   ```sh
+   bun add -d @tjakoen/pantry@github:tjakoen/pantry#main
+   bunx pantry init
+   bunx pantry register
+   bunx pantry hub
+   ```
+
+   Once *pantry hub ensure* lands, prefer it at session start: it starts the hub only when it is not
+   already answering, and returns at once otherwise.
+3. **Docker.** The compose file still works for a hub that should run with no app at all, and is
+   described under the always-on hub below.
+
+## Using it from the Claude desktop app
+
+The Code tab of the Claude desktop app runs Claude Code, so it reads the same MCP registration:
+the project *.mcp.json* that *pantry init* writes, or the user-level one from *claude mcp add*.
+Nothing extra is needed for the agent side.
+
+For the human side, open the project's PANTRY page in the app's built-in browser pane, next to the
+chat. Asking the session to "open PANTRY in the browser pane" is enough; the address is the hub's
+project port, which *pantry projects* prints.
+
 ## The host contract, in short
 
 Before either path: PANTRY is a lens, not a destination. It reads your project's `plans/` and

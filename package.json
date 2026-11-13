@@ -19,6 +19,7 @@
   },
   "files": [
     "INSTALL.md",
+    "docs/WORKFLOW.md",
     "NOTICE",
     "PLAN.md",
     "activity.ts",
@@ -46,6 +47,7 @@
     "decisions.ts",
     "deps.ts",
     "doctor.ts",
+    "tiers.ts",
     "drift.ts",
     "graph.ts",
     "hooks.ts",
