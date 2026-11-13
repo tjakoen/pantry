@@ -149,6 +149,23 @@ async function main() {
   }
 
   // The always-on hub (hub.ts): one PANTRY per machine for every registered project.
+  if (cmd === "hub" && rest[0] === "ensure") {
+    const { ensureHub } = await import("./hub-ensure.ts");
+    const r = await ensureHub();
+    if (r.state === "failed") { console.error(`pantry hub ensure: ${r.reason}`); process.exit(1); }
+    console.log(`PANTRY hub ${r.state} on http://localhost:${r.port}/${r.pid ? ` (pid ${r.pid})` : ""}`);
+    return;
+  }
+  // Bring the desktop app forward on a project (the cwd's, by default), or the browser without it.
+  if (cmd === "open") {
+    const hub = await import("./hub.ts");
+    const { hubPort, openPantry } = await import("./hub-ensure.ts");
+    const reg = hub.readRegistry();
+    const name = rest[0] && !rest[0].includes("/") ? rest[0] : hub.projectFor(reg, dir ?? process.cwd())?.name;
+    const r = openPantry(hubPort(), name);
+    console.log(`Opened ${r.target} (${r.via})`);
+    return;
+  }
   if (cmd === "hub") {
     const { runHub } = await import("./hub.ts");
     await runHub();

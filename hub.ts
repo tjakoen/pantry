@@ -160,7 +160,12 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
           const counts = await workCounts(dirname(file), p.name, p.path).catch(() => ({ ready: null, claimed: null }));
           return Response.json({ registered: true, ...(await status(p)), ...counts });
         }
-        return Response.json({ ok: true, projects: await Promise.all(reg.projects.map(status)) });
+        // service and pid let `pantry hub ensure` and the desktop app tell this hub from any other
+        // server on the port. needsYou reads cached briefs only (no wait), so the poll stays cheap.
+        const projects = await Promise.all(reg.projects.map(status));
+        const { hubRows } = await import("./hub-home.ts");
+        const needsYou = (await hubRows(projects, 0)).reduce((n, r) => n + (r.summary?.waiting ?? 0), 0);
+        return Response.json({ ok: true, service: "pantry-hub", pid: process.pid, needsYou, projects });
       }
       // The header's project switcher links here, because only the hub knows where each project
       // answers right now (its port, and whether it serves PANTRY at the root or under the prefix).

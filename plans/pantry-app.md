@@ -1,11 +1,13 @@
 ---
 id: pantry-app
-status: todo
+status: doing
 track: app
-depends: [pantry-dashboard]
+depends: []
 touches: [cli.ts, app/]
 owner: ai
 ---
+
+> depends cleared 2026-11-14: the hub plumbing does not need the dashboard; only the app's final look follows pantry-dashboard.
 
 # Give PANTRY a desktop app that finds its own server
 
