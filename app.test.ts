@@ -59,7 +59,7 @@ describe("pantry cockpit surfaces", () => {
   test("docs/reference/catalog are DEMOTED from the front nav but still mounted + reachable", async () => {
     const home = await (await get(handler, "/")).text();
     // the front nav (its own <nav class="pantry-nav">…</nav> block) no longer carries the demoted surfaces
-    const frontNav = home.slice(home.indexOf(`<nav class="pantry-nav">`), home.indexOf("</nav>"));
+    const frontNav = home.slice(home.indexOf(`<nav class="pantry-nav`), home.indexOf("</nav>"));
     for (const s of ["/docs", "/reference", "/catalog"]) expect(frontNav).not.toContain(s);
     expect(frontNav).toContain("/plans");
     expect(frontNav).toContain("/about");
@@ -869,12 +869,32 @@ describe("the alignment brief", () => {
   const on = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ brief: true }) });
   const off = createPantryHandler({ plansDir: EXAMPLE, config: configWith({ brief: false }) });
 
+  test("a tile's filtered view shows its own section alone", async () => {
+    const a = await (await get(on, "/?view=drift")).text();
+    expect(a).toContain('id="cc-drift"');
+    expect(a).not.toContain('id="cc-inbox"');
+    expect(a).toContain('aria-current="page"');
+  });
+
+  test("the preview pane renders a plan, and names a missing one", async () => {
+    const plans = await (await get(on, "/brief.json")).json() as { next: { queue: { id: string }[]; skipped: { id: string }[] } };
+    const id = [...plans.next.queue, ...plans.next.skipped][0]?.id;
+    if (id) {
+      const ok = await get(on, `/brief/preview?plan=${encodeURIComponent(id)}`);
+      expect(ok.status).toBe(200);
+      expect(await ok.text()).toContain("Open full page");
+    }
+    const miss = await get(on, "/brief/preview?plan=no-such-plan");
+    expect(miss.status).toBe(404);
+    expect((await get(on, "/brief/preview?plan=..%2Fsecret")).status).toBe(404);
+  });
+
   test("/ is the brief when the surface is on, and the older home when it is off", async () => {
     const a = await (await get(on, "/")).text();
-    expect(a).toContain("Command center for this project");
-    expect(a).toContain("Inbox");
+    expect(a).toContain('class="cc-tiles"');
+    expect(a).toContain("Needs you");
     const b = await (await get(off, "/")).text();
-    expect(b).not.toContain("Command center for this project");
+    expect(b).not.toContain('class="cc-tiles"');
     expect(b).toContain("test-project");
   }, 30_000);
 
@@ -896,12 +916,13 @@ describe("the alignment brief", () => {
   });
 });
 
-test("the nav groups surfaces into Work and Project menus", async () => {
+test("the sidebar leads with four views and folds the rest under More", async () => {
   const { pantryPage } = await import("./app.ts");
   const html = pantryPage("t", "", { plans: true, decisions: true, control: true, runs: true, artifacts: true, timeline: true, standards: true, docs: true, reference: true, brief: true } as never);
-  const nav = html.slice(html.indexOf(`<nav class="pantry-nav">`), html.indexOf("</nav>"));
-  expect(nav).toContain(`<summary>Work</summary>`);
-  expect(nav).toContain(`<summary>Project</summary>`);
+  const nav = html.slice(html.indexOf(`<nav class="pantry-nav pantry-side"`), html.indexOf("</nav>"));
+  expect(nav).toContain(">Views</p>");
+  for (const v of [">Now<", ">Plans<", ">Project<"]) expect(nav).toContain(v);
+  expect(nav).toContain(`>More</summary>`);
   expect(nav).toContain(`href="/activity"`);
-  expect(nav.indexOf("Command center")).toBeLessThan(nav.indexOf("<summary>Work"));
+  expect(nav.indexOf(">Now<")).toBeLessThan(nav.indexOf(">More</summary>"));
 });

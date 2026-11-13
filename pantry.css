@@ -929,3 +929,89 @@
 .pantry-usage__table td:nth-child(2), .pantry-usage__table thead th:nth-child(2) { text-align: left; min-width: 9rem; }
 .pantry-usage__bar { display: inline-block; vertical-align: middle; height: 0.5rem; width: calc(var(--share) * 0.7); min-width: 2px; max-width: 70%; border-radius: 999px; background: var(--accent, currentColor); margin-right: 0.4rem; }
 .pantry-usage__pct { color: var(--ink-muted); }
+
+/* The sidebar shell (plans/pantry-dashboard.md). The nav sits in a fixed left column and the page
+   scrolls beside it, so the workspace keeps its shape the way a desktop app does. */
+.pantry-body:has(> .pantry-side) { display: grid; grid-template-columns: 14rem minmax(0, 1fr); min-height: 100vh; }
+.pantry-body:has(> .pantry-side) > :not(.pantry-side) { grid-column: 2; }
+.pantry-side {
+  grid-column: 1; grid-row: 1 / span 3; position: sticky; top: 0; align-self: start; height: 100vh; overflow: auto;
+  display: flex; flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--space-4, 1rem);
+  padding: var(--space-4, 1rem) var(--space-3, 0.75rem); box-sizing: border-box;
+  border-bottom: 0; border-right: var(--hairline, 1px) solid var(--rule);
+  background: color-mix(in srgb, var(--ink) 3%, var(--paper));
+}
+.pantry-side .pantry-nav__brand { padding: 0 0.5rem; }
+.pantry-side__group { display: flex; flex-direction: column; gap: 1px; }
+.pantry-side__label { margin: 0 0 0.25rem; padding: 0 0.5rem; font-size: var(--text-xs); color: var(--ink-muted); display: flex; justify-content: space-between; cursor: default; }
+.pantry-side__more > summary { cursor: pointer; list-style: none; }
+.pantry-side__more > summary::-webkit-details-marker { display: none; }
+.pantry-side__more > summary::after { content: "▾"; }
+.pantry-side__more:not([open]) > summary::after { content: "▸"; }
+.pantry-side a.pantry-side__hub { font-size: var(--text-xs); }
+.pantry-side .pantry-side__item { display: flex; gap: 0.5rem; align-items: baseline; padding: 0.3rem 0.5rem; border-radius: 4px; font-size: var(--text-sm); color: var(--ink-muted); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pantry-side .pantry-side__item:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.pantry-side .pantry-side__item.is-current { color: var(--ink); background: color-mix(in srgb, var(--ink) 9%, transparent); font-weight: 600; }
+.pantry-side__icon { width: 1rem; text-align: center; font-size: 0.85em; }
+.pantry-side__fold { padding-left: 0.75rem; }
+.pantry-side__fold > summary { padding: 0.15rem 0.5rem; font-size: var(--text-xs); color: var(--ink-muted); cursor: pointer; }
+.pantry-side .pantry-nav__theme { margin: auto 0 0; padding: 0 0.5rem; }
+.pantry-body--full { height: 100vh; overflow: hidden; }
+.pantry-body--full > .pantry-main--full { height: 100vh; }
+@media (max-width: 48rem) {
+  .pantry-body:has(> .pantry-side) { grid-template-columns: minmax(0, 1fr); }
+  .pantry-body:has(> .pantry-side) > :not(.pantry-side) { grid-column: 1; }
+  .pantry-side { position: static; height: auto; grid-row: auto; border-right: 0; border-bottom: var(--hairline, 1px) solid var(--rule); }
+}
+
+/* The command center as a dashboard: four tiles, the Needs you list, Working now and Up next side by
+   side, and a reading pane on the right that a selected item opens into. */
+.cc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
+.cc-tile { display: grid; gap: 0.1em; padding: var(--space-2) var(--space-3); border: 1px solid var(--cc-line); border-radius: var(--radius, 0.5rem); color: var(--ink-muted); text-decoration: none; background: var(--paper); }
+.cc-tile:hover, .cc-tile:focus-visible { border-color: var(--cc-line-strong); color: var(--ink); }
+.cc-tile-n { font-family: var(--font-mono); font-size: 1.75rem; line-height: 1.1; color: var(--ink); }
+.cc-tile-l { font-size: var(--text-sm); }
+.cc-tile.is-warn .cc-tile-n { font-weight: 700; }
+.cc-tile.is-alert { border: 2px solid var(--ink); }
+.cc-tile.is-current { border-color: var(--ink); box-shadow: inset 0 -3px 0 var(--ink); color: var(--ink); }
+.cc-tile--all { align-content: center; justify-items: center; font-size: var(--text-sm); }
+.cc-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; margin-top: var(--space-3); }
+.cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr) minmax(20rem, 34rem); }
+.cc-center { display: grid; gap: var(--space-4); min-width: 0; }
+.cc-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); align-items: start; }
+.cc-center .cc-col { min-height: 0; }
+.cc-finished { margin: var(--space-2) 0 0; font-size: var(--text-xs); color: var(--ink-muted); }
+.cc-card[data-preview] { cursor: pointer; }
+.cc-card.is-selected { border-color: var(--ink); border-left-color: var(--ink); }
+.cc-pane { display: none; position: sticky; top: var(--space-3); max-height: calc(100vh - 2 * var(--space-3)); overflow: auto; border: 1px solid var(--cc-line); border-radius: var(--radius, 0.5rem); padding: var(--space-3); background: var(--paper); }
+.cc-pane.is-open { display: block; }
+.cc-pane-head { display: flex; gap: var(--space-2); justify-content: flex-end; margin-bottom: var(--space-2); }
+.cc-pane .cc-decision { margin-bottom: var(--space-3); }
+.cc-pane-doc { font-size: var(--text-sm); }
+.cc-pane-doc h1, .cc-pane-doc h2 { font-size: var(--text-base, 1rem); margin: var(--space-3) 0 var(--space-1); }
+@media (max-width: 72rem) { .cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr); } .cc-pane { position: static; max-height: none; } }
+@media (max-width: 56rem) { .cc-pair { grid-template-columns: 1fr; } }
+
+/* Sidebar mode (html.is-side, set in the head below 28rem or with ?mode=side): one column for a
+   narrow pane beside the work. Tiles become a compact row, Needs you and Working now stack, Up next
+   and the explainer drop out, the project sidebar hides behind a Menu toggle, and the preview pane
+   opens in place over the column instead of to the right. */
+.pantry-side-toggle { display: none; }
+.is-side .pantry-body:has(> .pantry-side) { display: block; }
+.is-side .pantry-side-toggle { display: inline-flex; margin: var(--space-2) var(--space-3) 0; padding: 0.25em 0.7em; border: 1px solid var(--cc-line, var(--hairline)); border-radius: var(--radius, 0.5rem); background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.is-side .pantry-side { display: none; }
+.is-side .side-open > .pantry-side { display: flex; position: static; height: auto; width: auto; }
+.is-side .pantry-main { padding: var(--space-2) var(--space-3); max-width: none; }
+.is-side .made-with { display: none; }
+.is-side .cc-sub, .is-side .cc-notes, .is-side .cc-how, .is-side #cc-queue, .is-side .cc-col-head p { display: none; }
+.is-side .cc-title h1 { font-size: var(--text-base, 1rem); margin: 0; }
+.is-side .cc-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-1); }
+.is-side .cc-tile { padding: var(--space-1); text-align: center; justify-items: center; }
+.is-side .cc-tile-n { font-size: 1.15rem; }
+.is-side .cc-tile-l { font-size: 0.68rem; line-height: 1.2; }
+.is-side .cc-tile--all { display: none; }
+.is-side .cc-pair, .is-side .cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr); }
+.is-side .cc-col { padding: var(--space-2); }
+.is-side .cc-layout { position: relative; }
+.is-side .cc-pane.is-open { position: absolute; inset: 0 0 auto 0; max-height: none; z-index: 2; min-height: 100%; }
+.is-side .cc-layout:has(.cc-pane.is-open) .cc-center { visibility: hidden; }

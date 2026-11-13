@@ -114,7 +114,8 @@ describe("projections", () => {
     const text = briefText(b);
     for (const h of ["## In flight", "## Waiting on the owner", "## Drift", "## Next"]) expect(text).toContain(h);
     const html = briefBody(b);
-    for (const h of ["Agents", "Queue", "Inbox"]) expect(html).toContain(h);
+    for (const h of ["Needs you", "Working now", "Up next"]) expect(html).toContain(h);
+    expect(html.indexOf("id=\"cc-inbox\"")).toBeLessThan(html.indexOf("id=\"cc-agents\""));
   });
 
   test("copy values are escaped into the attribute", () => {
@@ -163,4 +164,21 @@ test("a session's subagents show under it in the Agents column, running ones fir
   expect(html).toContain("Write the tests");
   expect(html.indexOf("implementer")).toBeLessThan(html.indexOf("Explore"));
   expect(html).toContain("cc-agent is-running");
+});
+
+test("the four tiles each link to their own view", () => {
+  const html = briefBody(assembleBrief(inputs({})));
+  const targets = [...html.matchAll(/class="cc-tile[^"]*" href="([^"]+)"/g)].map((m) => m[1]);
+  expect(targets).toEqual(["/?view=needs", "/?view=working", "/?view=ready", "/?view=drift"]);
+  expect(new Set(targets).size).toBe(4);
+});
+
+test("finished sessions collapse to one line and empty cards do not render", () => {
+  const old = new Date(Date.parse(NOW) - 5 * 60000).toISOString();
+  const b = assembleBrief(inputs({ plans: [plan("a", { status: "doing", touches: ["src"] }), plan("e", { status: "doing" })], sessions: [session("s1", ["src/a.ts"])] }));
+  for (const r of b.inFlight) for (const s of r.sessions) { s.state = "ended"; s.lastSeenAt = old; }
+  const html = briefBody(b);
+  expect(html).toContain("1 finished today");
+  expect(html).not.toContain('<article class="cc-card" tabindex="0" data-preview="/brief/preview?plan=e"');
+  expect(html).not.toContain("No session has written inside this plan yet");
 });

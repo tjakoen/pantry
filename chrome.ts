@@ -27,59 +27,58 @@ function hubRegistry(): { url: string; projects: string[] } | null {
   }
 }
 
-// The project this PANTRY is serving, said in the header on every page, with a switcher to the
-// others when the hub runs it. Eighteen projects look identical in a browser tab otherwise.
-function projectSwitch(project: string | undefined, hub: ReturnType<typeof hubRegistry>): string {
+// The project this PANTRY is serving, and the others the hub runs, as a list down the sidebar. A
+// worktree or variant (a name that starts with another project's name and a hyphen) folds under
+// that project, so twenty entries read as the handful of repos they really are.
+function projectList(project: string | undefined, hub: ReturnType<typeof hubRegistry>): string {
   if (!project) return "";
-  const name = `<span class="pantry-nav__project-name">${escapeHtml(project)}</span>`;
-  if (!hub || hub.projects.length < 2) return `<span class="pantry-nav__project" title="The project this PANTRY is serving">${name}</span>`;
-  const items = hub.projects.map((p) => p === project
-    ? `<span class="pantry-nav__current" aria-current="true">${escapeHtml(p)}</span>`
-    : `<a href="${hub.url}open/${encodeURIComponent(p)}">${escapeHtml(p)}</a>`).join("");
-  return `<details class="pantry-nav__menu pantry-nav__project"><summary title="Switch project">${name}</summary><div class="pantry-nav__drop pantry-nav__drop--projects"><a class="pantry-nav__hub" href="${hub.url}">All projects</a>${items}</div></details>`;
+  if (!hub || hub.projects.length < 2) return `<div class="pantry-side__group"><p class="pantry-side__label">Project</p><span class="pantry-side__item is-current" aria-current="true">${escapeHtml(project)}</span></div>`;
+  const parentOf = (p: string) => hub.projects.filter((q) => q !== p && p.startsWith(`${q}-`)).sort((a, b) => b.length - a.length)[0];
+  const roots = hub.projects.filter((p) => !parentOf(p));
+  const item = (p: string) => p === project
+    ? `<span class="pantry-side__item is-current" aria-current="true">${escapeHtml(p)}</span>`
+    : `<a class="pantry-side__item" href="${hub.url}open/${encodeURIComponent(p)}">${escapeHtml(p)}</a>`;
+  const rows = roots.map((r) => {
+    const kids = hub.projects.filter((p) => parentOf(p) === r);
+    if (!kids.length) return item(r);
+    const open = kids.includes(project) ? " open" : "";
+    return `${item(r)}<details class="pantry-side__fold"${open}><summary>${kids.length} more</summary>${kids.map(item).join("")}</details>`;
+  }).join("");
+  return `<div class="pantry-side__group"><p class="pantry-side__label">Projects <a class="pantry-side__hub" href="${hub.url}">all</a></p>${rows}</div>`;
 }
 
 export function nav(surfaces: PantrySurfaces, review: boolean, project?: string): string {
-  // Three areas, so the bar stays short as surfaces grow. The command center is the front door; Work
-  // is everything an agent produces or waits on; Project is how the codebase and its rules read. Each
-  // menu is a native details element, so it opens without a script and closes on its own toggle.
-  const menu = (label: string, items: (string | false | undefined)[]) => {
-    const list = items.filter(Boolean);
-    return list.length ? `<details class="pantry-nav__menu"><summary>${label}</summary><div class="pantry-nav__drop">${list.join("")}</div></details>` : "";
-  };
-  const work = menu("Work", [
-    surfaces.plans && `<a href="/plans">Plans</a>`,
-    surfaces.decisions && `<a href="/decisions">Decisions</a>`,
-    surfaces.runs && `<a href="/runs">Runs</a>`,
-    surfaces.runs && `<a href="/usage">Usage</a>`,
-    (surfaces.brief || surfaces.control) && `<a href="/activity">Activity</a>`,
-    surfaces.control && `<a href="/control">Sessions by plan</a>`,
-    surfaces.timeline && `<a href="/timeline">Plan timeline</a>`,
-    surfaces.artifacts && `<a href="/artifacts">Artifacts</a>`,
-  ]);
-  const projectMenu = menu("Project", [
-    `<a href="/map">Map</a>`,
-    surfaces.standards && `<a href="/standards">Standards</a>`,
-    `<a href="/llms.txt">llms.txt</a>`,
-    `<a href="/about">About</a>`,
-  ]);
+  // A sidebar, the way a workspace app lays itself out: projects at the top, then four views, then
+  // everything else folded under More. Four views is the point. The eleven pages behind them stay
+  // mounted and reachable; they stop competing for the first glance.
+  const link = (href: string, label: string, icon: string) => `<a class="pantry-side__item" href="${href}"><span class="pantry-side__icon" aria-hidden="true">${icon}</span>${label}</a>`;
+  const views = [
+    surfaces.brief && link("/", "Now", "◉"),
+    surfaces.plans && link("/plans", "Plans", "☰"),
+    review && link("/review", "Review", "◐"),
+    link("/map", "Project", "▦"),
+  ].filter(Boolean).join("");
+  const more = [
+    surfaces.decisions && `<a class="pantry-side__item" href="/decisions">Decisions</a>`,
+    surfaces.runs && `<a class="pantry-side__item" href="/runs">Runs</a>`,
+    surfaces.runs && `<a class="pantry-side__item" href="/usage">Usage</a>`,
+    (surfaces.brief || surfaces.control) && `<a class="pantry-side__item" href="/activity">Activity</a>`,
+    surfaces.control && `<a class="pantry-side__item" href="/control">Sessions by plan</a>`,
+    surfaces.timeline && `<a class="pantry-side__item" href="/timeline">Plan timeline</a>`,
+    surfaces.artifacts && `<a class="pantry-side__item" href="/artifacts">Artifacts</a>`,
+    surfaces.standards && `<a class="pantry-side__item" href="/standards">Standards</a>`,
+    `<a class="pantry-side__item" href="/llms.txt">llms.txt</a>`,
+    `<a class="pantry-side__item" href="/about">About</a>`,
+  ].filter(Boolean).join("");
   const hub = hubRegistry();
-  const links = [
-    surfaces.brief && `<a href="/">Command center</a>`,
-    work,
-    projectMenu,
-    // Only when the proxy is on, because it is the only time there is anything to review. A nav
-    // entry that leads to an empty frame is worse than no entry.
-    review && `<a href="/review">Review</a>`,
-  ].filter(Boolean).join("\n  ");
   // The theming controls are GRAIN's, driven by attributes rather than by any code here: theme.js
   // binds anything carrying data-toggle-scheme or data-cycle-theme, and writes the current flavor
-  // name into data-theme-name. PANTRY declares the flavor list on <html> and provides the buttons;
-  // it owns none of the logic, which is the point (the cockpit consumes the stack, never forks it).
-  return `<nav class="pantry-nav">
+  // name into data-theme-name. PANTRY provides the buttons and owns none of the logic.
+  return `<nav class="pantry-nav pantry-side" id="pantry-side" aria-label="PANTRY">
   <a class="pantry-nav__brand" href="/">PANTRY</a>
-  ${projectSwitch(project, hub)}
-  ${links}
+  ${projectList(project, hub)}
+  <div class="pantry-side__group"><p class="pantry-side__label">Views</p>${views}</div>
+  <details class="pantry-side__group pantry-side__more"><summary class="pantry-side__label">More</summary>${more}</details>
   <span class="pantry-nav__theme">
     <button type="button" class="pantry-nav__themebtn" data-cycle-theme title="Change flavor"><span data-theme-name>sourdough</span></button>
     <button type="button" class="pantry-nav__themebtn" data-toggle-scheme title="Light or dark" aria-label="Toggle light and dark">◐</button>
@@ -99,6 +98,12 @@ export interface PantryPageOptions {
   project?: string;
 }
 
+// Sidebar mode: one column for a narrow pane beside the work (a Claude desktop pane, a slim app
+// window). It turns on below 28rem wide, or with ?mode=side, and the same URL serves both. This runs
+// in the head, before the stylesheets paint, so the wide layout never flashes first; it also follows
+// the window as it is resized. ?mode=side sticks for the tab through sessionStorage.
+const SIDE_MODE_BOOT = `(()=>{const q=new URLSearchParams(location.search).get("mode");if(q)sessionStorage.setItem("pantry-mode",q);const forced=sessionStorage.getItem("pantry-mode")==="side";const m=matchMedia("(max-width: 28rem)");const set=()=>document.documentElement.classList.toggle("is-side",forced||m.matches);set();m.addEventListener("change",set)})();`;
+
 export function pantryPage(title: string, body: string, surfaces: PantrySurfaces, opts: PantryPageOptions = {}): string {
   // data-themes declares the flavor list theme.js cycles through; the flavors themselves are token
   // blocks in GRAIN's variables.css, so this names them rather than defining them.
@@ -112,15 +117,17 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}${opts.project ? ` · ${escapeHtml(opts.project)}` : ""} · PANTRY</title>
   <script src="/scripts/theme-boot.js"></script>
+  <script>${SIDE_MODE_BOOT}</script>
   ${styleLinks}
 </head>
 <body class="pantry-body${opts.fullBleed ? " pantry-body--full" : ""}" data-grade="smooth">
+  <button type="button" class="pantry-side-toggle" aria-controls="pantry-side" aria-expanded="false" onclick="const o=document.body.classList.toggle('side-open');this.setAttribute('aria-expanded',String(o))">☰ Menu</button>
   ${nav(surfaces, opts.review ?? false, opts.project)}
   <main class="pantry-main${opts.fullBleed ? " pantry-main--full" : ""}">${body}</main>
   ${opts.fullBleed ? "" : madeWith()}
   <script src="/scripts/theme.js" defer></script>
   <script src="/pantry-cmdk.js" defer></script>
-  <script>document.addEventListener("click",(ev)=>{for(const d of document.querySelectorAll(".pantry-nav__menu[open]"))if(!d.contains(ev.target))d.removeAttribute("open")});</script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
+  <script>for(const a of document.querySelectorAll(".pantry-side a.pantry-side__item")){const u=new URL(a.href,location.href);if(u.origin===location.origin&&u.pathname===location.pathname){a.classList.add("is-current");a.setAttribute("aria-current","page");a.closest("details")?.setAttribute("open","")}}</script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
 </body>
 </html>`;
 }
