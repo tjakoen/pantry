@@ -39,15 +39,22 @@ depends on Docker Desktop being up.
 
 ## Tasks
 
-- [ ] pantry hub ensure: start the hub if nothing answers, write hub.json, exit fast when it is up
-- [ ] A health endpoint the app and the command can both ask
-- [ ] pantry open, with the pantry:// link and the browser fallback
-- [ ] Tauri shell: window, menu-bar icon with the needs-you count, offline state with Start
-- [ ] Wire ensure and open into the session-start hook on every machine
-- [ ] Decide whether the Docker hub retires or stays as one way to run the hub
-- [ ] Signing and updates for macOS and Windows
+- [x] pantry hub ensure: start the hub if nothing answers, write hub.json, exit fast when it is up
+- [x] A health endpoint the app and the command can both ask
+- [x] pantry open, with the pantry:// link and the browser fallback
+- [x] Tauri shell: window, menu-bar icon with the needs-you count, offline state with Start
+- [ ] Wire ensure and open into the session-start hook on every machine. Owner call: the hook lives in agent-config, and running `pantry open` on every session start may be more forward than wanted; `pantry hub ensure` alone is safe to add first.
+- [ ] Decide whether the Docker hub retires or stays as one way to run the hub. Owner call: ensure leaves any hub that answers alone, so Docker can stay until the app is trusted; the native hub then needs a login item or launchd entry to replace Docker's restart policy.
+- [ ] Signing and updates for macOS and Windows. Owner call: needs an Apple Developer ID and a Windows certificate. Unsigned, macOS Gatekeeper blocks the first launch, and pantry:// links only register once the app is bundled and opened.
 
 ## Done when
 
 A fresh login with no hub running shows the app as offline, starting a Claude session brings the
 hub up and the app onto that project without a click, and the same flow works on Windows.
+
+## Notes from the first build (2026-11-14)
+
+- `cd app/src-tauri && cargo build` builds the shell; `cargo tauri build` bundles it. The icon is a placeholder circle; `cargo tauri icon` regenerates the set from `icons/source.png`.
+- Verified on macOS against a hub on spare port 4977: the window shows the offline page, switches to the hub without a click once `pantry hub ensure` starts it, and returns to the offline page when the hub stops. Screenshots are in `artifacts/pantry-app/`.
+- Not verified: the Start button by click (the synthetic click needed accessibility permission; it runs the same `pantry hub ensure` checked from the CLI), the tray count with work waiting, deep links (they need a bundled app), and Windows.
+- The app runs `pantry hub ensure` through a login shell so it finds bun and pantry; `PANTRY_ENSURE` overrides the command.

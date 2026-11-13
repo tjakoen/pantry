@@ -29,6 +29,8 @@ bun run check      # tsc --noEmit (must stay green)
 bun test           # unit + integration
 bun cli.ts serve   # run the cockpit locally (what hosts run as `bunx pantry serve`)
 bun cli.ts check   # lint the docs for dead references (CI-able; exits nonzero on a break)
+bun cli.ts hub ensure  # start the hub detached if /health does not answer; writes ~/.pantry/hub.json
+bun cli.ts open [project]  # bring the desktop app forward (pantry://), or the hub in a browser
 bun cli.ts init    # scaffold plans/ + pantry.config.json (host-side)
 bun cli.ts usage   # token usage by model, claimed plan and area, from the harness transcripts (--json for the payload)
 ```
