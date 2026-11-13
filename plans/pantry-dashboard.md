@@ -39,6 +39,10 @@ lead the summary row.
 - [x] Check every page in Safari as well as Chromium, since the app in pantry-app renders through
       WebKit on macOS
 - [x] Screenshot each view before calling it done
+- [x] Sidebar mode for a narrow pane beside the work: below 28rem wide, or with `?mode=side`, one
+      column of compact tiles, Needs you and Working now; the project sidebar behind a Menu toggle;
+      the preview pane opening in place. Same URL in both places. Checked at 360px in Chromium and
+      WebKit. Embedding PANTRY as a Claude desktop pane is a separate piece.
 
 ## Done when
 

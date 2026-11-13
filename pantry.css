@@ -991,3 +991,27 @@
 .cc-pane-doc h1, .cc-pane-doc h2 { font-size: var(--text-base, 1rem); margin: var(--space-3) 0 var(--space-1); }
 @media (max-width: 72rem) { .cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr); } .cc-pane { position: static; max-height: none; } }
 @media (max-width: 56rem) { .cc-pair { grid-template-columns: 1fr; } }
+
+/* Sidebar mode (html.is-side, set in the head below 28rem or with ?mode=side): one column for a
+   narrow pane beside the work. Tiles become a compact row, Needs you and Working now stack, Up next
+   and the explainer drop out, the project sidebar hides behind a Menu toggle, and the preview pane
+   opens in place over the column instead of to the right. */
+.pantry-side-toggle { display: none; }
+.is-side .pantry-body:has(> .pantry-side) { display: block; }
+.is-side .pantry-side-toggle { display: inline-flex; margin: var(--space-2) var(--space-3) 0; padding: 0.25em 0.7em; border: 1px solid var(--cc-line, var(--hairline)); border-radius: var(--radius, 0.5rem); background: var(--paper); color: var(--ink); font: inherit; font-size: var(--text-sm); cursor: pointer; }
+.is-side .pantry-side { display: none; }
+.is-side .side-open > .pantry-side { display: flex; position: static; height: auto; width: auto; }
+.is-side .pantry-main { padding: var(--space-2) var(--space-3); max-width: none; }
+.is-side .made-with { display: none; }
+.is-side .cc-sub, .is-side .cc-notes, .is-side .cc-how, .is-side #cc-queue, .is-side .cc-col-head p { display: none; }
+.is-side .cc-title h1 { font-size: var(--text-base, 1rem); margin: 0; }
+.is-side .cc-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-1); }
+.is-side .cc-tile { padding: var(--space-1); text-align: center; justify-items: center; }
+.is-side .cc-tile-n { font-size: 1.15rem; }
+.is-side .cc-tile-l { font-size: 0.68rem; line-height: 1.2; }
+.is-side .cc-tile--all { display: none; }
+.is-side .cc-pair, .is-side .cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr); }
+.is-side .cc-col { padding: var(--space-2); }
+.is-side .cc-layout { position: relative; }
+.is-side .cc-pane.is-open { position: absolute; inset: 0 0 auto 0; max-height: none; z-index: 2; min-height: 100%; }
+.is-side .cc-layout:has(.cc-pane.is-open) .cc-center { visibility: hidden; }

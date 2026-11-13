@@ -74,7 +74,7 @@ export function nav(surfaces: PantrySurfaces, review: boolean, project?: string)
   // The theming controls are GRAIN's, driven by attributes rather than by any code here: theme.js
   // binds anything carrying data-toggle-scheme or data-cycle-theme, and writes the current flavor
   // name into data-theme-name. PANTRY provides the buttons and owns none of the logic.
-  return `<nav class="pantry-nav pantry-side" aria-label="PANTRY">
+  return `<nav class="pantry-nav pantry-side" id="pantry-side" aria-label="PANTRY">
   <a class="pantry-nav__brand" href="/">PANTRY</a>
   ${projectList(project, hub)}
   <div class="pantry-side__group"><p class="pantry-side__label">Views</p>${views}</div>
@@ -98,6 +98,12 @@ export interface PantryPageOptions {
   project?: string;
 }
 
+// Sidebar mode: one column for a narrow pane beside the work (a Claude desktop pane, a slim app
+// window). It turns on below 28rem wide, or with ?mode=side, and the same URL serves both. This runs
+// in the head, before the stylesheets paint, so the wide layout never flashes first; it also follows
+// the window as it is resized. ?mode=side sticks for the tab through sessionStorage.
+const SIDE_MODE_BOOT = `(()=>{const q=new URLSearchParams(location.search).get("mode");if(q)sessionStorage.setItem("pantry-mode",q);const forced=sessionStorage.getItem("pantry-mode")==="side";const m=matchMedia("(max-width: 28rem)");const set=()=>document.documentElement.classList.toggle("is-side",forced||m.matches);set();m.addEventListener("change",set)})();`;
+
 export function pantryPage(title: string, body: string, surfaces: PantrySurfaces, opts: PantryPageOptions = {}): string {
   // data-themes declares the flavor list theme.js cycles through; the flavors themselves are token
   // blocks in GRAIN's variables.css, so this names them rather than defining them.
@@ -111,9 +117,11 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}${opts.project ? ` · ${escapeHtml(opts.project)}` : ""} · PANTRY</title>
   <script src="/scripts/theme-boot.js"></script>
+  <script>${SIDE_MODE_BOOT}</script>
   ${styleLinks}
 </head>
 <body class="pantry-body${opts.fullBleed ? " pantry-body--full" : ""}" data-grade="smooth">
+  <button type="button" class="pantry-side-toggle" aria-controls="pantry-side" aria-expanded="false" onclick="const o=document.body.classList.toggle('side-open');this.setAttribute('aria-expanded',String(o))">☰ Menu</button>
   ${nav(surfaces, opts.review ?? false, opts.project)}
   <main class="pantry-main${opts.fullBleed ? " pantry-main--full" : ""}">${body}</main>
   ${opts.fullBleed ? "" : madeWith()}
