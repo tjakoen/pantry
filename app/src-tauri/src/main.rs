@@ -87,6 +87,21 @@ fn on_hub(win: &WebviewWindow) -> bool {
 }
 
 fn bring_forward(win: &WebviewWindow) {
+    focus_now(win);
+    // A link that LAUNCHES the app is handled while macOS is still finishing the launch, and a focus
+    // request made then is dropped: the window opened behind whatever app had focus. Asking again a
+    // moment later, once the launch is done, is what brings it forward.
+    let later = win.clone();
+    thread::spawn(move || {
+        thread::sleep(Duration::from_millis(900));
+        let w = later.clone();
+        let _ = later.run_on_main_thread(move || focus_now(&w));
+    });
+}
+
+fn focus_now(win: &WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    let _ = win.app_handle().show();
     let _ = win.show();
     let _ = win.unminimize();
     let _ = win.set_focus();
