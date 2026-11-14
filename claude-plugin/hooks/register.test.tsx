@@ -37,7 +37,7 @@ test('online: the pane shows the tiles, the cards and links into PANTRY', async 
   expect((await ui.find({ type: 'Text', text: /^Needs you$/ }))?.text).toBe('Needs you')
   expect((await ui.find({ type: 'Text', text: /Pick a name/ }))?.text).toBe('Pick a name')
   expect((await ui.find({ type: 'Text', text: /Answered already/ }))).toBeUndefined()
-  expect(await ui.find({ type: 'Button', text: /Open plan/ })).toBeDefined()
+  expect(await ui.find({ type: 'Button', text: /^Open$/ })).toBeDefined()
   expect(await ui.find({ type: 'Button', text: /PANTRY app/ })).toBeDefined()
   await ui.unmount()
 })
