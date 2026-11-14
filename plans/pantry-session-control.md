@@ -1,9 +1,9 @@
 ---
 id: pantry-session-control
-status: todo
+status: done
 track: app
 depends: []
-touches: [mcp.ts, hub.ts, hub-ensure.ts, chrome.ts, brief-routes.ts, app/]
+touches: [mcp.ts, app.ts, chrome.ts, decisions-page.ts, session-door.ts, session-client.ts, INSTALL.md, app/]
 owner: ai
 ---
 
@@ -44,15 +44,45 @@ door that checks it.
 
 ## Tasks
 
-- [ ] Fix pantry open landing on all projects, and bring the window forward on a link
-- [ ] Surface addresses and verbs on the command center, plans board and sidebar
-- [ ] Manifest harvest and readable state in the page, reusing GRAIN's ai modules where they fit
-- [ ] Window to hub channel
-- [ ] MCP observe and act tools, with the door's refusals naming valid moves
-- [ ] Tests for each verb and for a refused move
-- [ ] Prove it end to end: a session opens a plan in the running app, and a screenshot shows it
+- [x] Fix pantry open landing on all projects, and bring the window forward on a link
+- [x] Surface addresses and verbs on the command center, plans board and sidebar
+- [x] Manifest harvest and readable state in the page, reusing GRAIN's ai modules where they fit
+- [x] Window to hub channel
+- [x] MCP observe and act tools, with the door's refusals naming valid moves
+- [x] Tests for each verb and for a refused move
+- [x] Prove it end to end: a session opens a plan in the running app, and a screenshot shows it
 
 ## Done when
 
 From a Claude session, observe returns what the app shows, act opens a named plan and the app shows
 it, an illegal move is refused with the valid ones listed, and the tests and typecheck pass.
+
+## What was built (2026-11-14)
+
+- `session-client.ts`, served bundled as `/pantry-session.js` on every page, declares the surfaces in
+  one table: `plan:<id>`, `decision:<id>`, `view:<name>`, `tile:<name>`, each readable and carrying
+  its link, plus the page as the `screen` surface that accepts only GRAIN's `navigate`. It harvests
+  with GRAIN's `domManifest` and reports to the project server, which keeps it in `session-door.ts`.
+  The declarations sit in PANTRY because the plans board is PROOF's markup, which PANTRY never edits.
+- `pantry_observe` and `pantry_act` on the hub's MCP. A move goes out on the page's own SSE stream to
+  the most recently loaded or focused window, and the act returns once that window reports arriving.
+- `/stream` requests turn off Bun's ten-second idle timeout, which was closing every quiet stream,
+  the board's live updates included.
+- `pantry open` landing on all projects: the project name resolved correctly; the app lost the link.
+  A link that launches the app arrives before `on_open_url` is registered, so `main.rs` now reads
+  `get_current()` at setup, and a pending link is honoured even when the window is already on the hub.
+  It comes to the front when it navigates.
+
+## Notes
+
+- GRAIN stays unchanged, by the owner's choice on 2026-11-14. The case for GRAIN: PANTRY's plans,
+  decisions, views and tiles are push-only kinds there today, so the only move is `navigate` to a
+  link they carry. Kinds like `plan` with affordance-shaped verbs (`plan.open`, `view.show`,
+  `tile.filter`) would let the manifest say what each surface does. That is design work for GRAIN.
+- Verified on a test hub on port 4490 and a debug app build with its own identifier: observe,
+  a refused move listing the valid ones, and act moving the app from the command center to the
+  board to this plan. A second launch carrying `pantry://project/pantry` landed on the project. The
+  cold-launch `get_current()` path needs a bundled app registered for `pantry://`, so it was not
+  exercised; check it after the next install.
+- `bun run lint` reports five `no-unsafe-optional-chaining` errors in `mcp.test.ts`, unchanged from
+  main and left for a separate fix.

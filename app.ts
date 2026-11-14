@@ -12,6 +12,7 @@ import { bunRuntime } from "@tjakoen/batch/platform/bun-runtime.ts";
 import { makeStatic } from "@tjakoen/batch/http/static.ts";
 import { createStyleBundle } from "@tjakoen/batch/assets/style-bundle.ts";
 import { createStream } from "@tjakoen/batch/http/stream.ts";
+import { createSessionDoor } from "./session-door.ts";
 import { createMillRoutes, dirSource, type ContentSource, type MillCollection } from "@tjakoen/mill/serve.ts";
 import { escapeHtml } from "@tjakoen/mill/core/engine.ts";
 import { renderGrainDocument } from "@tjakoen/mill/adapters/grain/grain-adapter.ts";
@@ -420,6 +421,9 @@ export function createPantryHandler(opts: PantryOptions) {
   // started at the bottom of this function — a BATCH host reusing one host-wide stream, same
   // pattern as the standalone proof/serve.ts (which owns its own private stream instead).
   const stream = createStream();
+  // The session door (session-door.ts): the window reports what it shows, a session observes and
+  // moves it, and every move goes out on this same stream to the one window being watched.
+  const sessionDoor = createSessionDoor((client, move) => stream.push(client, "pantry-move", move));
   const proofRoutes = createProofRoutes({
     plansDir: config.plansDir, prefix: "/plans", chrome: (title, body) => page(title, body),
     liveScriptSrc: "/board-live.js",
@@ -590,6 +594,29 @@ export function createPantryHandler(opts: PantryOptions) {
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-control.js")), { headers: { "Content-Type": "text/javascript" } });
     if (path === "/pantry-decisions.js")   // decision inbox (piece 11d) — the client generate-prompt flow
       return new Response(await bunRuntime.readFile(join(MODULE_DIR, "pantry-decisions.js")), { headers: { "Content-Type": "text/javascript" } });
+
+    // --- session control: the page's own script, its reports, and a session's observe and act ---
+    if (path === "/pantry-session.js")
+      return new Response(await sessionClientJs(), { headers: { "Content-Type": "text/javascript" } });
+    if (path.startsWith("/_session/")) {
+      if (!isLoopbackRequest(clientAddress)) return new Response("Session control is loopback only", { status: 403 });
+      if (path === "/_session/observe" && req.method === "GET") return new Response(sessionDoor.observe(), { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+      const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+      if (!body || typeof body !== "object") return new Response("Bad JSON", { status: 400 });
+      if (path === "/_session/report") {
+        if (typeof body.client !== "string" || typeof body.url !== "string" || !body.manifest || !Array.isArray(body.links))
+          return new Response("A report carries client, url, manifest and links", { status: 400 });
+        sessionDoor.report(body as never);
+        return new Response(null, { status: 204 });
+      }
+      if (path === "/_session/act") {
+        const str = (k: string) => (typeof body[k] === "string" ? body[k] as string : undefined);
+        const r = await sessionDoor.act({ to: str("to"), href: str("href") });
+        return new Response(r.text, { status: r.ok ? 200 : 409, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+      }
+      return new Response("Not found", { status: 404 });
+    }
 
     // --- the live channel (piece 3): the board's SSE subscribe endpoint ---
     if (path === "/stream") return stream.subscribe(url.searchParams.get("session") ?? "default");
@@ -829,6 +856,9 @@ ${body}`));
     // socket a request arrived on. Read once and passed down, so the write-back's loopback check has
     // a real address rather than a header anyone can set.
     const clientAddress = server?.requestIP?.(req)?.address ?? null;
+    // An event stream is quiet between moves and board updates, and Bun closes a request that has
+    // sent nothing for ten seconds. The page would reconnect, but a move pushed in the gap is lost.
+    if (path.endsWith("/stream")) server?.timeout?.(req, 0);
 
     // The ordinary case: no preview target, PANTRY owns the root, nothing is rewritten.
     if (!previewTarget) {
@@ -938,6 +968,17 @@ function filesSourceFromDir(dir: string | null): ContentSource {
       return file ? Bun.file(join(dir!, file)).text() : null;
     },
   };
+}
+
+// The page half of session control is TypeScript that imports GRAIN's manifest harvest, so it is
+// bundled for the browser once, on first request, and kept.
+let sessionJs: Promise<string> | null = null;
+function sessionClientJs(): Promise<string> {
+  sessionJs ??= Bun.build({ entrypoints: [join(MODULE_DIR, "session-client.ts")], target: "browser", format: "iife" }).then(async (b) => {
+    if (!b.success || !b.outputs[0]) throw new Error(`session-client.ts did not build: ${b.logs.join("\n")}`);
+    return b.outputs[0].text();
+  });
+  return sessionJs;
 }
 
 export function servePantry(opts: PantryOptions & { port?: number }) {

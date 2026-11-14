@@ -157,8 +157,11 @@ ports on another interface. The session-start checklist in the owner's agent con
 The hub also answers MCP at `http://127.0.0.1:4400/mcp` (Streamable HTTP, stateless), so Claude
 Code and Codex share one PANTRY. Its tools are `pantry_projects`, `pantry_orient` (the project's
 `llms.txt`), `pantry_read` (one JSON surface: knowledge, decisions, answers, runs, timeline,
-artifacts or map) and `pantry_doctor`. Each takes the agent's working directory and resolves the
-project from the registry. Register it once per machine:
+artifacts or map), `pantry_doctor`, and the two that let a session drive the window the owner is
+watching: `pantry_observe` (the page's GRAIN manifest and the moves it allows) and `pantry_act`
+(GRAIN's `navigate` verb to a plan, decision, view or tile on screen; anything else is refused with
+the valid moves listed). No session verb answers, claims or edits through the window. Each takes
+the agent's working directory and resolves the project from the registry. Register it once per machine:
 
 ```sh
 claude mcp add --transport http -s user pantry http://127.0.0.1:4400/mcp

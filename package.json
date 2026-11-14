@@ -28,6 +28,8 @@
     "app.ts",
     "artifacts-page.ts",
     "chrome.ts",
+    "session-client.ts",
+    "session-door.ts",
     "control-page.ts",
     "decisions-page.ts",
     "home-page.ts",

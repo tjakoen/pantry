@@ -54,7 +54,7 @@ fn hub_port() -> u16 {
 
 fn probe(port: u16) -> HubState {
     let res = ureq::get(&format!("http://127.0.0.1:{port}/health"))
-        .timeout(Duration::from_millis(1500))
+        .timeout(Duration::from_millis(4000))
         .call()
         .ok()
         .and_then(|r| r.into_json::<serde_json::Value>().ok());
@@ -147,9 +147,12 @@ fn poll(app: AppHandle) {
             let _ = tray.set_tooltip(Some(tip));
         }
         if let Some(win) = app.get_webview_window("main") {
-            if next.up && !on_hub(&win) {
-                let project = shared.pending.lock().unwrap().take();
-                let _ = win.navigate(hub_url(next.port, project.as_deref()));
+            // A link that arrived while the hub looked down is honoured as soon as it answers, even
+            // if the window is already showing a hub page: the link is what the person asked for.
+            let pending = if next.up { shared.pending.lock().unwrap().take() } else { None };
+            if pending.is_some() || (next.up && !on_hub(&win)) {
+                let _ = win.navigate(hub_url(next.port, pending.as_deref()));
+                if pending.is_some() { bring_forward(&win); }
             } else if !next.up && on_hub(&win) {
                 // Bundled pages are served from tauri://localhost on macOS/Linux and
                 // http://tauri.localhost on Windows; on_hub only checks the scheme, so match it.
@@ -185,6 +188,12 @@ fn main() {
             app.deep_link().on_open_url(move |event| {
                 if let Some(u) = event.urls().first() { handle_link(&handle, u.as_str()); }
             });
+            // A pantry:// link that LAUNCHED the app (the session-start hook, when PANTRY was not
+            // running) is delivered before the listener above exists. Without this read it is lost
+            // and the window lands on the all-projects page instead of the session's project.
+            if let Ok(Some(urls)) = app.deep_link().get_current() {
+                if let Some(u) = urls.first() { handle_link(app.handle(), u.as_str()); }
+            }
 
             let open = MenuItem::with_id(app, "open", "Open PANTRY", true, None::<&str>)?;
             let start = MenuItem::with_id(app, "start", "Start hub", true, None::<&str>)?;
