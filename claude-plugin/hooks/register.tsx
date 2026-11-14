@@ -83,7 +83,7 @@ async function refresh($: EngineInterface): Promise<void> {
           const answered = new Set((b.answered ?? []).map(a => a.ref))
           // Items carry a page path; the buttons ask the hub to open the PANTRY app on it (see launch).
           const prefix = new URL(root).pathname.replace(/\/$/, '')
-          const plan = (id: string) => `${prefix}/plan/${encodeURIComponent(id)}`
+          const plan = (id: string) => `${prefix}/plans/plan/${encodeURIComponent(id)}`
           const waiting = (b.waiting ?? []).filter(w => !answered.has(w.id)).map(w => ({ title: w.title ?? w.id, href: plan(w.id) }))
           const working = (b.inFlight ?? []).filter(r => r.planId && (r.claim || r.sessions.length)).map(r => ({ title: r.title, href: plan(r.planId as string) }))
           next = { kind: 'online', hub, project: h.name, url: `${prefix}/`, needs: waiting.length, waiting, working, ready: b.next?.queue?.length ?? 0, drift: b.drift?.length ?? 0 }
