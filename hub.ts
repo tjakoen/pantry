@@ -11,8 +11,7 @@
 // each project's PANTRY exactly as it is when run by hand.
 //
 // The registry is a plain JSON file, `~/.pantry/projects.json` by default (PANTRY_HOME overrides).
-// Paths in it are absolute host paths. The Docker setup mounts the code at the SAME absolute path
-// inside the container, so one registry works on the host and in the container alike.
+// Paths in it are absolute paths on this machine.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -40,7 +39,7 @@ export function writeRegistry(reg: Registry, file = registryPath()): void {
 }
 
 /** Add a project, or return the existing entry when its path is already registered. The port is
- *  the lowest free one above the hub port, so the published Docker range stays contiguous. */
+ *  the lowest free one above the hub port, so the project ports stay contiguous. */
 export function registerProject(reg: Registry, path: string, name?: string): { reg: Registry; project: HubProject; added: boolean } {
   const abs = resolve(path);
   const existing = reg.projects.find((p) => p.path === abs);
@@ -74,7 +73,7 @@ export function projectFor(reg: Registry, dir: string): HubProject | null {
 
 // Probe a static PANTRY asset. Not "/": a project with a preview target hands "/" to its own app,
 // which answers 502 whenever that app is down. Not "/plans" either: rendering the board runs one
-// `git log` per plan file, and seventeen projects probed at once pinned the container's CPU and
+// `git log` per plan file, and seventeen projects probed at once pinned the CPU and
 // stopped every project from answering. The stylesheet costs nothing and proves the server is up.
 // Results are cached briefly so a page refresh or a burst of session starts cannot become a storm.
 // The probe also learns WHERE PANTRY answers: at the root, or under the reserved prefix when the

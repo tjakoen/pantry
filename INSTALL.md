@@ -12,27 +12,28 @@ this off to an agent; pick the manual path if you want to run each command yours
 Which parts of the workflow you need, and which are the owner's own habits, is in
 [docs/WORKFLOW.md](docs/WORKFLOW.md). Read that first if you are not the owner.
 
-## Three ways in
+## Two ways in
 
-PANTRY is moving from a web app you run in Docker to a desktop app with a command line beside it.
-All three ways below end at the same hub on port 4400.
+Both ways end at the same hub on port 4400, a plain Bun process on your machine.
 
-1. **The desktop app (placeholder).** Not decided yet: there is no build, and how releases are
-   signed, shipped and updated is still an open call. This section will name the downloads once
-   they exist. Until then, run from source with the command line below.
-2. **The command line.** Install the package into a project and run the hub yourself:
+1. **The desktop app.** Build it from *app/* with the Tauri CLI (*cargo tauri build*), then move
+   *PANTRY.app* into your Applications folder and open it once, which registers its *pantry://*
+   links. It finds the hub through *~/.pantry/hub.json*, shows an offline page with a Start button
+   when nothing answers, and switches to the hub on its own once it comes up. Signed downloads are
+   not published yet, so building from source is the only route for now.
+2. **The command line.** Install the package into a project and start the hub when it is needed:
 
    ```sh
    bun add -d @tjakoen/pantry@github:tjakoen/pantry#main
    bunx pantry init
    bunx pantry register
-   bunx pantry hub
+   bunx pantry hub ensure
    ```
 
-   Once *pantry hub ensure* lands, prefer it at session start: it starts the hub only when it is not
-   already answering, and returns at once otherwise.
-3. **Docker.** The compose file still works for a hub that should run with no app at all, and is
-   described under the always-on hub below.
+   *pantry hub ensure* starts the hub only when nothing answers, writes *~/.pantry/hub.json*, and
+   returns at once when the hub is already up, so it is safe to run at the start of every session.
+   *pantry open* then brings the app onto the current project, or opens the browser when the app is
+   not installed.
 
 ## Using it from the Claude desktop app
 
@@ -134,25 +135,23 @@ Three things it deliberately does not do:
   the pixels in the folder are the pixels of the embed, and motion is disabled so every shot is a
   settled state rather than a frame of a transition.
 
-## The always-on hub (one PANTRY for every project)
+## The hub (one PANTRY for every project)
 
 `pantry serve` serves the project it was started in. The hub serves every registered project at
-once, from one Docker container that restarts with the machine, so any agent in any project finds
-its PANTRY already running.
+once, so any agent in any project finds its PANTRY in the same place.
 
 ```sh
-bunx pantry register                       # in each project; prints the project's port
-PANTRY_CODE_ROOT=$HOME/Local docker compose up -d --build   # once, in the pantry repo
+bunx pantry register      # in each project; prints the project's port
+bunx pantry hub ensure    # starts the hub if it is not already answering
 ```
 
-The registry is `~/.pantry/projects.json`. Port 4400 is the hub itself (`/` lists the projects,
-`/health` reports each one, and `/health?path=<dir>` answers for the project containing that
-directory); each project gets its own port from 4401 to 4449, so every page keeps working exactly as
-it does under `pantry serve`. The code root is mounted read-only at the same absolute path it has on
-the host, and every port is published on `127.0.0.1` only. `PANTRY_TRUST_CONTAINER_NETWORK`, set by
-the image, treats the container network as loopback because of that binding; never publish these
-ports on another interface. The session-start checklist in the owner's agent config reads
-`/health?path=` to decide whether a project's PANTRY is serving.
+Run *pantry hub ensure* from a session-start hook and the hub is up before any session needs it;
+nothing else has to keep it alive. The registry is `~/.pantry/projects.json`. Port 4400 is the hub
+itself (`/` lists the projects, `/health` reports each one, and `/health?path=<dir>` answers for the
+project containing that directory); each project gets its own port from 4401 to 4449, so every page
+keeps working exactly as it does under `pantry serve`. Every port listens on `127.0.0.1` only. The
+session-start checklist in the owner's agent config reads `/health?path=` to decide whether a
+project's PANTRY is serving.
 
 The hub also answers MCP at `http://127.0.0.1:4400/mcp` (Streamable HTTP, stateless), so Claude
 Code and Codex share one PANTRY. Its tools are `pantry_projects`, `pantry_orient` (the project's

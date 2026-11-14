@@ -8,7 +8,7 @@
 //     owner to "ai" and records an error, so a plan with an owner error is treated as not offered.
 //   - Claims are append-only JSON lines in $PANTRY_HOME/claims/<project>.jsonl. Only the hub process
 //     writes them, and it serializes each read-check-append per project through an in-process queue,
-//     so there is no lock file to go stale and no cross-process locking across the Docker mount.
+//     so there is no lock file to go stale and no cross-process locking to get wrong.
 //
 // The fold, from the plan's state table:
 //   claim/heartbeat younger than the timeout   active      blocks

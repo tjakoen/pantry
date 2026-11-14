@@ -3,7 +3,7 @@
 // The desktop app and the session-start hook both need the same two answers: is the hub up, and
 // where. `~/.pantry/hub.json` (PANTRY_HOME overrides) records the port and process id of the hub
 // this machine last started; the health endpoint is the proof, because a pid file outlives a crash.
-// A hub run some other way (the Docker container) still counts as up when its port answers, and
+// A hub started some other way still counts as up when its port answers, and
 // ensure then leaves it alone: it never starts a second hub on a port somebody already serves.
 
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";

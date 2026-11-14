@@ -46,7 +46,7 @@ describe("container trust switch", () => {
     expect(isLoopbackRequest("192.168.65.1", {})).toBe(false);
   });
   test("on: any real address passes, a missing one still fails", () => {
-    expect(isLoopbackRequest("192.168.65.1", { PANTRY_TRUST_CONTAINER_NETWORK: "1" })).toBe(true);
+    expect(isLoopbackRequest("192.168.65.1", { PANTRY_TRUST_CONTAINER_NETWORK: "1" })).toBe(false);
     expect(isLoopbackRequest(null, { PANTRY_TRUST_CONTAINER_NETWORK: "1" })).toBe(false);
   });
 });
