@@ -127,6 +127,7 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
   ${opts.fullBleed ? "" : madeWith()}
   <script src="/scripts/theme.js" defer></script>
   <script src="/pantry-cmdk.js" defer></script>
+  <script src="/pantry-session.js" defer></script>
   <script>for(const a of document.querySelectorAll(".pantry-side a.pantry-side__item")){const u=new URL(a.href,location.href);if(u.origin===location.origin&&u.pathname===location.pathname){a.classList.add("is-current");a.setAttribute("aria-current","page");a.closest("details")?.setAttribute("open","")}}</script>${opts.fullBleed ? `\n  <script src="/pantry-review.js" defer></script>` : ""}
 </body>
 </html>`;

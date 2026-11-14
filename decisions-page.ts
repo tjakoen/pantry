@@ -161,6 +161,8 @@ ${resolvedBanner}
  *  can stand in a fake without pulling in the whole server surface. */
 export interface PantryServer {
   requestIP?: (req: Request) => { address: string } | null;
+  /** Bun's per-request idle timeout; 0 turns it off for a long-lived stream. */
+  timeout?: (req: Request, seconds: number) => void;
 }
 
 /**

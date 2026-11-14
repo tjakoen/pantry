@@ -926,3 +926,37 @@ test("the sidebar leads with four views and folds the rest under More", async ()
   expect(nav).toContain(`href="/activity"`);
   expect(nav.indexOf(">Now<")).toBeLessThan(nav.indexOf(">More</summary>"));
 });
+
+describe("session control routes", () => {
+  const local = { requestIP: () => ({ address: "127.0.0.1" }) } as never;
+  const lan = { requestIP: () => ({ address: "192.168.1.9" }) } as never;
+  const report = {
+    client: "w1", url: "/plans", focused: true,
+    manifest: { screen: "/plans", actions: [], targets: [{ id: "screen", kind: "screen", accepts: ["navigate"] }], inView: {}, note: "" },
+    links: [{ surface: "plan:pantry-app", href: "/plans/plan/pantry-app", label: "Desktop app" }],
+  };
+  const post = (path: string, body: unknown) =>
+    new Request(`http://localhost${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+  test("every page loads the session script, and it bundles GRAIN's harvest for the browser", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith() });
+    expect(await (await handler(new Request("http://localhost/plans"), local)).text()).toContain('src="/pantry-session.js"');
+    const js = await (await handler(new Request("http://localhost/pantry-session.js"))).text();
+    expect(js).toContain("domManifest");
+    expect(js).toMatch(/declareSurfaces\(document\)/);   // a call named `declare` is stripped as a TS keyword
+    expect(js).not.toMatch(/^export /m);
+  });
+
+  test("a report is observed, an illegal act is refused with the valid moves, and LAN callers are turned away", async () => {
+    const handler = createPantryHandler({ plansDir: EXAMPLE, config: configWith() });
+    expect((await handler(post("/_session/report", report), lan)).status).toBe(403);
+    expect((await handler(post("/_session/report", report), local)).status).toBe(204);
+    const seen = await (await handler(new Request("http://localhost/_session/observe"), local)).text();
+    expect(seen).toContain("window: /plans");
+    expect(seen).toContain("to: plan:pantry-app");
+    const refused = await handler(post("/_session/act", { to: "plan:other" }), local);
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toContain("- to: plan:pantry-app (/plans/plan/pantry-app)");
+    expect((await handler(post("/_session/report", { client: "x" }), local)).status).toBe(400);
+  });
+});

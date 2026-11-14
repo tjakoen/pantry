@@ -50,6 +50,20 @@ export const TOOLS = [
     },
   },
   {
+    name: "pantry_observe",
+    description: "See what the owner's PANTRY window shows for this project right now: the page, its GRAIN manifest (surfaces, the verbs they accept, their readable text) and the moves it allows. Call it before pantry_act.",
+    inputSchema: { type: "object", properties: pathArg, required: ["path"] },
+  },
+  {
+    name: "pantry_act",
+    description: "Move the owner's PANTRY window to something it shows: a plan, a decision, a view or a tile. Pass `to`, a surface address from pantry_observe (plan:<id>, decision:<id>, view:<name>, tile:<name>), or `href`. This is GRAIN's navigate verb and nothing else: it never answers, claims or edits. A move to something not on screen is refused with the valid moves listed.",
+    inputSchema: {
+      type: "object",
+      properties: { ...pathArg, to: { type: "string", description: "A surface address from pantry_observe, e.g. plan:pantry-app." }, href: { type: "string", description: "A root-relative path the page links to." } },
+      required: ["path"],
+    },
+  },
+  {
     name: "pantry_next",
     description: "List the plans in this project an agent may take now (status todo, owner ai, dependencies done, no open decision blocking it, unclaimed), in board order, then every other todo plan with the reasons it is held. Call this before choosing work in a PANTRY project.",
     inputSchema: { type: "object", properties: pathArg, required: ["path"] },
@@ -154,6 +168,20 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     const [brief, body] = await Promise.all([fetchSurface(p, "/brief.txt"), fetchSurface(p, "/llms.txt")]);
     if (!brief && !body) return text(`${p.name}'s PANTRY on port ${p.port} did not answer.`, true);
     return text([brief, body].filter(Boolean).join("\n\n---\n\n"));
+  }
+  if (name === "pantry_observe" || name === "pantry_act") {
+    const act = name === "pantry_act";
+    const init: RequestInit = act
+      ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: args.to, href: args.href }) }
+      : {};
+    for (const prefix of ["", PANTRY_PREFIX]) {
+      try {
+        const res = await fetch(`http://127.0.0.1:${p.port}${prefix}/_session/${act ? "act" : "observe"}`, { ...init, signal: AbortSignal.timeout(15_000) });
+        if (res.status === 404) continue;
+        return text(await res.text(), !res.ok);
+      } catch { /* try the prefixed route */ }
+    }
+    return text(`${p.name}'s PANTRY on port ${p.port} did not answer, or predates session control.`, true);
   }
   if (name === "pantry_read") {
     const surface = String(args.surface ?? "");
