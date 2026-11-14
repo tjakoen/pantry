@@ -43,6 +43,24 @@ manual checklist as the fallback), is in [INSTALL.md](INSTALL.md).
 > project, and every `bunx` after it resolves them locally. A bare `bunx pantry` on a machine that
 > skipped that step fetches someone else's package.
 
+## Beside the work, not in a tab
+
+PANTRY is meant to stay open while you work rather than be started when you remember it.
+
+- **The hub starts itself.** `bunx pantry hub ensure` starts the hub on port 4400 when nothing
+  answers and returns at once when it is already up. Put it in a session-start hook and the hub is
+  there before any session asks for it.
+- **The desktop app.** A small Tauri app in [app/](app/) uses the system webview, finds the hub
+  through `~/.pantry/hub.json`, and shows an offline page with a Start button when the hub is down.
+  `bunx pantry open` brings it onto the current project. Build it with `cargo tauri build`; signed
+  downloads are not published yet.
+- **A pane beside the chat.** The Claude Code plugin in [claude-plugin/](claude-plugin/) shows
+  PANTRY's narrow sidebar mode next to a session, with the count of what needs you.
+- **Sessions can drive it.** The hub's MCP server offers `pantry_observe` and `pantry_act`. A
+  session reads what the window shows, then moves it, for example opening a plan for you to read.
+  Every move is checked against what is on screen, an illegal one is refused with the legal ones
+  named, and recording an answer stays yours.
+
 ## What it mounts
 
 ```

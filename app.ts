@@ -467,7 +467,7 @@ export function createPantryHandler(opts: PantryOptions) {
     catch { return html; }
   };
   // The live stream only follows plansDir, and a claim is written to the hub's home, so the claims
-  // file gets its own watch. Polling, because file events across the Docker mount are unreliable.
+  // file gets its own watch. Polling, because file events are unreliable across mounts and editors that replace files.
   // PROOF does not export its board renderer, so it is resolved beside the loader it ships with.
   if (surfaces.plans && claimProject && claimHome) {
     watchFile(claimsFile(claimHome, claimProject), { interval: 5000 }, async () => {

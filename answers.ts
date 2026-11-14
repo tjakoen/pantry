@@ -100,10 +100,9 @@ export interface AnswerLog {
 }
 
 /**
- * The machine inbox for one answer log. The always-on hub mounts project code read-only, so an
- * answer recorded there cannot land in the repo's log. It lands here instead, outside every repo,
- * keyed by the repo log's own absolute path, which is the same inside the container and on the host
- * because the hub mounts code at its host path. Every read merges it; the session that acts on an
+ * The machine inbox for one answer log. The hub never writes into a repo it serves, so an answer
+ * recorded through it lands here instead, outside every repo, keyed by the repo log's own absolute
+ * path. Every read merges it; the session that acts on an
  * answer copies it into the repo log when it acks, so the record still ends up committed.
  */
 export function inboxPath(logPath: string, home = process.env.PANTRY_HOME || join(homedir(), ".pantry")): string {
@@ -208,12 +207,6 @@ const LOOPBACK_ADDRESS = /^(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3}|::1|::ffff:127\.\d{
  * the right amount of friction.
  */
 export function isLoopbackRequest(address: string | null | undefined, env: Record<string, string | undefined> = process.env): boolean {
-  // Inside the hub's container every request arrives from the Docker gateway, never from 127.0.0.1,
-  // so the loopback test would refuse the owner's own browser. The compose file publishes the ports
-  // on the HOST's 127.0.0.1 only, which makes the container network the loopback boundary. This
-  // switch is set by that compose file and nowhere else; setting it on a server that binds a real
-  // interface would expose the session log and the answer write to the LAN.
-  if (env.PANTRY_TRUST_CONTAINER_NETWORK === "1") return !!address;
   return !!address && LOOPBACK_ADDRESS.test(address);
 }
 

@@ -16,7 +16,7 @@ still one person, one set of projects, and one set of bad habits the tooling was
 Nothing here has been tested on a team, and nothing here has a control group.
 
 The longer argument for why it is built this way, and what the numbers do and do not show, lives in
-a note on the portfolio: [why PANTRY works the way it does](https://portfolio.tjakoen.com/notes/pantry-workflow)
+a note on the portfolio: [why PANTRY works the way it does](https://portfolio.tjakoen.com/notes/pantry-beside-the-work)
 (placeholder, not yet published).
 
 ## Tier 1: the contract

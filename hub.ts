@@ -11,8 +11,7 @@
 // each project's PANTRY exactly as it is when run by hand.
 //
 // The registry is a plain JSON file, `~/.pantry/projects.json` by default (PANTRY_HOME overrides).
-// Paths in it are absolute host paths. The Docker setup mounts the code at the SAME absolute path
-// inside the container, so one registry works on the host and in the container alike.
+// Paths in it are absolute paths on this machine.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -40,7 +39,7 @@ export function writeRegistry(reg: Registry, file = registryPath()): void {
 }
 
 /** Add a project, or return the existing entry when its path is already registered. The port is
- *  the lowest free one above the hub port, so the published Docker range stays contiguous. */
+ *  the lowest free one above the hub port, so the project ports stay contiguous. */
 export function registerProject(reg: Registry, path: string, name?: string): { reg: Registry; project: HubProject; added: boolean } {
   const abs = resolve(path);
   const existing = reg.projects.find((p) => p.path === abs);
@@ -74,7 +73,7 @@ export function projectFor(reg: Registry, dir: string): HubProject | null {
 
 // Probe a static PANTRY asset. Not "/": a project with a preview target hands "/" to its own app,
 // which answers 502 whenever that app is down. Not "/plans" either: rendering the board runs one
-// `git log` per plan file, and seventeen projects probed at once pinned the container's CPU and
+// `git log` per plan file, and seventeen projects probed at once pinned the CPU and
 // stopped every project from answering. The stylesheet costs nothing and proves the server is up.
 // Results are cached briefly so a page refresh or a burst of session starts cannot become a storm.
 // The probe also learns WHERE PANTRY answers: at the root, or under the reserved prefix when the
@@ -169,11 +168,34 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
       }
       // The header's project switcher links here, because only the hub knows where each project
       // answers right now (its port, and whether it serves PANTRY at the root or under the prefix).
+      // POST /launch?project=<name>&to=<path>: open the desktop app on that page, from something
+      // that cannot follow a pantry:// link itself (the Claude pane). The hub listens on loopback
+      // only, and the page must be root-relative, so this opens PANTRY and nothing else.
+      if (url.pathname === "/launch" && req.method === "POST") {
+        const name = url.searchParams.get("project") ?? undefined;
+        if (name && !reg.projects.some((x) => x.name === name)) return new Response("No such project", { status: 404 });
+        const { openPantry } = await import("./hub-ensure.ts");
+        const r = openPantry(reg.hubPort ?? 4400, name, {}, url.searchParams.get("to") ?? undefined);
+        return Response.json(r);
+      }
       if (url.pathname.startsWith("/open/")) {
         const name = decodeURIComponent(url.pathname.slice("/open/".length));
         const p = reg.projects.find((x) => x.name === name);
         if (!p) return new Response("No such project", { status: 404 });
-        return Response.redirect((await status(p)).url, 302);
+        // ?to=<path> lands on one page of the project, such as a plan. Root-relative paths only, so
+        // a link can never send the window to another host.
+        const base = (await status(p)).url;
+        const to = url.searchParams.get("to");
+        // With no ?to=, land on PANTRY itself. A project with a preview proxy serves its own app at the
+        // root and PANTRY under /__pantry, so prefer that when it answers.
+        let home = base;
+        if (!to) {
+          const pantryHome = new URL("/__pantry/", base).toString();
+          const probe = await fetch(new URL("/__pantry/pantry.css", base), { signal: AbortSignal.timeout(3000) }).catch(() => null);
+          if (probe?.ok) home = pantryHome;
+        }
+        const target = to && to.startsWith("/") && !to.startsWith("//") ? new URL(to, base).toString() : home;
+        return Response.redirect(target, 302);
       }
       if (url.pathname === "/" ) {
         const { hubRows, hubHomePage } = await import("./hub-home.ts");

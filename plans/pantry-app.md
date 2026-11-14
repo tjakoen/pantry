@@ -44,7 +44,7 @@ depends on Docker Desktop being up.
 - [x] pantry open, with the pantry:// link and the browser fallback
 - [x] Tauri shell: window, menu-bar icon with the needs-you count, offline state with Start
 - [ ] Wire ensure and open into the session-start hook on every machine. Owner call: the hook lives in agent-config, and running `pantry open` on every session start may be more forward than wanted; `pantry hub ensure` alone is safe to add first.
-- [ ] Decide whether the Docker hub retires or stays as one way to run the hub. Owner call: ensure leaves any hub that answers alone, so Docker can stay until the app is trusted; the native hub then needs a login item or launchd entry to replace Docker's restart policy.
+- [x] Retire the Docker hub. Decided by the owner on 2026-11-14: the Dockerfile, compose file and the container-network trust switch are removed, and the native hub started by pantry hub ensure is the only way to run it.
 - [ ] Signing and updates for macOS and Windows. Owner call: needs an Apple Developer ID and a Windows certificate. Unsigned, macOS Gatekeeper blocks the first launch, and pantry:// links only register once the app is bundled and opened.
 
 ## Done when

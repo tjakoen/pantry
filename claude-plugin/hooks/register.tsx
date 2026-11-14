@@ -13,12 +13,14 @@ const PANE = 'pantry'
 const DEFAULT_HUB = 'http://localhost:4400'
 const POLL_MS = 30_000
 
-const view = atom({ plugin: 'pantry-pane', key: 'view' } as const, { kind: 'loading' } as PantryView, { shape: 'view-1' })
+const view = atom({ plugin: 'pantry-pane', key: 'view' } as const, { kind: 'loading' } as PantryView, { shape: 'view-2' })
 
 type Brief = {
   waiting?: { id: string; title?: string }[]
   answered?: { ref: string }[]
   inFlight?: { planId: string | null; title: string; claim: unknown; sessions: unknown[] }[]
+  drift?: unknown[]
+  next?: { queue?: unknown[] }
 }
 
 /** The Needs you count, computed the way the command center's tile computes it. */
@@ -33,7 +35,7 @@ export function sideUrl(url: string): string {
 }
 
 let cwd = ''
-let stop: (() => void) | undefined
+let poll: { cancel: () => void } | undefined
 
 async function hubUrl($: EngineInterface): Promise<string> {
     const env = await $.env.get('PANTRY_HUB_URL')
@@ -47,7 +49,26 @@ async function hubUrl($: EngineInterface): Promise<string> {
     return DEFAULT_HUB
   }
 
+// A project with a preview proxy serves its own app at the root, so PANTRY's pages sit under
+// /__pantry there. Try that first, then the bare path a project without a proxy uses.
+async function brief($: EngineInterface, base: string): Promise<{ b: Brief; root: string }> {
+  for (const prefix of ['/__pantry', '']) {
+    const res = await $.http.fetch(`${base}${prefix}/brief.json`)
+    if (res.ok) return { b: JSON.parse(res.text), root: `${base}${prefix}` }
+  }
+  throw new Error('no brief.json')
+}
+
+// A pane cannot follow a pantry:// link, so it asks the hub, which opens the desktop app on the page
+// the same way `pantry open` does, falling back to the browser when no app is installed.
+async function launch($: EngineInterface, hub: string, project: string, page: string): Promise<void> {
+  await $.http.fetch(`${hub}/launch?project=${encodeURIComponent(project)}&to=${encodeURIComponent(page)}`, { method: 'POST' }).catch(() => undefined)
+}
+
 async function refresh($: EngineInterface): Promise<void> {
+    // Read the folder each time: the session can change directory after it starts, and a value kept
+    // from session.start would keep asking the hub about a folder the session has left.
+    cwd = (await $.session.cwd().catch(() => '')) || cwd
     const hub = await hubUrl($)
     let next: PantryView
     try {
@@ -58,10 +79,14 @@ async function refresh($: EngineInterface): Promise<void> {
         const h = JSON.parse(res.text)
         if (!h.up || !h.url) next = { kind: 'down', hub, project: h.name ?? 'this project' }
         else {
-          const b: Brief = JSON.parse((await $.http.fetch(`${h.url.replace(/\/$/, '')}/brief.json`)).text)
-          const waiting = needsYou(b)
-          const working = (b.inFlight ?? []).filter(r => r.planId && (r.claim || r.sessions.length)).map(r => r.title)
-          next = { kind: 'online', project: h.name, url: h.url, needs: waiting.length, waiting, working }
+          const { b, root } = await brief($, h.url.replace(/\/$/, ''))
+          const answered = new Set((b.answered ?? []).map(a => a.ref))
+          // Items carry a page path; the buttons ask the hub to open the PANTRY app on it (see launch).
+          const prefix = new URL(root).pathname.replace(/\/$/, '')
+          const plan = (id: string) => `${prefix}/plans/plan/${encodeURIComponent(id)}`
+          const waiting = (b.waiting ?? []).filter(w => !answered.has(w.id)).map(w => ({ title: w.title ?? w.id, href: plan(w.id) }))
+          const working = (b.inFlight ?? []).filter(r => r.planId && (r.claim || r.sessions.length)).map(r => ({ title: r.title, href: plan(r.planId as string) }))
+          next = { kind: 'online', hub, project: h.name, url: `${prefix}/`, needs: waiting.length, waiting, working, ready: b.next?.queue?.length ?? 0, drift: b.drift?.length ?? 0 }
         }
       }
     } catch {
@@ -78,8 +103,8 @@ export const register: Register = on => {
     await $.command.register({ name: 'pantry', description: "Show this project's PANTRY beside the chat" })
     void $.ui.open({ id: PANE, title: 'PANTRY' })
     void refresh($)
-    stop?.()
-    stop = $.clock.every(POLL_MS, () => void refresh($))
+    poll?.cancel?.()
+    poll = $.clock.every(POLL_MS, () => void refresh($))
     return r
   })
 
@@ -121,15 +146,39 @@ export const register: Register = on => {
           {again}
         </Box>
       )
+    // Laid out like PANTRY's sidebar mode, and drawn the GRAIN way: ink on paper, state carried by
+    // weight rather than hue. Text keeps the theme's own ink so it holds in light and dark; muted
+    // ink is the dim style; a quiet card has a thin square rule, and what needs the owner gets the
+    // heavy rule and bold type, as PANTRY's .is-alert cards and chips do in CSS.
+    const tile = (label: string, n: number, alert = false) => (
+      <Box flexDirection="column" borderStyle={alert && n ? 'bold' : 'single'} paddingX={1} flexGrow={1}>
+        <Text bold={alert && n > 0}>{n}</Text>
+        <Text dimColor>{label}</Text>
+      </Box>
+    )
+    const card = (item: { title: string; href: string }, alert: boolean) => (
+      <Box flexDirection="column" borderStyle={alert ? 'bold' : 'single'} paddingX={1}>
+        <Text bold={alert}>{item.title}</Text>
+        <Button onPress={() => void launch($, v.hub, v.project, item.href)}>Open plan</Button>
+      </Box>
+    )
     return (
       <Box flexDirection="column" gap={1}>
         <Text bold>{v.project}</Text>
-        <Text color={v.needs ? 'yellow' : undefined}>Needs you: {v.needs}</Text>
-        {v.waiting.slice(0, 8).map(w => <Text>• {w}</Text>)}
-        <Text dimColor>Working: {v.working.length}</Text>
-        {v.working.slice(0, 6).map(w => <Text dimColor>• {w}</Text>)}
-        <Link href={sideUrl(v.url)}>Open the command center (sidebar mode)</Link>
-        {again}
+        <Box flexDirection="row" gap={1}>
+          {tile('Needs you', v.needs, true)}
+          {tile('Working', v.working.length)}
+          {tile('Ready', v.ready)}
+          {tile('Drift', v.drift, true)}
+        </Box>
+        <Text bold>Needs you</Text>
+        {v.waiting.length ? v.waiting.slice(0, 8).map(w => card(w, true)) : <Text dimColor>Nothing is waiting on you.</Text>}
+        <Text bold>Working now</Text>
+        {v.working.length ? v.working.slice(0, 6).map(w => card(w, false)) : <Text dimColor>No session is working a plan.</Text>}
+        <Box flexDirection="row" gap={2}>
+          <Button onPress={() => void launch($, v.hub, v.project, v.url)}>Open in the PANTRY app</Button>
+          {again}
+        </Box>
       </Box>
     )
   })

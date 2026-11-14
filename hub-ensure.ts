@@ -3,7 +3,7 @@
 // The desktop app and the session-start hook both need the same two answers: is the hub up, and
 // where. `~/.pantry/hub.json` (PANTRY_HOME overrides) records the port and process id of the hub
 // this machine last started; the health endpoint is the proof, because a pid file outlives a crash.
-// A hub run some other way (the Docker container) still counts as up when its port answers, and
+// A hub started some other way still counts as up when its port answers, and
 // ensure then leaves it alone: it never starts a second hub on a port somebody already serves.
 
 import { existsSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
@@ -102,13 +102,20 @@ export async function ensureHub(env: Env = process.env, deps: EnsureDeps = {}): 
 // --- pantry open --------------------------------------------------------------------------------
 
 /** `pantry://project/<name>` brings the app forward on that project; bare `pantry://` on the hub. */
-export function appLink(project?: string): string {
-  return project ? `pantry://project/${encodeURIComponent(project)}` : "pantry://";
+export function appLink(project?: string, to?: string): string {
+  if (!project) return "pantry://";
+  return `pantry://project/${encodeURIComponent(project)}${to ? `?to=${encodeURIComponent(to)}` : ""}`;
+}
+
+/** A page path is root-relative and stays on the project's own host. */
+export function safePage(to: string | null | undefined): string | undefined {
+  return to && to.startsWith("/") && !to.startsWith("//") ? to : undefined;
 }
 
 /** The hub routes /open/<name> to wherever that project answers right now. */
-export function hubUrl(port: number, project?: string): string {
-  return `http://localhost:${port}/${project ? `open/${encodeURIComponent(project)}` : ""}`;
+export function hubUrl(port: number, project?: string, to?: string): string {
+  const base = `http://localhost:${port}/${project ? `open/${encodeURIComponent(project)}` : ""}`;
+  return project && to ? `${base}?to=${encodeURIComponent(to)}` : base;
 }
 
 export interface OpenDeps {
@@ -134,11 +141,12 @@ function opener(platform: NodeJS.Platform, target: string): string[] {
   return ["xdg-open", target];
 }
 
-export function openPantry(port: number, project: string | undefined, deps: OpenDeps = {}): { via: "app" | "browser"; target: string } {
+export function openPantry(port: number, project: string | undefined, deps: OpenDeps = {}, to?: string): { via: "app" | "browser"; target: string } {
   const platform = deps.platform ?? process.platform;
   const run = deps.run ?? ((cmd: string[]) => { Bun.spawn(cmd, { stdio: ["ignore", "ignore", "ignore"] }); });
   const viaApp = (deps.hasApp ?? (() => appRegistered(platform)))();
-  const target = viaApp ? appLink(project) : hubUrl(port, project);
+  const page = safePage(to);
+  const target = viaApp ? appLink(project, page) : hubUrl(port, project, page);
   run(opener(platform, target));
   return { via: viaApp ? "app" : "browser", target };
 }

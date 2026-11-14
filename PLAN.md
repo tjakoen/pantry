@@ -33,7 +33,7 @@ the agent read one account. The `brief` surface turns it off and restores the ol
 
 ## Hub, MCP and orchestration (2026-11-04)
 
-PANTRY now runs as one always-on hub per machine (`hub.ts`, Docker), serving every registered
+PANTRY now runs as one always-on hub per machine (`hub.ts`, started by `pantry hub ensure` and shown in the desktop app), serving every registered
 project on its own port, answering MCP at `/mcp`, and handing out plans to agents that claim them
 (`orchestrator.ts`). The orchestrator's design and its goldfish review are in
 [`plans/pantry-orchestrator.md`](plans/pantry-orchestrator.md) and
