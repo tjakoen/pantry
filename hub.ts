@@ -172,7 +172,20 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         const name = decodeURIComponent(url.pathname.slice("/open/".length));
         const p = reg.projects.find((x) => x.name === name);
         if (!p) return new Response("No such project", { status: 404 });
-        return Response.redirect((await status(p)).url, 302);
+        // ?to=<path> lands on one page of the project, such as a plan. Root-relative paths only, so
+        // a link can never send the window to another host.
+        const base = (await status(p)).url;
+        const to = url.searchParams.get("to");
+        // With no ?to=, land on PANTRY itself. A project with a preview proxy serves its own app at the
+        // root and PANTRY under /__pantry, so prefer that when it answers.
+        let home = base;
+        if (!to) {
+          const pantryHome = new URL("/__pantry/", base).toString();
+          const probe = await fetch(new URL("/__pantry/pantry.css", base), { signal: AbortSignal.timeout(3000) }).catch(() => null);
+          if (probe?.ok) home = pantryHome;
+        }
+        const target = to && to.startsWith("/") && !to.startsWith("//") ? new URL(to, base).toString() : home;
+        return Response.redirect(target, 302);
       }
       if (url.pathname === "/" ) {
         const { hubRows, hubHomePage } = await import("./hub-home.ts");

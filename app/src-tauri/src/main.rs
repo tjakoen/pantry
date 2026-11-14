@@ -31,7 +31,7 @@ struct HubState {
 struct Shared {
     state: Mutex<HubState>,
     /// A project to land on once the hub answers (from a pantry:// link that arrived while offline).
-    pending: Mutex<Option<String>>,
+    pending: Mutex<Option<(String, Option<String>)>>,
 }
 
 fn pantry_home() -> PathBuf {
@@ -69,8 +69,17 @@ fn probe(port: u16) -> HubState {
 }
 
 fn hub_url(port: u16, project: Option<&str>) -> Url {
+    hub_url_to(port, project, None)
+}
+
+/// The hub's /open route, with `to` naming one page of the project (a plan, say).
+fn hub_url_to(port: u16, project: Option<&str>, to: Option<&str>) -> Url {
     let path = project.map(|p| format!("open/{}", urlencode(p))).unwrap_or_default();
-    Url::parse(&format!("http://localhost:{port}/{path}")).expect("hub url")
+    let mut url = Url::parse(&format!("http://localhost:{port}/{path}")).expect("hub url");
+    if let (Some(_), Some(to)) = (project, to) {
+        url.query_pairs_mut().append_pair("to", to);
+    }
+    url
 }
 
 fn urlencode(s: &str) -> String {
@@ -107,8 +116,10 @@ fn focus_now(win: &WebviewWindow) {
     let _ = win.set_focus();
 }
 
-/// `pantry://project/<name>` → that project on the hub; any other pantry:// link → the hub home.
+/// `pantry://project/<name>` → that project on the hub, and `?to=<path>` → one page of it; any other
+/// pantry:// link → the hub home.
 fn handle_link(app: &AppHandle, link: &str) {
+    let to = Url::parse(link).ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "to").map(|(_, v)| v.into_owned()));
     let project = Url::parse(link).ok().and_then(|u| {
         if u.host_str() == Some("project") {
             u.path_segments()?.next().filter(|s| !s.is_empty()).map(|s| s.to_string())
@@ -120,9 +131,9 @@ fn handle_link(app: &AppHandle, link: &str) {
     let state = shared.state.lock().unwrap().clone();
     if let Some(win) = app.get_webview_window("main") {
         if state.up {
-            let _ = win.navigate(hub_url(state.port, project.as_deref()));
+            let _ = win.navigate(hub_url_to(state.port, project.as_deref(), to.as_deref()));
         } else {
-            *shared.pending.lock().unwrap() = project;
+            *shared.pending.lock().unwrap() = project.map(|p| (p, to));
         }
         bring_forward(&win);
     }
@@ -166,7 +177,10 @@ fn poll(app: AppHandle) {
             // if the window is already showing a hub page: the link is what the person asked for.
             let pending = if next.up { shared.pending.lock().unwrap().take() } else { None };
             if pending.is_some() || (next.up && !on_hub(&win)) {
-                let _ = win.navigate(hub_url(next.port, pending.as_deref()));
+                let _ = win.navigate(match &pending {
+                    Some((p, to)) => hub_url_to(next.port, Some(p), to.as_deref()),
+                    None => hub_url(next.port, None),
+                });
                 if pending.is_some() { bring_forward(&win); }
             } else if !next.up && on_hub(&win) {
                 // Bundled pages are served from tauri://localhost on macOS/Linux and

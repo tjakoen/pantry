@@ -75,10 +75,13 @@ async function refresh($: EngineInterface): Promise<void> {
         else {
           const { b, root } = await brief($, h.url.replace(/\/$/, ''))
           const answered = new Set((b.answered ?? []).map(a => a.ref))
-          const plan = (id: string) => `${root}/plan/${encodeURIComponent(id)}`
+          // Links open the PANTRY app, not a browser: pantry://project/<name>, with ?to= for one page.
+          const prefix = new URL(root).pathname.replace(/\/$/, '')
+          const app = (path?: string) => `pantry://project/${encodeURIComponent(h.name)}${path ? `?to=${encodeURIComponent(path)}` : ''}`
+          const plan = (id: string) => app(`${prefix}/plan/${encodeURIComponent(id)}`)
           const waiting = (b.waiting ?? []).filter(w => !answered.has(w.id)).map(w => ({ title: w.title ?? w.id, href: plan(w.id) }))
           const working = (b.inFlight ?? []).filter(r => r.planId && (r.claim || r.sessions.length)).map(r => ({ title: r.title, href: plan(r.planId as string) }))
-          next = { kind: 'online', project: h.name, url: root, needs: waiting.length, waiting, working, ready: b.next?.queue?.length ?? 0, drift: b.drift?.length ?? 0 }
+          next = { kind: 'online', project: h.name, url: app(`${prefix}/`), needs: waiting.length, waiting, working, ready: b.next?.queue?.length ?? 0, drift: b.drift?.length ?? 0 }
         }
       }
     } catch {
@@ -168,7 +171,7 @@ export const register: Register = on => {
         <Text bold>Working now</Text>
         {v.working.length ? v.working.slice(0, 6).map(w => card(w, false)) : <Text dimColor>No session is working a plan.</Text>}
         <Box flexDirection="row" gap={2}>
-          <Link href={sideUrl(v.url)}>Open the command center</Link>
+          <Link href={v.url}>Open in the PANTRY app</Link>
           {again}
         </Box>
       </Box>

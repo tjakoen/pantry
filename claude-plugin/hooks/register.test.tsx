@@ -37,8 +37,8 @@ test('online: the pane shows the tiles, the cards and links into PANTRY', async 
   expect((await ui.find({ type: 'Text', text: /^Needs you$/ }))?.text).toBe('Needs you')
   expect((await ui.find({ type: 'Text', text: /Pick a name/ }))?.text).toBe('Pick a name')
   expect((await ui.find({ type: 'Text', text: /Answered already/ }))).toBeUndefined()
-  expect((await ui.find({ type: 'Link', text: /Open plan/ }))?.props?.href).toBe('http://localhost:4401/__pantry/plan/a')
-  expect((await ui.find({ type: 'Link', text: /command center/ }))?.props?.href).toBe('http://localhost:4401/__pantry/?mode=side')
+  expect((await ui.find({ type: 'Link', text: /Open plan/ }))?.props?.href).toBe('pantry://project/demo?to=%2F__pantry%2Fplan%2Fa')
+  expect((await ui.find({ type: 'Link', text: /PANTRY app/ }))?.props?.href).toBe('pantry://project/demo?to=%2F__pantry%2F')
   await ui.unmount()
 })
 
