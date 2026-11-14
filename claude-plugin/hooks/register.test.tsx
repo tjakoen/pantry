@@ -18,9 +18,10 @@ function engine(on: any, http: (url: string) => unknown) {
   on('fs.read', () => ({ deny: 'missing' }))
   on('http.fetch', (_: unknown, e: any) => http(e.url))
   on('session.start', (_: unknown, e: any) => ({ cwd: e.cwd }))
+  on('session.cwd', () => ({ value: '/work/demo' }))
 }
 
-test('online: the pane shows the Needs you count and links to sidebar mode', async ($, on) => {
+test('online: the pane shows the tiles, the cards and links into PANTRY', async ($, on) => {
   engine(on, url =>
     url.includes('/health')
       ? json(200, { registered: true, name: 'demo', up: true, url: 'http://localhost:4401/' })
@@ -31,18 +32,20 @@ test('online: the pane shows the Needs you count and links to sidebar mode', asy
         }),
   )
   await $.session.start({ cwd: '/work/demo', surface: 'desktop', isInteractive: true })
-  await $.command.run({ command: 'pantry' })
+  await $.command.run({ command: 'pantry' } as any)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
-  expect((await ui.find({ type: 'Text', text: /Needs you/ }))?.text).toBe('Needs you: 1')
-  expect((await ui.find({ type: 'Text', text: /Pick a name/ }))?.text).toBe('• Pick a name')
-  expect((await ui.find({ type: 'Link' }))?.props?.href).toBe('http://localhost:4401/?mode=side')
+  expect((await ui.find({ type: 'Text', text: /^Needs you$/ }))?.text).toBe('Needs you')
+  expect((await ui.find({ type: 'Text', text: /Pick a name/ }))?.text).toBe('Pick a name')
+  expect((await ui.find({ type: 'Text', text: /Answered already/ }))).toBeUndefined()
+  expect((await ui.find({ type: 'Link', text: /Open plan/ }))?.props?.href).toBe('http://localhost:4401/__pantry/plan/a')
+  expect((await ui.find({ type: 'Link', text: /command center/ }))?.props?.href).toBe('http://localhost:4401/__pantry/?mode=side')
   await ui.unmount()
 })
 
 test('offline: a dead hub shows how to start it', async ($, on) => {
   engine(on, () => ({ deny: 'connection refused' }))
   await $.session.start({ cwd: '/work/demo', surface: 'desktop', isInteractive: true })
-  await $.command.run({ command: 'pantry' })
+  await $.command.run({ command: 'pantry' } as any)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /offline/ }))?.text).toBe('PANTRY is offline')
   expect((await ui.find({ type: 'Code' }))?.props?.source).toBe('pantry hub ensure')
