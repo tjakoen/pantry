@@ -138,17 +138,19 @@ export const register: Register = on => {
           {again}
         </Box>
       )
-    // Laid out like PANTRY's sidebar mode: four tiles, then the cards that need the owner, then the
-    // work in flight. Each card opens its plan; the link at the foot opens the full command center.
-    const tile = (label: string, n: number, warn = false) => (
-      <Box flexDirection="column" borderStyle="round" borderColor={warn && n ? 'yellow' : 'gray'} paddingX={1} flexGrow={1}>
-        <Text bold color={warn && n ? 'yellow' : undefined}>{n}</Text>
+    // Laid out like PANTRY's sidebar mode, and drawn the GRAIN way: ink on paper, state carried by
+    // weight rather than hue. Text keeps the theme's own ink so it holds in light and dark; muted
+    // ink is the dim style; a quiet card has a thin square rule, and what needs the owner gets the
+    // heavy rule and bold type, as PANTRY's .is-alert cards and chips do in CSS.
+    const tile = (label: string, n: number, alert = false) => (
+      <Box flexDirection="column" borderStyle={alert && n ? 'bold' : 'single'} paddingX={1} flexGrow={1}>
+        <Text bold={alert && n > 0}>{n}</Text>
         <Text dimColor>{label}</Text>
       </Box>
     )
-    const card = (item: { title: string; href: string }, warn: boolean) => (
-      <Box flexDirection="column" borderStyle="round" borderColor={warn ? 'yellow' : 'gray'} paddingX={1}>
-        <Text>{item.title}</Text>
+    const card = (item: { title: string; href: string }, alert: boolean) => (
+      <Box flexDirection="column" borderStyle={alert ? 'bold' : 'single'} paddingX={1}>
+        <Text bold={alert}>{item.title}</Text>
         <Link href={item.href}>Open plan</Link>
       </Box>
     )
