@@ -59,6 +59,12 @@ async function brief($: EngineInterface, base: string): Promise<{ b: Brief; root
   throw new Error('no brief.json')
 }
 
+// A pane cannot follow a pantry:// link, so it asks the hub, which opens the desktop app on the page
+// the same way `pantry open` does, falling back to the browser when no app is installed.
+async function launch($: EngineInterface, hub: string, project: string, page: string): Promise<void> {
+  await $.http.fetch(`${hub}/launch?project=${encodeURIComponent(project)}&to=${encodeURIComponent(page)}`, { method: 'POST' }).catch(() => undefined)
+}
+
 async function refresh($: EngineInterface): Promise<void> {
     // Read the folder each time: the session can change directory after it starts, and a value kept
     // from session.start would keep asking the hub about a folder the session has left.
@@ -75,13 +81,12 @@ async function refresh($: EngineInterface): Promise<void> {
         else {
           const { b, root } = await brief($, h.url.replace(/\/$/, ''))
           const answered = new Set((b.answered ?? []).map(a => a.ref))
-          // Links open the PANTRY app, not a browser: pantry://project/<name>, with ?to= for one page.
+          // Items carry a page path; the buttons ask the hub to open the PANTRY app on it (see launch).
           const prefix = new URL(root).pathname.replace(/\/$/, '')
-          const app = (path?: string) => `pantry://project/${encodeURIComponent(h.name)}${path ? `?to=${encodeURIComponent(path)}` : ''}`
-          const plan = (id: string) => app(`${prefix}/plan/${encodeURIComponent(id)}`)
+          const plan = (id: string) => `${prefix}/plan/${encodeURIComponent(id)}`
           const waiting = (b.waiting ?? []).filter(w => !answered.has(w.id)).map(w => ({ title: w.title ?? w.id, href: plan(w.id) }))
           const working = (b.inFlight ?? []).filter(r => r.planId && (r.claim || r.sessions.length)).map(r => ({ title: r.title, href: plan(r.planId as string) }))
-          next = { kind: 'online', project: h.name, url: app(`${prefix}/`), needs: waiting.length, waiting, working, ready: b.next?.queue?.length ?? 0, drift: b.drift?.length ?? 0 }
+          next = { kind: 'online', hub, project: h.name, url: `${prefix}/`, needs: waiting.length, waiting, working, ready: b.next?.queue?.length ?? 0, drift: b.drift?.length ?? 0 }
         }
       }
     } catch {
@@ -154,7 +159,7 @@ export const register: Register = on => {
     const card = (item: { title: string; href: string }, alert: boolean) => (
       <Box flexDirection="column" borderStyle={alert ? 'bold' : 'single'} paddingX={1}>
         <Text bold={alert}>{item.title}</Text>
-        <Link href={item.href}>Open plan</Link>
+        <Button onPress={() => void launch($, v.hub, v.project, item.href)}>Open plan</Button>
       </Box>
     )
     return (
@@ -171,7 +176,7 @@ export const register: Register = on => {
         <Text bold>Working now</Text>
         {v.working.length ? v.working.slice(0, 6).map(w => card(w, false)) : <Text dimColor>No session is working a plan.</Text>}
         <Box flexDirection="row" gap={2}>
-          <Link href={v.url}>Open in the PANTRY app</Link>
+          <Button onPress={() => void launch($, v.hub, v.project, v.url)}>Open in the PANTRY app</Button>
           {again}
         </Box>
       </Box>

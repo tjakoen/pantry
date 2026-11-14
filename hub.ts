@@ -168,6 +168,16 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
       }
       // The header's project switcher links here, because only the hub knows where each project
       // answers right now (its port, and whether it serves PANTRY at the root or under the prefix).
+      // POST /launch?project=<name>&to=<path>: open the desktop app on that page, from something
+      // that cannot follow a pantry:// link itself (the Claude pane). The hub listens on loopback
+      // only, and the page must be root-relative, so this opens PANTRY and nothing else.
+      if (url.pathname === "/launch" && req.method === "POST") {
+        const name = url.searchParams.get("project") ?? undefined;
+        if (name && !reg.projects.some((x) => x.name === name)) return new Response("No such project", { status: 404 });
+        const { openPantry } = await import("./hub-ensure.ts");
+        const r = openPantry(reg.hubPort ?? 4400, name, {}, url.searchParams.get("to") ?? undefined);
+        return Response.json(r);
+      }
       if (url.pathname.startsWith("/open/")) {
         const name = decodeURIComponent(url.pathname.slice("/open/".length));
         const p = reg.projects.find((x) => x.name === name);
