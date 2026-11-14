@@ -1,6 +1,6 @@
 ---
 id: claude-pane-actions
-status: doing
+status: done
 track: app
 depends: []
 touches: [claude-plugin/]
