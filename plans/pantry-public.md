@@ -29,7 +29,7 @@ change lives in init.ts, which cli.ts already calls, so no CLI edit is needed.
 
 ## Open items
 
-- The note link in docs/WORKFLOW.md is a placeholder (/notes/pantry-workflow). The owner wants the
+- The note link in docs/WORKFLOW.md is a placeholder (/notes/pantry-beside-the-work). The owner wants the
   note written last, after the app, the public release and the Claude pane.
 - The desktop app section of INSTALL.md is a marked placeholder with no asset names. Signing,
   shipping and updates are open owner calls in plans/pantry-app.md.
