@@ -15,6 +15,10 @@ Run `/pantry` to open the pane again after you close it.
 
 ## How it finds PANTRY
 
+It asks about the session's current folder on every refresh, so it follows a session that changes
+directory. A project that serves its own app at the root is read through `/__pantry`.
+
+
 The plugin asks the PANTRY hub which project contains the session's working folder. It looks for
 the hub in this order:
 
@@ -33,8 +37,9 @@ page, because Claude Code panes draw native elements and cannot host a browser f
 
 ```
 claude plugin validate claude-plugin
-claude plugin test claude-plugin
 ```
 
-The repository's `bun test` skips this folder, because these tests need the harness that
-`claude plugin test` provides.
+The plugin uses the hooks-module format of recent Claude Code builds. It was tested on 2.1.325; an
+older CLI, such as 2.1.217, rejects its hooks file with "expected record, received undefined". The
+repository's `bun test` skips this folder, because its tests need the harness of a build that
+supports this format.

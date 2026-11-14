@@ -47,7 +47,20 @@ async function hubUrl($: EngineInterface): Promise<string> {
     return DEFAULT_HUB
   }
 
+// A project with a preview proxy serves its own app at the root, so PANTRY's pages sit under
+// /__pantry there. Try that first, then the bare path a project without a proxy uses.
+async function brief($: EngineInterface, base: string): Promise<{ b: Brief; root: string }> {
+  for (const prefix of ['/__pantry', '']) {
+    const res = await $.http.fetch(`${base}${prefix}/brief.json`)
+    if (res.ok) return { b: JSON.parse(res.text), root: `${base}${prefix}` }
+  }
+  throw new Error('no brief.json')
+}
+
 async function refresh($: EngineInterface): Promise<void> {
+    // Read the folder each time: the session can change directory after it starts, and a value kept
+    // from session.start would keep asking the hub about a folder the session has left.
+    cwd = (await $.session.cwd().catch(() => '')) || cwd
     const hub = await hubUrl($)
     let next: PantryView
     try {
@@ -58,10 +71,10 @@ async function refresh($: EngineInterface): Promise<void> {
         const h = JSON.parse(res.text)
         if (!h.up || !h.url) next = { kind: 'down', hub, project: h.name ?? 'this project' }
         else {
-          const b: Brief = JSON.parse((await $.http.fetch(`${h.url.replace(/\/$/, '')}/brief.json`)).text)
+          const { b, root } = await brief($, h.url.replace(/\/$/, ''))
           const waiting = needsYou(b)
           const working = (b.inFlight ?? []).filter(r => r.planId && (r.claim || r.sessions.length)).map(r => r.title)
-          next = { kind: 'online', project: h.name, url: h.url, needs: waiting.length, waiting, working }
+          next = { kind: 'online', project: h.name, url: root, needs: waiting.length, waiting, working }
         }
       }
     } catch {
