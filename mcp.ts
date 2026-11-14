@@ -174,7 +174,9 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     const init: RequestInit = act
       ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: args.to, href: args.href }) }
       : {};
-    for (const prefix of ["", PANTRY_PREFIX]) {
+    // PANTRY_PREFIX first: a project with a preview proxy hands the bare path to its own app, which
+    // answers 502 rather than 404 when that app is down, and the fallback would never be reached.
+    for (const prefix of [PANTRY_PREFIX, ""]) {
       try {
         const res = await fetch(`http://127.0.0.1:${p.port}${prefix}/_session/${act ? "act" : "observe"}`, { ...init, signal: AbortSignal.timeout(15_000) });
         if (res.status === 404) continue;
