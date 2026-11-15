@@ -44,6 +44,13 @@ check warns with a one-line fix and a link back here. It never fails the run.
    without one, so a crashed session hands its plan back on its own.
 5. At the end it sets the status to done and calls *pantry_release*.
 
+*pantry_next* holds a plan back for two more reasons than its owner, its dependencies and its
+decisions. A plan whose *touches* list overlaps a plan another session has claimed waits until that
+claim ends, so two sessions never edit the same files at once; a directory entry covers every file
+under it. A plan with a *resume* date in its frontmatter, written as *resume: 2026-12-01*, is snoozed
+until that day and then comes back on its own. Both work only as well as the plans declare them: a
+plan with an empty *touches* list overlaps nothing.
+
 Doctor also counts a few hygiene signals as part of the loop: a front door file for agents
 (CLAUDE.md, with AGENTS.md as a link to it), uncommitted or unpushed work that has sat for days, and
 answers you gave that no session has acted on yet.

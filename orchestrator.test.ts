@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { answerOwner, claimPlan, foldClaims, listClaims, readClaims, readyPlans, updateClaim, type ClaimContext, type ClaimLine, type PlanLike } from "./orchestrator.ts";
+import { resumeOf, touchesOverlap, answerOwner, claimPlan, foldClaims, listClaims, readClaims, readyPlans, updateClaim, type ClaimContext, type ClaimLine, type PlanLike } from "./orchestrator.ts";
 
 const H = 60 * 60 * 1000;
 const T0 = Date.parse("2026-11-04T00:00:00Z");
@@ -137,5 +137,35 @@ describe("answer claims", () => {
     expect(answerOwner("a-1", "d1", decisions, new Map([["p1", view("p1", "sp")]]))).toEqual({ via: "plan", planId: "p1", sessionId: "sp", tool: "claude" });
     expect(answerOwner("a-1", "d1", decisions, new Map([["p1", view("p1", "sp")], ["answer:a-1", view("answer:a-1", "sa")]]))?.sessionId).toBe("sa");
     expect(answerOwner("a-1", "d1", decisions, new Map())).toBeNull();
+  });
+});
+
+describe("file overlap and snooze", () => {
+  const active = (id: string) => new Map([[id, { planId: id, sessionId: "s1234567", tool: "claude" as const, claimedAt: "", lastAt: "", state: "active" as const }]]);
+
+  test("touchesOverlap matches equal paths and directory prefixes only", () => {
+    expect(touchesOverlap("src/", "src/app.ts")).toBe(true);
+    expect(touchesOverlap("./a.ts", "a.ts")).toBe(true);
+    expect(touchesOverlap("src/a", "src/ab")).toBe(false);
+  });
+
+  test("a plan whose touches overlap an active claim is held, a released one is not", () => {
+    const plans = [plan("a", { status: "doing", touches: ["src/"] }), plan("b", { touches: ["src/x.ts"] }), plan("c", { touches: ["docs/"] })];
+    const r = readyPlans(plans, [], active("a"));
+    expect(r.ready.map((p) => p.id)).toEqual(["c"]);
+    expect(r.skipped[0].reasons[0]).toContain("touches src/x.ts, held by a");
+    const released = active("a"); released.get("a")!.state = "released" as never;
+    expect(readyPlans(plans, [], released).ready.map((p) => p.id)).toEqual(["b", "c"]);
+  });
+
+  test("a plan with a future resume date is snoozed until that date", () => {
+    const plans = [plan("a", { resume: "2026-12-01" })];
+    expect(readyPlans(plans, [], new Map(), Date.parse("2026-11-16")).skipped[0].reasons).toEqual(["snoozed until 2026-12-01"]);
+    expect(readyPlans(plans, [], new Map(), Date.parse("2026-12-01")).ready.length).toBe(1);
+  });
+
+  test("resumeOf reads the date from frontmatter only", () => {
+    expect(resumeOf("---\nid: a\nresume: 2026-12-01\n---\nbody")).toBe("2026-12-01");
+    expect(resumeOf("---\nid: a\n---\nresume: 2026-12-01")).toBeUndefined();
   });
 });

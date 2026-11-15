@@ -54,6 +54,8 @@ export interface PlanLike {
   touches: string[];
   ownerError?: boolean;
   file?: string;
+  /** ISO date from the plan's `resume:` frontmatter. Before it, the plan is snoozed. */
+  resume?: string;
 }
 export interface DecisionLike { id: string; status: string; blocks: string[] }
 
@@ -109,7 +111,21 @@ export interface Skip { id: string; title: string; reasons: string[] }
 
 /** Ready plans in board order (ascending id, as PROOF's renderBoard sorts a column), and every
  *  other todo plan with all of its reasons in the fixed order owner, depends, decision, claimed. */
-export function readyPlans(plans: PlanLike[], decisions: DecisionLike[], claims: Map<string, ClaimView>): { ready: Offer[]; skipped: Skip[] } {
+/** Two touches entries overlap when one is the other or a path prefix of it, so a claim on
+ *  `src/` holds back a plan that touches `src/app.ts`. */
+export function touchesOverlap(a: string, b: string): boolean {
+  const norm = (x: string) => x.replace(/^\.\//, "").replace(/\/+$/, "");
+  const [x, y] = [norm(a), norm(b)];
+  return x === y || y.startsWith(`${x}/`) || x.startsWith(`${y}/`);
+}
+
+/** Read a `resume: YYYY-MM-DD` line out of a plan's frontmatter. */
+export function resumeOf(raw: string): string | undefined {
+  const fm = /^---\n([\s\S]*?)\n---/.exec(raw)?.[1] ?? "";
+  return /^resume:\s*["']?(\d{4}-\d{2}-\d{2})/m.exec(fm)?.[1];
+}
+
+export function readyPlans(plans: PlanLike[], decisions: DecisionLike[], claims: Map<string, ClaimView>, now: number = Date.now()): { ready: Offer[]; skipped: Skip[] } {
   const status = new Map(plans.map((p) => [p.id, p.status]));
   const doneInFile = new Set(plans.filter((p) => p.status === "done").map((p) => p.id));
   const ready: Offer[] = [];
@@ -122,6 +138,14 @@ export function readyPlans(plans: PlanLike[], decisions: DecisionLike[], claims:
     for (const d of decisions) if (d.status === "open" && d.blocks.includes(p.id)) reasons.push(`decision: ${d.id}`);
     const c = claims.get(p.id);
     if (blocks(c, doneInFile)) reasons.push(`claimed by ${c!.tool} ${c!.sessionId.slice(0, 8)} (${c!.state})`);
+    if (p.resume && Date.parse(p.resume) > now) reasons.push(`snoozed until ${p.resume}`);
+    for (const other of plans) {
+      if (other.id === p.id) continue;
+      const oc = claims.get(other.id);
+      if (oc?.state !== "active") continue;
+      const hit = p.touches.find((t) => other.touches.some((u) => touchesOverlap(t, u)));
+      if (hit) reasons.push(`touches ${hit}, held by ${other.id} (${oc.tool} ${oc.sessionId.slice(0, 8)})`);
+    }
     if (reasons.length) skipped.push({ id: p.id, title: p.title, reasons });
     else ready.push({ id: p.id, title: p.title, file: p.file, touches: p.touches });
   }
@@ -200,7 +224,7 @@ export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, 
       await append(ctx.file, { project: ctx.project, planId, sessionId, tool: tool as ClaimTool, at, event: "claim" });
       return { ok: true, value: { planId, sessionId, tool: tool as ClaimTool, claimedAt: at, lastAt: at, state: "active" } };
     }
-    const { ready, skipped } = readyPlans(ctx.plans, ctx.decisions, views);
+    const { ready, skipped } = readyPlans(ctx.plans, ctx.decisions, views, now);
     if (!ready.some((r) => r.id === planId)) {
       const skip = skipped.find((s) => s.id === planId);
       return { ok: false, error: skip ? `${planId} is not ready: ${skip.reasons.join("; ")}` : `${planId} is not a todo plan in ${ctx.project}` };
@@ -255,6 +279,7 @@ export async function loadProjectWork(projectPath: string): Promise<{ plans: Pla
     touches: lp.plan.touches,
     ownerError: lp.errors.some((e) => e.field === "owner"),
     file: join(config.plansDir, `${lp.plan.id}.md`),
+    resume: resumeOf(lp.raw),
   }));
   const decisions = (await buildDecisionsPayload(config, new Date().toISOString())).decisions
     .map((d) => ({ id: d.id, status: d.status, blocks: d.blocks }));

@@ -65,7 +65,7 @@ export const TOOLS = [
   },
   {
     name: "pantry_next",
-    description: "List the plans in this project an agent may take now (status todo, owner ai, dependencies done, no open decision blocking it, unclaimed), in board order, then every other todo plan with the reasons it is held. Call this before choosing work in a PANTRY project.",
+    description: "List the plans in this project an agent may take now (status todo, owner ai, dependencies done, no open decision blocking it, unclaimed, not snoozed by a future `resume:` date, and no `touches` path overlapping a plan another session holds), in board order, then every other todo plan with the reasons it is held. Call this before choosing work in a PANTRY project.",
     inputSchema: { type: "object", properties: pathArg, required: ["path"] },
   },
   {
