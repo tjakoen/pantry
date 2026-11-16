@@ -41,9 +41,16 @@ The Code tab of the Claude desktop app runs Claude Code, so it reads the same MC
 the project *.mcp.json* that *pantry init* writes, or the user-level one from *claude mcp add*.
 Nothing extra is needed for the agent side.
 
-For the human side, open the project's PANTRY page in the app's built-in browser pane, next to the
-chat. Asking the session to "open PANTRY in the browser pane" is enough; the address is the hub's
-project port, which *pantry projects* prints.
+For the human side, install the PANTRY pane, a Claude Code plugin that draws the project's plan,
+what waits on you and what is ready to start beside the chat:
+
+```sh
+claude plugin marketplace add tjakoen/pantry
+claude plugin install pantry-pane@pantry
+```
+
+Its Open buttons bring the desktop app forward on the right page, so PANTRY never needs a browser
+tab. The */pantry* command reopens the pane.
 
 ## The host contract, in short
 
