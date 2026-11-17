@@ -102,9 +102,15 @@ export async function ensureHub(env: Env = process.env, deps: EnsureDeps = {}): 
 // --- pantry open --------------------------------------------------------------------------------
 
 /** `pantry://project/<name>` brings the app forward on that project; bare `pantry://` on the hub. */
-export function appLink(project?: string, to?: string): string {
-  if (!project) return "pantry://";
-  return `pantry://project/${encodeURIComponent(project)}${to ? `?to=${encodeURIComponent(to)}` : ""}`;
+/** A pantry:// link to a project, or one page of it. A background link loads the page without
+ *  showing the window, so a session can bring PANTRY up without taking the screen. */
+export function appLink(project?: string, to?: string, background = false): string {
+  const q = new URLSearchParams();
+  if (project && to) q.set("to", to);
+  if (background) q.set("bg", "1");
+  const query = q.size ? `?${q}` : "";
+  if (!project) return `pantry://${query ? `open${query}` : ""}`;
+  return `pantry://project/${encodeURIComponent(project)}${query}`;
 }
 
 /** A page path is root-relative and stays on the project's own host. */
@@ -135,18 +141,22 @@ export function appRegistered(platform: NodeJS.Platform = process.platform, env:
   return existsSync(join(pantryHome(env), "app-installed"));
 }
 
-function opener(platform: NodeJS.Platform, target: string): string[] {
-  if (platform === "darwin") return ["open", target];
+function opener(platform: NodeJS.Platform, target: string, background = false): string[] {
+  // open -g hands the link over without bringing the app to the front.
+  if (platform === "darwin") return background ? ["open", "-g", target] : ["open", target];
   if (platform === "win32") return ["cmd", "/c", "start", "", target];
   return ["xdg-open", target];
 }
 
-export function openPantry(port: number, project: string | undefined, deps: OpenDeps = {}, to?: string): { via: "app" | "browser"; target: string } {
+export function openPantry(port: number, project: string | undefined, deps: OpenDeps = {}, to?: string, background = false): { via: "app" | "browser" | "none"; target: string } {
   const platform = deps.platform ?? process.platform;
   const run = deps.run ?? ((cmd: string[]) => { Bun.spawn(cmd, { stdio: ["ignore", "ignore", "ignore"] }); });
   const viaApp = (deps.hasApp ?? (() => appRegistered(platform)))();
   const page = safePage(to);
-  const target = viaApp ? appLink(project, page) : hubUrl(port, project, page);
-  run(opener(platform, target));
+  // In the background with no app there is nothing quiet to open: a browser tab is exactly the
+  // interruption the background mode exists to avoid, so it opens nothing.
+  if (background && !viaApp) return { via: "none", target: hubUrl(port, project, page) };
+  const target = viaApp ? appLink(project, page, background) : hubUrl(port, project, page);
+  run(opener(platform, target, background && viaApp));
   return { via: viaApp ? "app" : "browser", target };
 }

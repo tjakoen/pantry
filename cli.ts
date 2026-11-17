@@ -161,8 +161,10 @@ async function main() {
     const hub = await import("./hub.ts");
     const { hubPort, openPantry } = await import("./hub-ensure.ts");
     const reg = hub.readRegistry();
-    const name = rest[0] && !rest[0].includes("/") ? rest[0] : hub.projectFor(reg, dir ?? process.cwd())?.name;
-    const r = openPantry(hubPort(), name);
+    const args = rest.filter((a) => !a.startsWith("--"));
+    const background = "background" in flags || rest.includes("--background");
+    const name = args[0] && !args[0].includes("/") ? args[0] : hub.projectFor(reg, dir ?? process.cwd())?.name;
+    const r = openPantry(hubPort(), name, {}, undefined, background);
     console.log(`Opened ${r.target} (${r.via})`);
     return;
   }

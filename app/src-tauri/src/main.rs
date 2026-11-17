@@ -1,5 +1,11 @@
 // PANTRY desktop shell: a menu-bar app around the hub's own pages.
 //
+// It lives in the menu bar (the system tray on Windows) and starts with its window hidden. A session
+// brings it up in the background, so the project is loaded and the status is current without a
+// window taking the screen; the window comes forward only when the owner asks for it, from the tray
+// menu, a pantry:// link without bg=1, or a second launch. While the window is hidden the app keeps
+// no Dock icon on macOS.
+//
 // The window shows the bundled offline page until the hub's /health answers, then navigates to the
 // hub. A background thread polls health every few seconds, keeps the tray title on the needs-you
 // total, and sends the window back to the offline page when the hub stops answering. Nothing here
@@ -11,7 +17,7 @@ use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
 use serde::Serialize;
 use tauri::{
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
     AppHandle, Manager, Url, WebviewWindow,
 };
@@ -32,6 +38,45 @@ struct Shared {
     state: Mutex<HubState>,
     /// A project to land on once the hub answers (from a pantry:// link that arrived while offline).
     pending: Mutex<Option<(String, Option<String>)>>,
+    /// The menu's first line, kept so the poll can rewrite it with the current status.
+    status: Mutex<Option<MenuItem<tauri::Wry>>>,
+    /// The update line: hidden text until a newer release exists, then the release's address.
+    update: Mutex<Option<(MenuItem<tauri::Wry>, Option<String>)>>,
+}
+
+/// The newest published release of PANTRY, as (version, page), when it is newer than this build.
+/// No release pipeline signs builds yet, so this points the owner at the release page rather than
+/// installing anything itself.
+fn newer_release() -> Option<(String, String)> {
+    let v: serde_json::Value = ureq::get("https://api.github.com/repos/tjakoen/pantry/releases/latest")
+        .set("User-Agent", "pantry-app")
+        .timeout(Duration::from_secs(10))
+        .call().ok()?.into_json().ok()?;
+    let tag = v.get("tag_name")?.as_str()?.trim_start_matches('v').to_string();
+    let page = v.get("html_url")?.as_str()?.to_string();
+    let parse = |s: &str| s.split('.').map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    (parse(&tag) > parse(env!("CARGO_PKG_VERSION"))).then_some((tag, page))
+}
+
+fn watch_releases(app: AppHandle) {
+    loop {
+        if let Some((tag, page)) = newer_release() {
+            if let Some((item, url)) = app.state::<Shared>().update.lock().unwrap().as_mut() {
+                let _ = item.set_text(format!("Update available: PANTRY {tag}…"));
+                let _ = item.set_enabled(true);
+                *url = Some(page);
+            }
+            if let Some(tray) = app.tray_by_id("pantry") {
+                let _ = tray.set_tooltip(Some(format!("PANTRY {tag} is available")));
+            }
+        }
+        thread::sleep(Duration::from_secs(6 * 60 * 60));
+    }
+}
+
+fn open_external(url: &str) {
+    let cmd = if cfg!(target_os = "macos") { vec!["open", url] } else if cfg!(windows) { vec!["cmd", "/c", "start", "", url] } else { vec!["xdg-open", url] };
+    let _ = std::process::Command::new(cmd[0]).args(&cmd[1..]).spawn();
 }
 
 fn pantry_home() -> PathBuf {
@@ -108,7 +153,16 @@ fn bring_forward(win: &WebviewWindow) {
     });
 }
 
+/// The Dock icon follows the window: there while it shows, gone while PANTRY sits in the menu bar.
+fn set_dock(app: &AppHandle, visible: bool) {
+    #[cfg(target_os = "macos")]
+    let _ = app.set_activation_policy(if visible { tauri::ActivationPolicy::Regular } else { tauri::ActivationPolicy::Accessory });
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, visible);
+}
+
 fn focus_now(win: &WebviewWindow) {
+    set_dock(win.app_handle(), true);
     #[cfg(target_os = "macos")]
     let _ = win.app_handle().show();
     let _ = win.show();
@@ -120,6 +174,9 @@ fn focus_now(win: &WebviewWindow) {
 /// pantry:// link → the hub home.
 fn handle_link(app: &AppHandle, link: &str) {
     let to = Url::parse(link).ok().and_then(|u| u.query_pairs().find(|(k, _)| k == "to").map(|(_, v)| v.into_owned()));
+    // bg=1 loads the page and leaves the window where it is: the session-start hook uses it, so a
+    // new session never pops a window in front of the owner.
+    let background = Url::parse(link).ok().map(|u| u.query_pairs().any(|(k, v)| k == "bg" && v == "1")).unwrap_or(false);
     let project = Url::parse(link).ok().and_then(|u| {
         if u.host_str() == Some("project") {
             u.path_segments()?.next().filter(|s| !s.is_empty()).map(|s| s.to_string())
@@ -135,7 +192,7 @@ fn handle_link(app: &AppHandle, link: &str) {
         } else {
             *shared.pending.lock().unwrap() = project.map(|p| (p, to));
         }
-        bring_forward(&win);
+        if !background { bring_forward(&win); }
     }
 }
 
@@ -172,6 +229,16 @@ fn poll(app: AppHandle) {
             let tip = if next.up { format!("PANTRY: {} need you", next.needs_you) } else { "PANTRY: hub offline".into() };
             let _ = tray.set_tooltip(Some(tip));
         }
+        if let Some(item) = shared.status.lock().unwrap().as_ref() {
+            let line = if !next.up {
+                "Hub offline".to_string()
+            } else if next.needs_you == 0 {
+                format!("Nothing waiting on you · hub on :{}", next.port)
+            } else {
+                format!("{} waiting on you · hub on :{}", next.needs_you, next.port)
+            };
+            let _ = item.set_text(line);
+        }
         if let Some(win) = app.get_webview_window("main") {
             // A link that arrived while the hub looked down is honoured as soon as it answers, even
             // if the window is already showing a hub page: the link is what the person asked for.
@@ -181,7 +248,9 @@ fn poll(app: AppHandle) {
                     Some((p, to)) => hub_url_to(next.port, Some(p), to.as_deref()),
                     None => hub_url(next.port, None),
                 });
-                if pending.is_some() { bring_forward(&win); }
+                // A pending link only comes forward if the window was already showing; a background
+                // link that waited for the hub stays in the background.
+                if pending.is_some() && win.is_visible().unwrap_or(false) { bring_forward(&win); }
             } else if !next.up && on_hub(&win) {
                 // Bundled pages are served from tauri://localhost on macOS/Linux and
                 // http://tauri.localhost on Windows; on_hub only checks the scheme, so match it.
@@ -224,18 +293,29 @@ fn main() {
                 if let Some(u) = urls.first() { handle_link(app.handle(), u.as_str()); }
             }
 
+            // Start in the menu bar: no window and no Dock icon until the owner opens one.
+            set_dock(app.handle(), false);
+            let status = MenuItem::with_id(app, "status", "Looking for the hub…", false, None::<&str>)?;
+            *app.state::<Shared>().status.lock().unwrap() = Some(status.clone());
+            let update = MenuItem::with_id(app, "update", format!("PANTRY {} is up to date", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
+            *app.state::<Shared>().update.lock().unwrap() = Some((update.clone(), None));
             let open = MenuItem::with_id(app, "open", "Open PANTRY", true, None::<&str>)?;
             let start = MenuItem::with_id(app, "start", "Start hub", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&open, &start, &quit])?;
+            let quit = MenuItem::with_id(app, "quit", "Quit PANTRY", true, None::<&str>)?;
+            let sep = PredefinedMenuItem::separator(app)?;
+            let sep2 = PredefinedMenuItem::separator(app)?;
+            let menu = Menu::with_items(app, &[&status, &sep, &open, &start, &sep2, &update, &quit])?;
             TrayIconBuilder::with_id("pantry")
-                .icon(app.default_window_icon().unwrap().clone())
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
                 .icon_as_template(true)
                 .title("–")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
                     "open" => if let Some(w) = app.get_webview_window("main") { bring_forward(&w) },
                     "start" => { tauri::async_runtime::spawn(async { let _ = start_hub().await; }); }
+                    "update" => {
+                        if let Some((_, Some(url))) = app.state::<Shared>().update.lock().unwrap().as_ref() { open_external(url); }
+                    }
                     "quit" => app.exit(0),
                     _ => {}
                 })
@@ -243,12 +323,15 @@ fn main() {
 
             let handle = app.handle().clone();
             thread::spawn(move || poll(handle));
+            let handle = app.handle().clone();
+            thread::spawn(move || watch_releases(handle));
             Ok(())
         })
         .on_window_event(|win, event| {
             // Closing the window keeps the app in the menu bar; Quit lives in the tray menu.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let _ = win.hide();
+                set_dock(win.app_handle(), false);
                 api.prevent_close();
             }
         })

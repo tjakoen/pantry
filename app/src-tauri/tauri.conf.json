@@ -3,20 +3,49 @@
   "productName": "PANTRY",
   "version": "0.1.0",
   "identifier": "dev.pantry.app",
-  "build": { "frontendDist": "../ui" },
+  "build": {
+    "frontendDist": "../ui"
+  },
   "app": {
     "withGlobalTauri": true,
     "windows": [
-      { "label": "main", "title": "PANTRY", "width": 1280, "height": 860, "url": "index.html" }
+      {
+        "label": "main",
+        "title": "PANTRY",
+        "width": 1280,
+        "height": 860,
+        "url": "index.html",
+        "visible": false
+      }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": null
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg", "nsis", "deb", "appimage"],
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/icon.icns", "icons/icon.ico", "icons/icon.png"]
+    "targets": [
+      "app",
+      "dmg",
+      "nsis",
+      "deb",
+      "appimage"
+    ],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
   },
   "plugins": {
-    "deep-link": { "desktop": { "schemes": ["pantry"] } }
+    "deep-link": {
+      "desktop": {
+        "schemes": [
+          "pantry"
+        ]
+      }
+    }
   }
 }
