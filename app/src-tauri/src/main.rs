@@ -17,7 +17,7 @@ use std::{path::PathBuf, sync::Mutex, thread, time::Duration};
 
 use serde::Serialize;
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
     AppHandle, Manager, Url, WebviewWindow,
 };
@@ -334,20 +334,61 @@ fn main() {
                 })
                 .build(app)?;
 
+            // The app menu: Cmd+Q puts PANTRY back in the menu bar rather than quitting, because the
+            // menu bar is where it lives. Quitting for real is the last item here and in the tray.
+            let to_bar = MenuItem::with_id(app, "to_bar", "Close to Menu Bar", true, Some("CmdOrCtrl+Q"))?;
+            let really_quit = MenuItem::with_id(app, "quit", "Quit PANTRY", true, None::<&str>)?;
+            let app_menu = Submenu::with_items(app, "PANTRY", true, &[
+                &PredefinedMenuItem::about(app, None, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &to_bar,
+                &really_quit,
+            ])?;
+            let edit = Submenu::with_items(app, "Edit", true, &[
+                &PredefinedMenuItem::undo(app, None)?,
+                &PredefinedMenuItem::redo(app, None)?,
+                &PredefinedMenuItem::separator(app)?,
+                &PredefinedMenuItem::cut(app, None)?,
+                &PredefinedMenuItem::copy(app, None)?,
+                &PredefinedMenuItem::paste(app, None)?,
+                &PredefinedMenuItem::select_all(app, None)?,
+            ])?;
+            let window = Submenu::with_items(app, "Window", true, &[
+                &PredefinedMenuItem::minimize(app, None)?,
+                &PredefinedMenuItem::close_window(app, None)?,
+            ])?;
+            app.set_menu(Menu::with_items(app, &[&app_menu, &edit, &window])?)?;
+            app.on_menu_event(|app, e| match e.id().as_ref() {
+                "to_bar" => to_menu_bar(app),
+                "quit" => app.exit(0),
+                _ => {}
+            });
+
             let handle = app.handle().clone();
             thread::spawn(move || poll(handle));
             let handle = app.handle().clone();
             thread::spawn(move || watch_releases(handle));
             Ok(())
         })
-        .on_window_event(|win, event| {
+        .on_window_event(|win, event| match event {
             // Closing the window keeps the app in the menu bar; Quit lives in the tray menu.
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = win.hide();
-                set_dock(win.app_handle(), false);
+            tauri::WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
+                to_menu_bar(win.app_handle());
             }
+            // Minimising would leave a Dock icon behind with nothing to show for it, so it hides
+            // the window to the menu bar too.
+            tauri::WindowEvent::Resized(_) if win.is_minimized().unwrap_or(false) => to_menu_bar(win.app_handle()),
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running PANTRY");
+}
+
+/// Put the window away and drop the Dock icon: PANTRY lives in the menu bar.
+fn to_menu_bar(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.hide();
+    }
+    set_dock(app, false);
 }
