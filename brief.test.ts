@@ -168,7 +168,7 @@ test("a session's subagents show under it in the Agents column, running ones fir
 
 test("the four tiles each link to their own view", () => {
   const html = briefBody(assembleBrief(inputs({})));
-  const targets = [...html.matchAll(/class="cc-tile[^"]*" href="([^"]+)"/g)].map((m) => m[1]);
+  const targets = [...html.matchAll(/class="stat cc-tile[^"]*" href="([^"]+)"/g)].map((m) => m[1]);
   expect(targets).toEqual(["/?view=needs", "/?view=working", "/?view=ready", "/?view=drift"]);
   expect(new Set(targets).size).toBe(4);
 });

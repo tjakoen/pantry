@@ -278,7 +278,7 @@ export function activityBody(p: ActivityPayload): string {
   <div class="stat"><span class="stat__value">${p.lanes.length}</span><span class="stat__label">sessions</span></div>
   <div class="stat"><span class="stat__value">${p.agentCount}</span><span class="stat__label">subagents</span></div>
   <div class="stat"><span class="stat__value">${p.fileCount}</span><span class="stat__label">files written</span></div>
-  <div class="stat"><span class="stat__value">${busiest ? e(busiest.id) : "none"}</span><span class="stat__label">${busiest ? `busiest plan, ${busiest.sessions} session(s)` : "no plan was written inside"}</span></div>
+  <div class="stat"><span class="stat__value" data-fit="truncate"${busiest ? ` title="${e(busiest.id)}"` : ""}>${busiest ? e(busiest.id) : "none"}</span><span class="stat__label">${busiest ? `busiest plan, ${busiest.sessions} session(s)` : "no plan was written inside"}</span></div>
 </div>`;
   const head = `<header class="act-head">
   <div><h1>Activity</h1>
