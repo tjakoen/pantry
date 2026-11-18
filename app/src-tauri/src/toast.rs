@@ -1,8 +1,8 @@
 // The toast icon: a slice of bread with the needs-you count inside it, drawn at runtime.
 //
-// The menu bar gets a template image (black and alpha, so macOS tints it for light and dark bars) with
-// the number cut out of the slice. The Dock gets the same shape in colour with the number in crust
-// brown. Both come from one drawing so they can never disagree about the count.
+// It is PANTRY's dot-grid toast from the favicon, drawn as a template image (black and alpha, so macOS
+// tints it for light and dark bars) with the number left out of the dots. It belongs to the menu bar
+// only: the Dock keeps the bundle icon.
 
 /// What the toast says: a count (zero shows a plain slice), or a dash while the hub is offline.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -20,14 +20,6 @@ impl Mark {
             Mark::Offline => "-".into(),
         }
     }
-}
-
-#[derive(Clone, Copy)]
-pub enum Style {
-    /// Black dots with the number left out: for `icon_as_template`.
-    Template,
-    /// The favicon's own colours: for the Dock.
-    Colour,
 }
 
 // PANTRY's toast, dot for dot from icons/favicon-source.svg: C is crust, o is crumb, # is the face.
@@ -98,7 +90,7 @@ fn cells(mark: Mark) -> [[u8; 10]; 10] {
 }
 
 /// RGBA pixels for a square icon `size` pixels wide.
-pub fn render(mark: Mark, style: Style, size: u32) -> Vec<u8> {
+pub fn render(mark: Mark, size: u32) -> Vec<u8> {
     let grid = cells(mark);
     // The favicon's geometry: dots 3.2 apart, radius 1.45, in a 32-unit square.
     let unit = 32.0 / size as f32;
@@ -119,14 +111,11 @@ pub fn render(mark: Mark, style: Style, size: u32) -> Vec<u8> {
                     if (x - cx).powi(2) + (y - cy).powi(2) > 1.45 * 1.45 {
                         continue;
                     }
-                    let colour = match (style, grid[gy][gx]) {
-                        (_, b'.') => continue,
-                        (Style::Template, b'#') => continue,
-                        (Style::Template, _) => (0, 0, 0),
-                        (Style::Colour, b'C') => (0x85, 0x4f, 0x0b),
-                        (Style::Colour, b'o') => (0xfa, 0xc7, 0x75),
-                        (Style::Colour, _) => (0x63, 0x38, 0x06),
-                    };
+                    // A template image: every dot black, the number left out so the bar shows through.
+                    if matches!(grid[gy][gx], b'.' | b'#') {
+                        continue;
+                    }
+                    let colour = (0u8, 0u8, 0u8);
                     a += 1.0;
                     r += colour.0 as f32;
                     g += colour.1 as f32;
@@ -144,32 +133,6 @@ pub fn render(mark: Mark, style: Style, size: u32) -> Vec<u8> {
     out
 }
 
-/// Hand the Dock a colour toast. AppKit insists on the main thread, so callers go through
-/// `run_on_main_thread`.
-#[cfg(target_os = "macos")]
-pub fn set_dock_icon(mark: Mark) {
-    use objc2::{rc::Retained, AllocAnyThread, MainThreadMarker};
-    use objc2_app_kit::{NSApplication, NSImage};
-    use objc2_foundation::NSData;
-
-    let Some(mtm) = MainThreadMarker::new() else { return };
-    const SIZE: u32 = 512;
-    let rgba = render(mark, Style::Colour, SIZE);
-    let mut png = Vec::new();
-    {
-        let mut enc = png::Encoder::new(&mut png, SIZE, SIZE);
-        enc.set_color(png::ColorType::Rgba);
-        enc.set_depth(png::BitDepth::Eight);
-        let Ok(mut w) = enc.write_header() else { return };
-        if w.write_image_data(&rgba).is_err() {
-            return;
-        }
-    }
-    let data = NSData::with_bytes(&png);
-    let image: Option<Retained<NSImage>> = NSImage::initWithData(NSImage::alloc(), &data);
-    unsafe { NSApplication::sharedApplication(mtm).setApplicationIconImage(image.as_deref()) };
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,8 +147,8 @@ mod tests {
 
     #[test]
     fn number_is_cut_out_of_the_template() {
-        let plain = render(Mark::Count(0), Style::Template, 44);
-        let four = render(Mark::Count(4), Style::Template, 44);
+        let plain = render(Mark::Count(0), 44);
+        let four = render(Mark::Count(4), 44);
         let opaque = |px: &[u8]| px.chunks(4).filter(|p| p[3] > 128).count();
         assert!(opaque(&four) < opaque(&plain), "the digit should remove pixels from the slice");
     }

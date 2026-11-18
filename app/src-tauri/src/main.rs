@@ -24,7 +24,7 @@ use tauri::{
 use tauri_plugin_deep_link::DeepLinkExt;
 
 mod toast;
-use toast::{Mark, Style};
+use toast::Mark;
 
 const DEFAULT_PORT: u16 = 4400;
 const POLL: Duration = Duration::from_secs(4);
@@ -224,7 +224,7 @@ async fn start_hub() -> Result<String, String> {
 
 /// The menu-bar toast at 44 pixels, which macOS shows at 22 points on a Retina bar.
 fn tray_icon(mark: Mark) -> tauri::image::Image<'static> {
-    tauri::image::Image::new_owned(toast::render(mark, Style::Template, 44), 44, 44)
+    tauri::image::Image::new_owned(toast::render(mark, 44), 44, 44)
 }
 
 fn poll(app: AppHandle) {
@@ -239,8 +239,6 @@ fn poll(app: AppHandle) {
                 *shared.mark.lock().unwrap() = Some(mark);
                 let _ = tray.set_icon(Some(tray_icon(mark)));
                 let _ = tray.set_icon_as_template(true);
-                #[cfg(target_os = "macos")]
-                let _ = app.run_on_main_thread(move || toast::set_dock_icon(mark));
             }
             let tip = if next.up { format!("PANTRY: {} need you", next.needs_you) } else { "PANTRY: hub offline".into() };
             let _ = tray.set_tooltip(Some(tip));
