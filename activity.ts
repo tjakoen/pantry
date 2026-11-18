@@ -274,11 +274,11 @@ export function activityBody(p: ActivityPayload): string {
     return h === p.windowHours ? `<strong aria-current="true">${label}</strong>` : `<a href="/activity?hours=${h}">${label}</a>`;
   };
   const busiest = p.planTouches[0];
-  const stats = `<div class="act-stats">
-  <div><strong>${p.lanes.length}</strong><span>sessions</span></div>
-  <div><strong>${p.agentCount}</strong><span>subagents</span></div>
-  <div><strong>${p.fileCount}</strong><span>files written</span></div>
-  <div><strong>${busiest ? e(busiest.id) : "none"}</strong><span>${busiest ? `busiest plan, ${busiest.sessions} session(s)` : "no plan was written inside"}</span></div>
+  const stats = `<div class="dash__kpis act-stats">
+  <div class="stat"><span class="stat__value">${p.lanes.length}</span><span class="stat__label">sessions</span></div>
+  <div class="stat"><span class="stat__value">${p.agentCount}</span><span class="stat__label">subagents</span></div>
+  <div class="stat"><span class="stat__value">${p.fileCount}</span><span class="stat__label">files written</span></div>
+  <div class="stat"><span class="stat__value">${busiest ? e(busiest.id) : "none"}</span><span class="stat__label">${busiest ? `busiest plan, ${busiest.sessions} session(s)` : "no plan was written inside"}</span></div>
 </div>`;
   const head = `<header class="act-head">
   <div><h1>Activity</h1>

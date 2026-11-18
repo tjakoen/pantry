@@ -21,7 +21,7 @@ graphify merge-graphs …      # optional: a whole-stack map</code></pre>
   }
   const s = payload.stats;
   const stat = (n: number | string, label: string) =>
-    `<div class="pantry-stat"><span class="pantry-stat__n">${escapeHtml(String(n))}</span><span class="pantry-stat__label">${escapeHtml(label)}</span></div>`;
+    `<div class="stat"><span class="stat__value">${escapeHtml(String(n))}</span><span class="stat__label">${escapeHtml(label)}</span></div>`;
   const repoChips = s.repos.map((r) =>
     `<span class="pantry-repo-chip" data-repo="${escapeHtml(r.repo || "·")}">${escapeHtml(r.repo || "·")} <b>${r.nodes}</b></span>`).join("");
   const gods = payload.gods.map((g) =>
@@ -30,7 +30,7 @@ graphify merge-graphs …      # optional: a whole-stack map</code></pre>
   <h1 class="proof-masthead">Mindmap</h1>
   <p class="proof-lede">A picture of the AI's brain for ${escapeHtml(payload.project)}: the whole-codebase knowledge graph, clustered by community and coloured by repo, with the central nodes surfaced. Model-free — the same graph the machine reads at <a href="/map.json">/map.json</a>.</p>
 </header>
-<section class="pantry-stats">
+<section class="dash__kpis pantry-stats">
   ${stat(s.nodeCount, "nodes")}
   ${stat(s.linkCount, "links")}
   ${stat(s.repos.length, "repos")}

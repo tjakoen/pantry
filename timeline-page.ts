@@ -103,12 +103,12 @@ export function timelineBody(payload: TimelinePayload, view: TimelineView = { so
   const from = Date.parse(payload.axisStart);
   const span = Math.max(DAY, Date.parse(payload.generatedAt) - from);
   const counts = Object.fromEntries(STATUS_ORDER.map((s) => [s, payload.plans.filter((p) => p.status === s).length]));
-  const stats = `<div class="act-stats">
-  <div><strong>${payload.plans.length}</strong><span>plans</span></div>
-  <div><strong>${counts.doing}</strong><span>in progress</span></div>
-  <div><strong>${counts.done}</strong><span>done</span></div>
-  <div><strong>${monthsRound(payload.spanDays)}</strong><span>months of history</span></div>
-  <div><strong>${payload.activeDays}</strong><span>days with commits</span></div>
+  const stats = `<div class="dash__kpis act-stats">
+  <div class="stat"><span class="stat__value">${payload.plans.length}</span><span class="stat__label">plans</span></div>
+  <div class="stat"><span class="stat__value">${counts.doing}</span><span class="stat__label">in progress</span></div>
+  <div class="stat"><span class="stat__value">${counts.done}</span><span class="stat__label">done</span></div>
+  <div class="stat"><span class="stat__value">${monthsRound(payload.spanDays)}</span><span class="stat__label">months of history</span></div>
+  <div class="stat"><span class="stat__value">${payload.activeDays}</span><span class="stat__label">days with commits</span></div>
 </div>`;
   const legend = `<p class="act-legend">${STATUS_ORDER.map((s) => `<span class="act-key"><span class="tl-seg tl-key" data-status="${s}"></span>${STATUS_LABEL[s]}</span>`).join("")}<span class="act-key"><span class="tl-done tl-key"></span>marked done</span></p>`;
   const sortKey = (p: TimelinePlan) => view.sort === "recent" ? -(Date.parse(p.lastActivity ?? p.created ?? payload.generatedAt)) : Date.parse(p.created ?? payload.generatedAt);

@@ -149,10 +149,8 @@
 }
 
 /* stat strip — one figure per metric, tabular numerals so they read as a row of counts */
-.pantry-stats { display: flex; flex-wrap: wrap; gap: var(--space-6, 1.5rem); margin: var(--space-6, 1.5rem) 0; }
-.pantry-stat { display: flex; flex-direction: column; }
-.pantry-stat__n { font-family: var(--display); font-size: var(--text-xl, 1.5rem); font-variant-numeric: tabular-nums; color: var(--ink); }
-.pantry-stat__label { font-size: var(--text-xs); color: var(--ink-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+/* The tiles are GRAIN's stat tiles in its dashboard KPI strip; this only spaces the strip on the page. */
+.pantry-stats { margin: var(--space-6, 1.5rem) 0; }
 
 /* repo legend — identity by label+swatch, never colour alone (the palette's relief rule) */
 .pantry-repo-legend { display: flex; flex-wrap: wrap; gap: var(--space-2, 0.5rem); margin-bottom: var(--space-4, 1rem); }
@@ -798,10 +796,9 @@
 .act-window > * { padding: 0.25rem 0.7rem; color: var(--ink-muted); text-decoration: none; }
 .act-window > * + * { border-left: 1px solid var(--cc-line-strong); }
 .act-window strong { color: var(--paper); background: var(--ink); }
-.act-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--space-3); margin: var(--space-4) 0 var(--space-2); }
-.act-stats > div { border: 1px solid var(--cc-line); border-radius: 4px; padding: var(--space-2) var(--space-3); display: flex; flex-direction: column; min-width: 0; }
-.act-stats strong { font-size: var(--text-lg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.act-stats span { font-size: var(--text-xs); color: var(--ink-muted); }
+/* GRAIN's dash__kpis strip of stat tiles; pantry only spaces it and keeps a long plan id on one line. */
+.act-stats { margin: var(--space-4) 0 var(--space-2); }
+.act-stats .stat__value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-legend { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: var(--text-xs); color: var(--ink-muted); margin: var(--space-2) 0; }
 .act-key { display: inline-flex; gap: 0.4em; align-items: center; }
 .act-key .act-bar, .act-key .act-write, .act-key .act-gap { position: static; display: inline-block; }
@@ -876,7 +873,6 @@
 .tl-pin { position: absolute; top: 15%; bottom: 0; width: 2px; margin-left: -1px; background: var(--ink); }
 .tl-pin::after { content: ""; position: absolute; top: -3px; left: -2px; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
 .tl-pin.is-audit::after { border-radius: 0; transform: rotate(45deg); }
-.tl-head + .act-stats, .tl .act-stats { grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); }
 @media (max-width: 44rem) { .tl-row { grid-template-columns: 1fr; gap: 0.15rem; } }
 
 /* The project, said in the header beside the brand, and pushing the menus right. */
