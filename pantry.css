@@ -962,10 +962,8 @@
 /* The command center as a dashboard: four tiles, the Needs you list, Working now and Up next side by
    side, and a reading pane on the right that a selected item opens into. */
 .cc-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); margin-top: var(--space-2); }
-/* Each summary tile is GRAIN's link stat tile (a.stat): its border, hover and aria-current bar come
-   from GRAIN. Pantry keeps the row layout, the compact sidebar sizes, and a heavier number for a
-   warning, because GRAIN's stat tile has no warn tone between the default and bad. */
-.cc-tile.is-warn .stat__value { font-weight: var(--font-weight-semibold, 700); }
+/* Each summary tile is GRAIN's link stat tile (a.stat): its border, hover, aria-current bar and the
+   warn and bad tones come from GRAIN. Pantry keeps only the row layout and the compact sidebar sizes. */
 .cc-tile--all { display: grid; padding: var(--space-2) var(--space-3); border: var(--border); border-radius: var(--radius-md); color: var(--ink-muted); text-decoration: none; align-content: center; justify-items: center; font-size: var(--text-sm); }
 .cc-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); align-items: start; margin-top: var(--space-3); }
 .cc-layout:has(.cc-pane.is-open) { grid-template-columns: minmax(0, 1fr) minmax(20rem, 34rem); }
