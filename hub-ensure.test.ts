@@ -73,3 +73,21 @@ describe("pantry open", () => {
     expect(hubUrl(4400)).toBe("http://localhost:4400/");
   });
 });
+
+describe("openPantry in the background", () => {
+  test("hands the app a background link without bringing it forward", () => {
+    const ran: string[][] = [];
+    const r = openPantry(4400, "site", { platform: "darwin", hasApp: () => true, run: (c) => ran.push(c) }, undefined, true);
+    expect(r.via).toBe("app");
+    expect(ran[0]).toEqual(["open", "-g", "pantry://project/site?bg=1"]);
+  });
+  test("opens nothing when there is no app, rather than a browser tab", () => {
+    const ran: string[][] = [];
+    const r = openPantry(4400, "site", { platform: "darwin", hasApp: () => false, run: (c) => ran.push(c) }, undefined, true);
+    expect(r.via).toBe("none");
+    expect(ran).toEqual([]);
+  });
+  test("keeps the page in a foreground link", () => {
+    expect(appLink("site", "/plans")).toBe("pantry://project/site?to=%2Fplans");
+  });
+});
