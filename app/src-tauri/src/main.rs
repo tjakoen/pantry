@@ -23,6 +23,9 @@ use tauri::{
 };
 use tauri_plugin_deep_link::DeepLinkExt;
 
+mod toast;
+use toast::{Mark, Style};
+
 const DEFAULT_PORT: u16 = 4400;
 const POLL: Duration = Duration::from_secs(4);
 
@@ -42,6 +45,8 @@ struct Shared {
     status: Mutex<Option<MenuItem<tauri::Wry>>>,
     /// The update line: hidden text until a newer release exists, then the release's address.
     update: Mutex<Option<(MenuItem<tauri::Wry>, Option<String>)>>,
+    /// What the toast last showed, so the icons are redrawn only when the count changes.
+    mark: Mutex<Option<Mark>>,
 }
 
 /// The newest published release of PANTRY, as (version, page), when it is newer than this build.
@@ -217,6 +222,11 @@ async fn start_hub() -> Result<String, String> {
     if out.status.success() { Ok(text) } else { Err(text) }
 }
 
+/// The menu-bar toast at 44 pixels, which macOS shows at 22 points on a Retina bar.
+fn tray_icon(mark: Mark) -> tauri::image::Image<'static> {
+    tauri::image::Image::new_owned(toast::render(mark, Style::Template, 44), 44, 44)
+}
+
 fn poll(app: AppHandle) {
     let offline = Url::parse("tauri://localhost/index.html").ok();
     loop {
@@ -224,8 +234,14 @@ fn poll(app: AppHandle) {
         let shared = app.state::<Shared>();
         *shared.state.lock().unwrap() = next.clone();
         if let Some(tray) = app.tray_by_id("pantry") {
-            let title = if !next.up { "–".to_string() } else if next.needs_you > 0 { next.needs_you.to_string() } else { String::new() };
-            let _ = tray.set_title(Some(title));
+            let mark = if !next.up { Mark::Offline } else { Mark::Count(next.needs_you as u32) };
+            if *shared.mark.lock().unwrap() != Some(mark) {
+                *shared.mark.lock().unwrap() = Some(mark);
+                let _ = tray.set_icon(Some(tray_icon(mark)));
+                let _ = tray.set_icon_as_template(true);
+                #[cfg(target_os = "macos")]
+                let _ = app.run_on_main_thread(move || toast::set_dock_icon(mark));
+            }
             let tip = if next.up { format!("PANTRY: {} need you", next.needs_you) } else { "PANTRY: hub offline".into() };
             let _ = tray.set_tooltip(Some(tip));
         }
@@ -306,9 +322,8 @@ fn main() {
             let sep2 = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&status, &sep, &open, &start, &sep2, &update, &quit])?;
             TrayIconBuilder::with_id("pantry")
-                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray.png"))?)
+                .icon(tray_icon(Mark::Offline))
                 .icon_as_template(true)
-                .title("–")
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id().as_ref() {
                     "open" => if let Some(w) = app.get_webview_window("main") { bring_forward(&w) },
