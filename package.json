@@ -10,11 +10,11 @@
   "author": "Tjakoen Stolk <tjakoen.s@gmail.com> (https://tjakoen.github.io)",
   "homepage": "https://tjakoen.github.io/pantry",
   "dependencies": {
-    "@tjakoen/batch": "^0.2.0",
-    "@tjakoen/crumb": "^0.1.9",
+    "@tjakoen/batch": "^0.3.0",
+    "@tjakoen/crumb": "^0.1.10",
     "@tjakoen/grain": "^0.1.36",
-    "@tjakoen/mill": "^0.2.0",
-    "@tjakoen/proof": "^0.1.2",
+    "@tjakoen/mill": "^0.4.3",
+    "@tjakoen/proof": "^0.1.5",
     "tjakoen.github.io": "github:tjakoen/tjakoen.github.io#aa9334d"
   },
   "files": [
