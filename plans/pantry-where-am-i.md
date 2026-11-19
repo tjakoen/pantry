@@ -1,6 +1,6 @@
 ---
 id: pantry-where-am-i
-status: todo
+status: doing
 track: ui
 depends: []
 touches: [hub-home.ts, hub-home.test.ts, hub.ts, hub.test.ts, brief.ts, brief.test.ts, sessions.ts, mcp.ts, pantry.css, app.ts, app.test.ts, PLAN.md, INSTALL.md]
@@ -203,6 +203,22 @@ interface contract, so the page and the agent read one source.
       unblock, archive the worktree or park the plan. The agent recommends; it never acts on the
       owner's gate.
 - [ ] Thresholds live in configuration, so a one-project user can turn the pass off or tune it.
+
+### Slice 8: give the menu bar and the Claude pane a purpose
+
+The menu bar icon carries a count and a dropdown, and the Claude pane sits beside the chat, but
+neither yet answers the question this plan exists for. Tjakoen wants both to be worth opening.
+
+- [ ] Audit the menu bar icon and its dropdown against the three bands: what the count means, what
+      the dropdown lists, and what a click on each line does. Record findings in this plan.
+- [ ] The dropdown becomes the shortest form of the front page: the top Waiting on you items with
+      their action, paused threads with their resume time, and one line for other machines. Each
+      line opens the item, never just the hub.
+- [ ] The count means one thing, items waiting on the owner across every machine, and the icon
+      shows when a thread is paused on a limit, so a glance says whether anything needs him.
+- [ ] Audit the Claude pane the same way: it shows the session's own claim, its resume card, and
+      the owner's items for this project, and offers the actions a session in that project can take.
+- [ ] Screenshots of the icon, the dropdown and the pane before and after, shown in the session.
 
 ## Keeping PANTRY modular for other people
 
