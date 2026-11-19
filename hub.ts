@@ -222,6 +222,30 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         const target = to && to.startsWith("/") && !to.startsWith("//") ? new URL(to, base).toString() : home;
         return Response.redirect(target, 302);
       }
+      if (url.pathname === "/report") {
+        const { buildReport, periodStart, reportPage } = await import("./report.ts");
+        const since = periodStart(url.searchParams);
+        const statuses = await Promise.all(reg.projects.map(status));
+        const read = async (s: (typeof statuses)[number], path: string) => {
+          try {
+            const base = new URL(s.url);
+            const res = await fetch(`http://127.0.0.1:${base.port}${base.pathname.replace(/\/$/, "")}${path}`, { signal: AbortSignal.timeout(10_000) });
+            return res.ok ? await res.json() : null;
+          } catch { return null; }
+        };
+        const log = (dir: string) => {
+          const r = Bun.spawnSync(["git", "-C", dir, "log", `--since=${since}`, "--no-merges", "--pretty=%s"], { stdout: "pipe", stderr: "ignore", timeout: 5_000 });
+          return r.exitCode === 0 ? r.stdout.toString().split("\n").filter(Boolean) : [];
+        };
+        const queue = statuses.filter((s) => s.up);
+        const inputs: import("./report.ts").ProjectInput[] = statuses.filter((s) => !s.up).map((s) => ({ name: s.name, path: s.path, url: s.url, brief: null, runs: null, log: [] }));
+        const work = async () => {
+          for (let s = queue.shift(); s; s = queue.shift()) inputs.push({ name: s.name, path: s.path, url: s.url, brief: await read(s, "/brief.json"), runs: await read(s, "/runs.json"), log: log(s.path) });
+        };
+        await Promise.all([work(), work(), work()]);
+        const styleBase = statuses.find((s) => s.up)?.url.replace(/\/$/, "") ?? "";
+        return new Response(reportPage(buildReport(inputs, since), styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+      }
       if (url.pathname === "/tray.json") {
         const { hubRows, trayPayload } = await import("./hub-home.ts");
         const rows = await hubRows(await Promise.all(reg.projects.map(status)), 2_000);

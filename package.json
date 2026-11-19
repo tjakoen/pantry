@@ -42,6 +42,7 @@
     "hub-sync.ts",
     "resume.ts",
     "learn.ts",
+    "report.ts",
     "brief-routes.ts",
     "capture.ts",
     "certify.ts",
