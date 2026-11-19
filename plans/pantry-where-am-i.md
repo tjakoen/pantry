@@ -321,8 +321,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Theme-driven accent on what needs you; visible switch; one theme choice synced through the hub.
-- Next: The audit's high findings: one shell, Working now, plan cards, narrow tiles, sidebar height.
-- Waiting on: Owner consent to push the theme commit and the earlier board commit.
+- Stopped: UI audit high findings fixed: one sidebar shell, Working now, plan cards, narrow tiles.
+- Next: The audit's medium findings: registry duplicates, long report, plan page actions, decision cards, type hierarchy, paths.
+- Waiting on: Owner consent to push the audit-fix commit.
 - Ended: handoff
-- Left: 2026-11-19T19:26:02.562Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T20:36:27.660Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
