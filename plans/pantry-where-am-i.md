@@ -315,8 +315,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Hub home Your work board built: five columns, cards, GRAIN drawers.
-- Next: Propose a board component to GRAIN; dashboards for the project command center; what a handover received.
-- Waiting on: Owner consent to push the board commit.
+- Stopped: Theme-driven accent on what needs you; visible switch; one theme choice synced through the hub.
+- Next: The audit's high findings: one shell, Working now, plan cards, narrow tiles, sidebar height.
+- Waiting on: Owner consent to push the theme commit and the earlier board commit.
 - Ended: handoff
-- Left: 2026-11-19T19:12:34.379Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T19:26:02.562Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
