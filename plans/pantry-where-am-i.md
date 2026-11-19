@@ -280,8 +280,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Slices 1 to 4 and 8 are built; explainers, the Done this week section and Explain this prompts work.
-- Next: Slice 5, the report page, or slice 6 token readers; the usage-limit card hook in slice 3 is still open.
+- Stopped: Slices 1 to 5 and 8 are built; /report renders live with graded findings, notes and What to decide.
+- Next: Shorten the report page, then slice 6 token readers or slice 7 the owner-side review.
 - Waiting on: Tjakoen to pick the next slice and to set sync.dir on the other two machines.
 - Ended: handoff
-- Left: 2026-11-19T13:05:24.844Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T14:08:21.876Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
