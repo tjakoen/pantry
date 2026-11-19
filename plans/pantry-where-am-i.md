@@ -1,6 +1,6 @@
 ---
 id: pantry-where-am-i
-status: todo
+status: doing
 track: ui
 depends: []
 touches: [hub-home.ts, hub-home.test.ts, hub.ts, hub.test.ts, brief.ts, brief.test.ts, sessions.ts, mcp.ts, pantry.css, app.ts, app.test.ts, PLAN.md, INSTALL.md]
@@ -87,17 +87,23 @@ projects behind a toggle and zero counters not rendered at all.
 
 ### Slice 2: every machine
 
-- [ ] Each machine's PANTRY writes a small state file into agent-config at
-      machines/<host>/pantry-state.json: claims, waiting items, sessions with their last-seen time
-      and harness. No code, no paths outside the watched repositories, no secrets.
-- [ ] The existing thirty-minute sync carries it. The hub reads every machine's file and merges
-      them, labelling each item with its machine and how old the reading is.
+- [x] Each machine's hub writes a small state file to <sync dir>/<machine>/pantry-state.json:
+      project names, live counts, last-seen times and the waiting items' kind, title and detail. No
+      paths, no file contents, no secrets. It rewrites only on change plus a daily heartbeat, since
+      every rewrite is a commit in the synced folder. Built in hub-sync.ts.
+- [x] The folder is configuration (sync.dir in ~/.pantry/projects.json), not code. On Tjakoen's
+      machines it is agent-config/machines, and estate-sync.sh commits and pushes the state file
+      on its thirty-minute run when nothing else is unpushed.
+- [x] The hub reads every other machine's file and lists its items in the Waiting on you band,
+      labelled with the machine and how old the reading is.
+- [x] A machine whose file is older than a day plus two hours is named under the band as possibly
+      out of date. This sits on the hub, not the per-project doctor, because it is a machine fact.
+- [ ] Set sync.dir on the MacBook Pro and the Windows PC (a pantry hub sync command would make this
+      one line; until then, edit ~/.pantry/projects.json).
 - [ ] The session log records the harness, so Codex and DSH sessions stop reading as "no sessions
       logged".
-- [ ] A doctor row warns when a machine's state file is older than two hours.
-- [ ] Decision for Tjakoen before building: the file route above, or one live hub over the
-      Cloudflare tunnel. The file route is recommended first; it needs no new service and the
-      thirty-minute lag is acceptable for this question.
+- [x] Decision: the file route, not a live hub over the tunnel. Taken 2026-11-19 when Tjakoen said
+      to start slice 2 with the file route recommended.
 
 ### Slice 3: threads that survive a token reset
 

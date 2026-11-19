@@ -179,6 +179,21 @@ claude mcp add --transport http -s user pantry http://127.0.0.1:4400/mcp
 The hub serves pages. The checks (`doctor`, `drift`, `capture`) stay commands you run in the
 checkout, because they must see the exact working tree an agent is editing.
 
+### Seeing your other machines (optional)
+
+If you work on more than one machine, the hub can list what waits on you elsewhere. Give it a folder
+that something already keeps in sync between your machines, such as a git repository, Dropbox or
+iCloud, by adding a sync entry to ~/.pantry/projects.json:
+
+```json
+{ "hubPort": 4400, "projects": [], "sync": { "dir": "/path/to/synced/folder" } }
+```
+
+Each hub then writes its own machine's state to a file named pantry-state.json, in a folder named
+after the machine, and lists the other machines' items in its Waiting on you band. The file holds
+project names and item titles, never paths or file contents. PANTRY does not sync the folder itself;
+whatever you point it at does. Leave the entry out and none of this runs.
+
 ## Orchestration: agents take plans from PANTRY
 
 The hub hands out work; it never runs an agent. An agent session in a registered project calls

@@ -9,6 +9,7 @@
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
 import { STYLESHEETS } from "./chrome.ts";
+import { STATE_STALE_MS, type MachineState } from "./hub-sync.ts";
 
 export const HUB_BRIEF_TTL_MS = 30_000;
 const CONCURRENCY = 3;
@@ -139,14 +140,18 @@ function stat(n: number, label: string, href: string, loud = false): string {
 
 /** Every waiting item across every project, one line each, above the project list. Drift and
  *  out-of-scope writes stay off this band: they are an agent's diagnostics, read in the project. */
-export function waitingBand(rows: HubRow[]): string {
+export function waitingBand(rows: HubRow[], others: MachineState[] = [], now = Date.now()): string {
   const lines = rows.flatMap((r) => (r.summary?.items ?? []).map((i) => ({ r, i })));
-  if (!lines.length) return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you</h2><p class="cc-empty">Nothing is waiting on you in any project.</p></section>`;
+  const remote = others.flatMap((m) => m.projects.flatMap((p) => p.items.map((i) => ({ m, p, i }))));
+  const stale = others.filter((m) => now - Date.parse(m.writtenAt) > STATE_STALE_MS);
+  const staleNote = stale.length ? `<p class="hub-stale">${stale.map((m) => `${e(m.machine)} last reported ${ago(m.writtenAt, now)}`).join("; ")}, so its items may be out of date.</p>` : "";
+  const remoteLi = remote.map(({ m, p, i }) => `<li class="hub-item is-remote"><span class="hub-item__kind">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><span class="hub-item__project">${e(p.name)}</span><span class="hub-item__title">${e(i.title)}</span><span class="hub-item__detail">${e(i.detail)}</span><span class="hub-item__where">on ${e(m.machine)}, ${ago(m.writtenAt, now)}</span></li>`).join("");
+  if (!lines.length && !remote.length) return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you</h2><p class="cc-empty">Nothing is waiting on you in any project.</p>${staleNote}</section>`;
   const li = lines.map(({ r, i }) => {
     const href = e(r.url.replace(/\/$/, "") + i.path);
     return `<li class="hub-item"><span class="hub-item__kind">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(i.title)}</span><span class="hub-item__detail">${e(i.detail)}</span><a class="hub-item__act" href="${href}">${e(i.label)}</a></li>`;
   }).join("");
-  return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you <span class="hub-meta">${lines.length}</span></h2><ul class="hub-items">${li}</ul></section>`;
+  return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you <span class="hub-meta">${lines.length + remote.length}</span></h2><ul class="hub-items">${li}${remoteLi}</ul>${staleNote}</section>`;
 }
 
 function row(r: HubRow, now: number): string {
@@ -168,7 +173,7 @@ function row(r: HubRow, now: number): string {
 }
 
 /** The whole page. Styles come from the first project that is up, since the hub serves none itself. */
-export function hubHomePage(rows: HubRow[], now = Date.now()): string {
+export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineState[] = []): string {
   const styleBase = rows.find((r) => r.up)?.url.replace(/\/$/, "") ?? "";
   const links = styleBase ? STYLESHEETS.map((h) => `<link rel="stylesheet" href="${e(styleBase + h)}">`).join("\n  ") : "";
   const live = rows.reduce((n, r) => n + (r.summary?.live ?? 0), 0);
@@ -193,7 +198,7 @@ export function hubHomePage(rows: HubRow[], now = Date.now()): string {
     <h1>All projects</h1>
     <p class="cc-meta">${rows.length} registered · ${live} live session(s) · ${waiting} item(s) waiting on you. Each row is read from that project's command center and refreshes every minute.</p>
   </header>
-  ${rows.length ? waitingBand(rows) : ""}
+  ${rows.length || others.length ? waitingBand(rows, others, now) : ""}
   ${rows.length ? `<h2 class="hub-list-title">Projects</h2>` : ""}
   ${body}
 </main>

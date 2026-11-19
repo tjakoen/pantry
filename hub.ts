@@ -19,7 +19,8 @@ import { homedir } from "node:os";
 import { PANTRY_PREFIX } from "./preview.ts";
 
 export interface HubProject { name: string; path: string; port: number }
-export interface Registry { hubPort: number; projects: HubProject[] }
+/** sync: optional. A folder another tool keeps in sync across machines; see hub-sync.ts. */
+export interface Registry { hubPort: number; projects: HubProject[]; sync?: { dir: string; machine?: string } }
 
 export const DEFAULT_HUB_PORT = 4400;
 
@@ -30,7 +31,7 @@ export function registryPath(env: Record<string, string | undefined> = process.e
 export function readRegistry(file = registryPath()): Registry {
   if (!existsSync(file)) return { hubPort: DEFAULT_HUB_PORT, projects: [] };
   const raw = JSON.parse(readFileSync(file, "utf8")) as Partial<Registry>;
-  return { hubPort: raw.hubPort ?? DEFAULT_HUB_PORT, projects: raw.projects ?? [] };
+  return { hubPort: raw.hubPort ?? DEFAULT_HUB_PORT, projects: raw.projects ?? [], ...(raw.sync?.dir ? { sync: raw.sync } : {}) };
 }
 
 export function writeRegistry(reg: Registry, file = registryPath()): void {
@@ -148,6 +149,19 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
   sync();
   setInterval(sync, 5000);
 
+  // With a sync folder configured, write this machine's state every five minutes. writeState skips
+  // the write unless something changed or the daily heartbeat is due.
+  const share = async () => {
+    if (!reg.sync) return;
+    try {
+      const { hubRows } = await import("./hub-home.ts");
+      const { writeState } = await import("./hub-sync.ts");
+      writeState(reg.sync, await hubRows(await Promise.all(reg.projects.map(status)), 30_000));
+    } catch { /* a failed write is retried on the next tick */ }
+  };
+  setTimeout(share, 60_000);
+  setInterval(share, 5 * 60_000);
+
   const status = async (p: HubProject) => {
     const { up, base } = await probeCached(p.port);
     return { ...p, up, url: `http://localhost:${p.port}${base}/`, note: children.get(p.name)?.note || undefined };
@@ -211,7 +225,8 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
       if (url.pathname === "/" ) {
         const { hubRows, hubHomePage } = await import("./hub-home.ts");
         const rows = await hubRows(await Promise.all(reg.projects.map(status)));
-        return new Response(hubHomePage(rows), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        const others = reg.sync ? (await import("./hub-sync.ts")).readOthers(reg.sync) : [];
+        return new Response(hubHomePage(rows, Date.now(), others), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       return new Response("Not found", { status: 404 });
     },
