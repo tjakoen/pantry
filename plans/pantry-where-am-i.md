@@ -301,8 +301,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Report page rebuilt on GRAIN dashboards (stat tiles, dash-panels, rank lists, bullet graphs).
-- Next: Same treatment for the hub home and the per-project command center; dedupe registry duplicates in What to decide; what a handover received.
-- Waiting on: Owner consent to push pantry 269735f.
+- Stopped: What to decide rebuilt as a ranked, merged queue with one action per row.
+- Next: Dashboards treatment for the hub home and command center; what a handover received.
+- Waiting on: Owner consent to push the decide-queue commit.
 - Ended: handoff
-- Left: 2026-11-19T18:51:27.016Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T18:56:52.634Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
