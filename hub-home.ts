@@ -151,14 +151,19 @@ function stat(n: number, label: string, href: string, loud = false): string {
 /** Every plan being worked or paused on a limit, one line each. Paused lines say when they can
  *  resume and what the card says comes next, so a thread waiting on a reset stops looking dead. */
 export function inFlightBand(rows: HubRow[], now = Date.now()): string {
-  const lines = rows.flatMap((r) => (r.summary?.threads ?? []).map((t) => ({ r, t })));
-  if (!lines.length) return "";
+  // Only threads someone holds or that wait on a reset. A plan marked doing that nobody holds is not
+  // in flight; it is a stale status, counted in one line rather than listed (the live hub had forty).
+  const all = rows.flatMap((r) => (r.summary?.threads ?? []).map((t) => ({ r, t })));
+  const lines = all.filter(({ t }) => t.state === "paused" || t.who);
+  const stale = all.length - lines.length;
+  const staleNote = stale ? `<p class="hub-stale">${stale} plan(s) are marked doing with no session holding them. Return them to todo, or claim them.</p>` : "";
+  if (!lines.length) return staleNote ? `<section class="hub-band" aria-labelledby="hub-flight"><h2 id="hub-flight">In flight</h2>${staleNote}</section>` : "";
   const when = (iso: string) => { const m = Math.round((Date.parse(iso) - now) / 60_000); return m < 60 ? `in ${Math.max(m, 1)}m` : m < 48 * 60 ? `in ${Math.round(m / 60)}h` : `on ${iso.slice(0, 10)}`; };
   const li = lines.map(({ r, t }) => {
-    const state = t.state === "paused" ? `Paused, resumes ${when(t.until!)}` : t.who ? `Active, ${e(t.who)}` : "Doing, unclaimed";
+    const state = t.state === "paused" ? `Paused, resumes ${when(t.until!)}` : `Active, ${e(t.who ?? "")}`;
     return `<li class="hub-item${t.state === "paused" ? " is-paused" : ""}"><span class="hub-item__kind">${state}</span><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(t.title)}</span>${t.next ? `<span class="hub-item__detail">Next: ${e(t.next)}</span>` : ""}<a class="hub-item__act" href="${e(r.url.replace(/\/$/, "") + t.path)}">Open plan</a></li>`;
   }).join("");
-  return `<section class="hub-band" aria-labelledby="hub-flight"><h2 id="hub-flight">In flight <span class="hub-meta">${lines.length}</span></h2><ul class="hub-items">${li}</ul></section>`;
+  return `<section class="hub-band" aria-labelledby="hub-flight"><h2 id="hub-flight">In flight <span class="hub-meta">${lines.length}</span></h2><ul class="hub-items">${li}</ul>${staleNote}</section>`;
 }
 
 /** Every waiting item across every project, one line each, above the project list. Drift and

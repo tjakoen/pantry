@@ -44,4 +44,13 @@ describe("resume cards", () => {
     expect(html).toContain("Next: Wire the finish gate.");
     expect(html).toContain(`href="http://localhost:4402/plan/a"`);
   });
+
+  test("plans marked doing that nobody holds are counted in one line, not listed", () => {
+    const t = (title: string, who: string | null) => ({ title, state: "active" as const, who, until: null, next: null, path: "/plan/x" });
+    const row: HubRow = { name: "p", path: "/p", url: "http://localhost:4402/", up: true, summary: { live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [t("Held", "codex"), t("Stale one", null), t("Stale two", null)] } };
+    const html = inFlightBand([row], Date.parse(NOW));
+    expect(html).toContain("Active, codex");
+    expect(html).not.toContain("Stale one");
+    expect(html).toContain("2 plan(s) are marked doing with no session holding them");
+  });
 });
