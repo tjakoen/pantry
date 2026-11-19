@@ -47,6 +47,8 @@ export interface ClaimLine {
   at: string;
   event: ClaimEvent;
   where?: ClaimWhere;
+  /** on a release line, why the session ended, so a stall on a usage limit can be told from a pause */
+  reason?: string;
 }
 
 export interface ClaimView {
@@ -270,7 +272,7 @@ export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, 
 /** Heartbeat or release. Only the holder may act. A heartbeat cannot revive an expired claim; a
  *  `done` release is accepted after expiry as long as nobody claimed the plan since, so a slow
  *  session can still record its work. */
-export function updateClaim(ctx: ClaimContext, planId: string, sessionId: string, event: "heartbeat" | "release" | "done"): Promise<Result<ClaimView>> {
+export function updateClaim(ctx: ClaimContext, planId: string, sessionId: string, event: "heartbeat" | "release" | "done", reason?: string): Promise<Result<ClaimView>> {
   return serialized(ctx.file, async () => {
     const now = (ctx.now ?? Date.now)();
     const lines = await readClaims(ctx.file);
@@ -280,7 +282,7 @@ export function updateClaim(ctx: ClaimContext, planId: string, sessionId: string
     const lateDone = event === "done" && view.state === "expired";
     if (view.state !== "active" && !lateDone) return { ok: false, error: `${planId}'s claim is ${view.state}; claim it again` };
     const at = new Date(now).toISOString();
-    await append(ctx.file, { project: ctx.project, planId, sessionId, tool: view.tool, at, event });
+    await append(ctx.file, { project: ctx.project, planId, sessionId, tool: view.tool, at, event, ...(event === "release" && reason ? { reason } : {}) });
     return { ok: true, value: { ...view, lastAt: at, state: event === "heartbeat" ? "active" : event === "release" ? "released" : "done" } };
   });
 }

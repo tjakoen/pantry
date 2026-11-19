@@ -242,7 +242,7 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     if (name === "pantry_heartbeat") return withAnswers(await updateClaim(ctx, str("planId"), str("sessionId"), "heartbeat"), str("planId"));
     const outcome = str("outcome");
     if (outcome !== "done" && outcome !== "released") return text("outcome must be done or released", true);
-    const released = await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release");
+    const released = await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release", outcome === "released" ? str("reason") || undefined : undefined);
     // The card is written only after the claim check passes, so a session can leave one only on a
     // plan it held, and only into that plan's own file.
     if (released.ok && outcome === "done" && str("changed") && str("why") && str("remember")) {

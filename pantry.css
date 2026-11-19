@@ -1049,3 +1049,4 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .is-side .cc-layout { position: relative; }
 .is-side .cc-pane.is-open { position: absolute; inset: 0 0 auto 0; max-height: none; z-index: 2; min-height: 100%; }
 .is-side .cc-layout:has(.cc-pane.is-open) .cc-center { visibility: hidden; }
+.rp-where{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:var(--space-4,1rem)}

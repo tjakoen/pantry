@@ -43,6 +43,7 @@
     "resume.ts",
     "learn.ts",
     "report.ts",
+    "where.ts",
     "brief-routes.ts",
     "capture.ts",
     "certify.ts",

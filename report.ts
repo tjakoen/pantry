@@ -15,6 +15,7 @@ import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
 import type { RunsPayload } from "./runs.ts";
 import { STYLESHEETS } from "./chrome.ts";
+import { WHERE_MIN_N, type WhereReport } from "./where.ts";
 
 export type Severity = "high" | "medium" | "low";
 export interface Finding { severity: Severity; project: string; title: string; evidence: string; action: string }
@@ -37,6 +38,7 @@ export interface Report {
   notes: NoteRow[];
   paused: number;
   down: string[];
+  where?: WhereReport;
 }
 
 /** What the report reads from one project. Any piece may be missing; the report says so. */
@@ -178,6 +180,23 @@ export function reportMarkdown(r: Report): string {
   return out.join("\n").trim() + "\n";
 }
 
+const hrs = (ms: number) => ms < 3_600_000 ? `${Math.round(ms / 60_000)}m` : `${(ms / 3_600_000).toFixed(1)}h`;
+
+/** Where the work ran. Below WHERE_MIN_N stretches it gives counts only, since a share of a handful says nothing. */
+export function whereSection(w: WhereReport | undefined): string {
+  if (!w || !w.segments) return "";
+  const few = w.segments < WHERE_MIN_N;
+  const table = (title: string, rows: WhereReport["byTool"]) => `<div><h3>${e(title)}</h3><table class="rp-table"><thead><tr><th>${e(title)}</th><th>Sessions</th>${few ? "" : "<th>Held</th><th>Share</th>"}</tr></thead><tbody>${rows.map((r) => `<tr><td>${e(r.key)}</td><td>${r.sessions}</td>${few ? "" : `<td>${hrs(r.activeMs)}</td><td>${w.activeMs ? Math.round((100 * r.activeMs) / w.activeMs) : 0}%</td>`}</tr>`).join("")}</tbody></table></div>`;
+  const tok = w.tokens.map((t) => `<li><b>${e(t.tool)}</b>: ${t.tokens === null ? (t.tool === "claude" ? "see the Usage page of each project" : "this harness writes no token count PANTRY can read") : `${t.tokens.toLocaleString("en")} tokens over ${t.sessions} session(s)`}</li>`).join("");
+  const landed = w.handovers.filter((h) => h.landed).length;
+  const hand = w.handovers.slice(0, 8).map((h) => `<li><span class="hub-item__project">${e(h.project)}</span> ${e(h.planId)}: ${e(h.from)} to ${e(h.to)} after ${hrs(h.gapMs)}${h.landed ? ", finished later" : ", not finished yet"}</li>`).join("");
+  return `<section class="hub-band"><h2>Where the work ran <span class="hub-meta">n = ${w.segments}</span></h2>
+<p class="hub-meta">Read from the claims logs and Codex's session logs on this machine. A stretch is one session holding one plan. Plans were held ${hrs(w.activeMs)}, waited ${hrs(w.waitingMs)} between stretches, ${hrs(w.stalledMs)} of it after a usage limit.${few ? ` Shares are hidden below ${WHERE_MIN_N} stretches.` : ""}</p>
+<div class="rp-where">${table("Harness", w.byTool)}${table("Machine", w.byMachine)}${table("Model", w.byModel)}</div>
+<h3>Tokens</h3><ul>${tok}</ul>
+<h3>Handovers <span class="hub-meta">${w.handovers.length}${w.handovers.length ? `, ${landed} finished later` : ""}</span></h3>${hand ? `<ul>${hand}</ul>` : `<p class="cc-empty">No plan moved between machines or harnesses in this period.</p>`}</section>`;
+}
+
 const SEV_CLASS: Record<Severity, string> = { high: "rp-high", medium: "rp-med", low: "rp-low" };
 
 export function reportPage(r: Report, styleBase: string): string {
@@ -221,6 +240,7 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
   <div class="rp-tiles">${tile(commits, "commits")}${tile(r.projects.length, "projects moved")}${tile(r.decide.length, "waiting on you")}${tile(high, "high findings")}${tile(r.paused, "paused on a limit")}${tile(drafts, "draft notes")}</div>
   ${r.down.length ? `<p class="hub-stale">Not read, because their PANTRY did not answer: ${r.down.map(e).join(", ")}.</p>` : ""}
   <section class="hub-band"><h2>Findings <span class="hub-meta">${r.findings.length}</span></h2>${findings ? `<ul class="rp-findings">${findings}</ul>` : `<p class="cc-empty">No finding with evidence and an action in this period.</p>`}</section>
+  ${whereSection(r.where)}
   <section class="hub-band"><h2>By project</h2>${sections || `<p class="cc-empty">No commits or closed plans in this period.</p>`}</section>
   ${r.notes.length ? `<section class="hub-band"><h2>Notes <span class="hub-meta">${r.notes.length}</span></h2><table class="rp-table"><thead><tr><th>Note</th><th>Status</th><th>Date</th><th>Words</th><th>Figures</th><th>Social</th><th>Issue</th></tr></thead><tbody>${noteRows}</tbody></table></section>` : ""}
   <section class="hub-band"><h2>What to decide <span class="hub-meta">${r.decide.length}</span></h2>${decide ? `<ol class="rp-decide">${decide}</ol>` : `<p class="cc-empty">Nothing is waiting on you.</p>`}</section>

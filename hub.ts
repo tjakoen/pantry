@@ -244,7 +244,14 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         };
         await Promise.all([work(), work(), work()]);
         const styleBase = statuses.find((s) => s.up)?.url.replace(/\/$/, "") ?? "";
-        return new Response(reportPage(buildReport(inputs, since), styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        const { buildWhere, readCodexSessions, segmentsOf, projectOfCwd } = await import("./where.ts");
+        const { parseLines, claimsFile } = await import("./orchestrator.ts");
+        const pantryHome = process.env.PANTRY_HOME ?? join(homedir(), ".pantry");
+        const segs = segmentsOf(reg.projects.flatMap((p) => { try { return parseLines(readFileSync(claimsFile(pantryHome, p.name), "utf8")); } catch { return []; } }));
+        const sinceMs = Date.parse(since);
+        const codex = readCodexSessions(join(homedir(), ".codex", "sessions"), sinceMs).filter((c) => projectOfCwd(c.cwd, reg.projects));
+        const report = { ...buildReport(inputs, since), where: buildWhere(segs, sinceMs, codex, null) };
+        return new Response(reportPage(report, styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       if (url.pathname === "/tray.json") {
         const { hubRows, trayPayload } = await import("./hub-home.ts");

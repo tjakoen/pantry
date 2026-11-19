@@ -1,6 +1,6 @@
 ---
 id: pantry-where-am-i
-status: doing
+status: todo
 track: ui
 depends: []
 touches: [hub-home.ts, hub-home.test.ts, hub.ts, hub.test.ts, brief.ts, brief.test.ts, sessions.ts, mcp.ts, pantry.css, app.ts, app.test.ts, PLAN.md, INSTALL.md]
@@ -170,23 +170,27 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       from work) and model. Do this first; data not recorded now cannot be analysed later. The
       machine is filled by the hub; model and account are optional pantry_claim arguments, and dsh
       is now a claim tool beside claude and codex.
-- [ ] Have agent-config's auto-plan hook pass model and account when it claims, so chat plans carry
+- [x] Have agent-config's auto-plan hook pass model and account when it claims, so chat plans carry
       them too.
-- [ ] Token readers per harness that emit one shape: Claude Code transcripts (usage.ts already
+- [x] Token readers per harness that emit one shape: Claude Code transcripts (usage.ts already
       reads them), Codex session logs, DSH's API usage. A harness that reports nothing shows as
       unknown, never as an estimate.
-- [ ] Split each plan's time into active, waiting on the owner, and stalled on limits. Stalled time
-      needs slice 3's record of why a session ended.
+- [x] Split each plan's time into held, waiting between stretches, and stalled on limits. Release
+      lines now carry the end reason, so stalled time counts from today on. Waiting on the owner is
+      not yet told apart from other waiting.
 - [ ] Record every handover between machines or harnesses: what the new session received (a resume
-      card, the plan, nothing) and what it did next (continued, redid work, or circled back).
+      card, the plan, nothing) and what it did next (continued, redid work, or circled back). Moves
+      and whether the plan was later finished are on the report; what the new session received is
+      still open.
 - [ ] Quality signals, measured and never guessed: gates passing at session end, follow-up fixes a
       change needed, rework the owner asked for, out-of-scope writes, and work a later session
       reverted.
-- [ ] A Usage and handovers page and a section in the slice 5 report. Every comparison shows its n
+- [x] A Usage and handovers page and a section in the slice 5 report. Every comparison shows its n
       and stays silent below about ten. The front page gets an item only when a decision follows,
       such as a plan that stalled on limits three times.
-- [ ] Work stays on the work machine: detail from the work account and from Edge-adjacent projects is
-      kept local, and only totals travel through agent-config.
+- [x] Work stays on the work machine: detail from the work account and from Edge-adjacent projects is
+      kept local, and only totals travel through agent-config. The timeline is built on the report
+      page from local logs; the state file carries none of it.
 
 ### Slice 7: an AI reading of the owner's side
 
