@@ -13,7 +13,7 @@
 // The registry is a plain JSON file, `~/.pantry/projects.json` by default (PANTRY_HOME overrides).
 // Paths in it are absolute paths on this machine.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { PANTRY_PREFIX } from "./preview.ts";
@@ -53,6 +53,17 @@ export function registerProject(reg: Registry, path: string, name?: string): { r
   while (names.has(unique)) unique = `${base}-${n++}`;
   const project = { name: unique, path: abs, port };
   return { reg: { ...reg, projects: [...reg.projects, project] }, project, added: true };
+}
+
+/** The main checkout behind a git worktree, or null when the path is not one. A worktree's .git is a
+ *  file pointing into the main checkout's .git/worktrees folder; registering one gives the hub a second
+ *  row for the same project, which is how the registry grew five course platforms. */
+export function worktreeMain(path: string): string | null {
+  const dotGit = join(resolve(path), ".git");
+  if (!existsSync(dotGit) || !statSync(dotGit).isFile()) return null;
+  const m = /^gitdir:\s*(.+?)\s*$/m.exec(readFileSync(dotGit, "utf8"));
+  const at = m?.[1].replace(/\\/g, "/").lastIndexOf("/.git/worktrees/") ?? -1;
+  return m && at > 0 ? m[1].slice(0, at) : null;
 }
 
 export function unregisterProject(reg: Registry, nameOrPath: string): Registry {

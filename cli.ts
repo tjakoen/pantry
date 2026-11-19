@@ -177,6 +177,12 @@ async function main() {
     const hub = await import("./hub.ts");
     let reg = hub.readRegistry();
     if (cmd === "register") {
+      const main = hub.worktreeMain(dir ?? process.cwd());
+      if (main) {
+        console.error(`That is a git worktree. Register its main checkout instead: pantry register ${main}`);
+        process.exitCode = 1;
+        return;
+      }
       const r = hub.registerProject(reg, dir ?? process.cwd(), flags.name);
       if (r.added) hub.writeRegistry(r.reg);
       console.log(`${r.added ? "Registered" : "Already registered"}: ${r.project.name} on port ${r.project.port} (${r.project.path})`);

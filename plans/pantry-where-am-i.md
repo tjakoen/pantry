@@ -1,10 +1,10 @@
 ---
 id: pantry-where-am-i
-status: todo
+status: doing
 track: ui
 depends: []
 touches: [hub-home.ts, hub-home.test.ts, hub.ts, hub.test.ts, brief.ts, brief.test.ts, sessions.ts, mcp.ts, pantry.css, app.ts, app.test.ts, PLAN.md, INSTALL.md]
-owner: human
+owner: ai
 ---
 
 # Tell the owner where he is, across every project and machine, in one page
@@ -71,16 +71,18 @@ projects behind a toggle and zero counters not rendered at all.
 
 ### Slice 1: the Waiting on you band, this machine only
 
-- [ ] Clean the registry: add pantry unregister for the five course-platform duplicates and the
+- [ ] Clean the registry: pantry register now refuses a git worktree and names its main checkout
+      (done); unregister already existed. Still to do: remove the five course-platform duplicates and the
       worktree entry, after Tjakoen confirms which one is canonical. Teach register to refuse a
       git worktree and point at its main checkout instead.
-- [ ] Extend HubSummary with a waiting list, not just a count: each item carries kind, title,
+- [x] Extend HubSummary with a waiting list, not just a count: each item carries kind, title,
       project, action label and a deep link to the item itself.
-- [ ] Render the Waiting on you band on the hub home, above the project list, with an empty state.
-- [ ] Stop rendering zero counters. Move drift and out-of-scope writes off the hub row and into the
+- [x] Render the Waiting on you band on the hub home, above the project list, with an empty state.
+- [x] Stop rendering zero counters. Move drift and out-of-scope writes off the hub row and into the
       project's command center, where an agent reads them.
-- [ ] Drop Next when it is the seeded welcome plan or has not moved in thirty days.
-- [ ] Tests for the band, the empty state, the zero rule and the registry cleanup; a screenshot of
+- [ ] Drop Next when it is the seeded welcome plan or has not moved in thirty days. The seeded
+      plan is dropped; the thirty-day rule waits for a plan's last-moved date to reach the brief.
+- [x] Tests for the band, the empty state, the zero rule and the registry cleanup; a screenshot of
       the page before and after, shown in the session.
 
 ### Slice 2: every machine

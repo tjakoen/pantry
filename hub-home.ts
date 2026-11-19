@@ -42,20 +42,36 @@ export interface HubSummary {
   outOfScope: number;
   next: string | null;
   lastSeenAt: string | null;
+  /** the waiting rows themselves, so the hub can say what waits and not only how many */
+  items: HubItem[];
 }
+
+/** One thing waiting on the owner, with the address inside its project that acts on it. */
+export interface HubItem { kind: string; title: string; detail: string; label: string; path: string }
+
+/** The seeded first plan every new board carries. It is a welcome, not a next step. */
+const SEED_NEXT = /^welcome to your plan board$/i;
+
+const KIND_LABEL: Record<string, string> = { decision: "Decision", "blocked-plan": "Blocked plan", "human-plan": "Your plan", answer: "Answer to act on" };
 
 export function summarize(b: BriefPayload): HubSummary {
   const sessions = b.inFlight.flatMap((r) => r.sessions);
   const seen = new Map(sessions.map((s) => [s.id, s]));
   const unique = [...seen.values()];
+  const items: HubItem[] = b.waiting.map((w) => {
+    const link = w.actions.find((a) => a.kind === "link" && a.value.startsWith("/"));
+    return { kind: w.kind, title: w.title, detail: w.detail, label: link?.label ?? "Open", path: link?.value ?? "/" };
+  });
+  const nextTitle = b.next.ready?.title ?? null;
   return {
+    items,
     live: unique.filter((s) => s.state !== "ended").length,
     agentsRunning: unique.reduce((n, s) => n + (s.agents ?? []).filter((a) => a.state === "running").length, 0),
     waiting: b.waiting.length,
     answered: b.answered.length,
     drift: b.drift.length,
     outOfScope: b.inFlight.reduce((n, r) => n + r.outOfScope.length, 0),
-    next: b.next.ready?.title ?? null,
+    next: nextTitle && !SEED_NEXT.test(nextTitle.trim()) ? nextTitle : null,
     lastSeenAt: unique.map((s) => s.lastSeenAt).sort().at(-1) ?? null,
   };
 }
@@ -116,8 +132,21 @@ const ago = (iso: string | null, now: number) => {
   return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 48 * 60 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
 
+/** A counter renders only when it counts something: twenty rows of zeros gave the eye nothing to land on. */
 function stat(n: number, label: string, href: string, loud = false): string {
-  return `<a class="hub-stat${n ? loud ? " is-loud" : " is-some" : ""}" href="${href}"><strong>${n}</strong> ${label}</a>`;
+  return n ? `<a class="hub-stat${loud ? " is-loud" : " is-some"}" href="${href}"><strong>${n}</strong> ${label}</a>` : "";
+}
+
+/** Every waiting item across every project, one line each, above the project list. Drift and
+ *  out-of-scope writes stay off this band: they are an agent's diagnostics, read in the project. */
+export function waitingBand(rows: HubRow[]): string {
+  const lines = rows.flatMap((r) => (r.summary?.items ?? []).map((i) => ({ r, i })));
+  if (!lines.length) return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you</h2><p class="cc-empty">Nothing is waiting on you in any project.</p></section>`;
+  const li = lines.map(({ r, i }) => {
+    const href = e(r.url.replace(/\/$/, "") + i.path);
+    return `<li class="hub-item"><span class="hub-item__kind">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(i.title)}</span><span class="hub-item__detail">${e(i.detail)}</span><a class="hub-item__act" href="${href}">${e(i.label)}</a></li>`;
+  }).join("");
+  return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you <span class="hub-meta">${lines.length}</span></h2><ul class="hub-items">${li}</ul></section>`;
 }
 
 function row(r: HubRow, now: number): string {
@@ -133,9 +162,7 @@ function row(r: HubRow, now: number): string {
   <div class="hub-stats">
     ${stat(s.waiting, "waiting on you", u("/"), true)}
     ${stat(s.answered, "answers unread", u("/"), true)}
-    ${stat(s.outOfScope, "out-of-scope writes", u("/"), true)}
-    ${stat(s.drift, "drift", u("/"))}
-    <span class="hub-next">${s.next ? `Next: ${e(s.next)}` : "Nothing ready"}</span>
+    ${s.next ? `<span class="hub-next">Next: ${e(s.next)}</span>` : ""}
   </div>
 </li>`;
 }
@@ -166,6 +193,8 @@ export function hubHomePage(rows: HubRow[], now = Date.now()): string {
     <h1>All projects</h1>
     <p class="cc-meta">${rows.length} registered · ${live} live session(s) · ${waiting} item(s) waiting on you. Each row is read from that project's command center and refreshes every minute.</p>
   </header>
+  ${rows.length ? waitingBand(rows) : ""}
+  ${rows.length ? `<h2 class="hub-list-title">Projects</h2>` : ""}
   ${body}
 </main>
 ${styleBase ? `<script src="${e(styleBase)}/scripts/theme.js" defer></script>` : ""}
