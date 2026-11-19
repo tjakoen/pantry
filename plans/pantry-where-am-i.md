@@ -284,8 +284,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Slices 1 to 5 and 8 are built; /report renders live with graded findings, notes and What to decide.
-- Next: Shorten the report page, then slice 6 token readers or slice 7 the owner-side review.
-- Waiting on: Tjakoen to pick the next slice and to set sync.dir on the other two machines.
+- Stopped: Slice 6 core: where.ts timelines, handovers, Codex tokens, report section; auto-plan passes account and model.
+- Next: Slice 6 quality signals and what a handover received, or slice 7.
+- Waiting on: Owner consent to push pantry 4fa8aa4 and agent-config de6f6ea.
 - Ended: handoff
-- Left: 2026-11-19T14:08:21.876Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T14:43:39.839Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
