@@ -12,6 +12,7 @@
 // the container sees it; a worktree outside the mounted code root is invisible to it, and the tool
 // says so rather than checking the wrong tree.
 
+import { hostname } from "node:os";
 import { join } from "node:path";
 import { projectFor, type HubProject, type Registry } from "./hub.ts";
 import { PANTRY_PREFIX } from "./preview.ts";
@@ -73,7 +74,11 @@ export const TOOLS = [
     description: "Claim a ready plan before starting it, so no other session takes it. A session handed an owner answer claims it the same way with planId answer:<id>. Then set the plan's status to doing in its file. Heartbeat every 10 minutes while working.",
     inputSchema: {
       type: "object",
-      properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string", description: "Your session id." }, tool: { type: "string", enum: ["claude", "codex"] } },
+      properties: {
+        ...pathArg, planId: { type: "string" }, sessionId: { type: "string", description: "Your session id." }, tool: { type: "string", enum: ["claude", "codex", "dsh"] },
+        model: { type: "string", description: "The model you are running as, e.g. claude-opus-5-5. Recorded so the plan's history shows which model did the work." },
+        account: { type: "string", description: "Optional: the name of your harness config directory (e.g. .claude or .claude-work), which tells a personal account from a work one." },
+      },
       required: ["path", "planId", "sessionId", "tool"],
     },
   },
@@ -216,7 +221,7 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
       const answers = await unreadAnswers(p.path, decisions, planId, foldClaims(await readClaims(file), Date.now(), ttlMs(), doneInFile));
       return text(JSON.stringify({ ...(r.value as object), ...answers }, null, 2));
     };
-    if (name === "pantry_claim") return withAnswers(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool")), str("planId"));
+    if (name === "pantry_claim") return withAnswers(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool"), { machine: hostname(), model: str("model"), account: str("account") }), str("planId"));
     if (name === "pantry_heartbeat") return withAnswers(await updateClaim(ctx, str("planId"), str("sessionId"), "heartbeat"), str("planId"));
     const outcome = str("outcome");
     if (outcome !== "done" && outcome !== "released") return text("outcome must be done or released", true);

@@ -68,6 +68,16 @@ describe("fold", () => {
 });
 
 describe("claims on disk", () => {
+  test("a claim records where it ran, and a claim without it still reads", async () => {
+    const c = ctx([plan("a"), plan("b")]);
+    const r = await claimPlan(c, "a", "s1", "dsh", { machine: "air", model: " deepseek-v4 ", account: "", });
+    expect(r.ok && r.value.where).toEqual({ machine: "air", model: "deepseek-v4" });
+    const plain = await claimPlan(c, "b", "s2", "claude");
+    expect(plain.ok && plain.value.where).toBeUndefined();
+    const lines = await readClaims(c.file);
+    expect(foldClaims(lines, T0, H).get("a")?.where).toEqual({ machine: "air", model: "deepseek-v4" });
+  });
+
   test("twenty concurrent claims for one plan produce exactly one", async () => {
     const c = ctx([plan("a")]);
     const results = await Promise.all(Array.from({ length: 20 }, (_, i) => claimPlan(c, "a", `s${i}`, "codex")));

@@ -154,8 +154,12 @@ Claude Code on a personal account, Claude Code on a work account, Codex and DSH 
 The unit is the plan, not the session. Each plan gets a timeline of segments, and each segment
 carries the machine, harness, account, model, start and end, tokens, and how it ended.
 
-- [ ] Record on every claim: machine name, harness, account (the config directory tells personal
-      from work) and model. Do this first; data not recorded now cannot be analysed later.
+- [x] Record on every claim: machine name, harness, account (the config directory tells personal
+      from work) and model. Do this first; data not recorded now cannot be analysed later. The
+      machine is filled by the hub; model and account are optional pantry_claim arguments, and dsh
+      is now a claim tool beside claude and codex.
+- [ ] Have agent-config's auto-plan hook pass model and account when it claims, so chat plans carry
+      them too.
 - [ ] Token readers per harness that emit one shape: Claude Code transcripts (usage.ts already
       reads them), Codex session logs, DSH's API usage. A harness that reports nothing shows as
       unknown, never as an estimate.
@@ -171,6 +175,28 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       such as a plan that stalled on limits three times.
 - [ ] Work stays on the work machine: detail from the work account and from Edge-adjacent projects is
       kept local, and only totals travel through agent-config.
+
+### Slice 7: an AI reading of the owner's side
+
+The reports so far tell the owner what agents did. The loop also needs the reverse: an agent reading
+the same data and flagging where the owner's side is the bottleneck or has drifted. The report data
+is served to agents in the same shape the page renders, through PANTRY's MCP server and GRAIN's AI
+interface contract, so the page and the agent read one source.
+
+- [ ] Serve the report as structured data: a pantry_read surface named report, with the same
+      findings, evidence and actions the /report page shows.
+- [ ] A review pass an agent runs on request or weekly, writing findings into the report under its
+      own heading, never into plans or decisions:
+      - a recorded decision that contradicts a plan's stated goal or a standard, quoted side by side;
+      - a human gate that has blocked work for more than a set number of days, or that blocks more
+        plans than it unblocks;
+      - worktrees idle for more than a set number of days, branches merged but not deleted, and
+        claims released without their plan returned to todo;
+      - plans marked doing with no claim and no commit for a week.
+- [ ] Each finding names its evidence and offers one action the owner can take, such as answer,
+      unblock, archive the worktree or park the plan. The agent recommends; it never acts on the
+      owner's gate.
+- [ ] Thresholds live in configuration, so a one-project user can turn the pass off or tune it.
 
 ## Keeping PANTRY modular for other people
 

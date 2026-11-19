@@ -21,10 +21,21 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export const CLAIM_TOOLS = ["claude", "codex"] as const;
+export const CLAIM_TOOLS = ["claude", "codex", "dsh"] as const;
 export type ClaimTool = (typeof CLAIM_TOOLS)[number];
 export type ClaimEvent = "claim" | "heartbeat" | "release" | "done";
 export type ClaimState = "active" | "expired" | "released" | "done" | "stale-done";
+
+/** Where a claim ran, recorded on the claim line so a plan's history can say which machine, harness,
+ *  account and model did each stretch of it. The machine is the hub's host, since one hub serves one
+ *  machine; account and model come from the claiming session, because only it knows them. Every field
+ *  is optional so lines written before this existed still read. */
+export interface ClaimWhere {
+  machine?: string;
+  /** the config directory's name, which tells a personal Claude account from a work one */
+  account?: string;
+  model?: string;
+}
 
 export interface ClaimLine {
   project: string;
@@ -33,6 +44,7 @@ export interface ClaimLine {
   tool: ClaimTool;
   at: string;
   event: ClaimEvent;
+  where?: ClaimWhere;
 }
 
 export interface ClaimView {
@@ -42,6 +54,7 @@ export interface ClaimView {
   claimedAt: string;
   lastAt: string;
   state: ClaimState;
+  where?: ClaimWhere;
 }
 
 /** The minimal shape the orchestrator needs from a PROOF plan, so tests need no PROOF fixtures. */
@@ -86,7 +99,7 @@ export function foldClaims(lines: ClaimLine[], now: number, ttl: number, doneInF
   for (const l of lines) {
     const cur = views.get(l.planId);
     if (l.event === "claim") {
-      views.set(l.planId, { planId: l.planId, sessionId: l.sessionId, tool: l.tool, claimedAt: l.at, lastAt: l.at, state: "active" });
+      views.set(l.planId, { planId: l.planId, sessionId: l.sessionId, tool: l.tool, claimedAt: l.at, lastAt: l.at, state: "active", ...(l.where ? { where: l.where } : {}) });
     } else if (cur && cur.sessionId === l.sessionId) {
       cur.lastAt = l.at;
       cur.state = l.event === "heartbeat" ? "active" : l.event === "release" ? "released" : "done";
@@ -207,7 +220,18 @@ export function answerOwner(answerId: string, decisionRef: string, decisions: De
   return null;
 }
 
-export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, tool: string): Promise<Result<ClaimView>> {
+/** Keep only short, non-empty strings: these fields are labels, never content. */
+function cleanWhere(w: ClaimWhere | undefined): ClaimWhere | undefined {
+  if (!w) return undefined;
+  const out: ClaimWhere = {};
+  for (const k of ["machine", "account", "model"] as const) {
+    const v = typeof w[k] === "string" ? w[k]!.trim().slice(0, 80) : "";
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, tool: string, where?: ClaimWhere): Promise<Result<ClaimView>> {
   return serialized(ctx.file, async () => {
     if (!(CLAIM_TOOLS as readonly string[]).includes(tool)) return { ok: false, error: `tool must be one of: ${CLAIM_TOOLS.join(", ")}` };
     if (!sessionId) return { ok: false, error: "sessionId is required" };
@@ -221,8 +245,9 @@ export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, 
       const held = views.get(planId);
       if (blocks(held, doneInFile)) return { ok: false, error: `${planId} is already held by ${held!.tool} ${held!.sessionId}; leave it to that session` };
       const at = new Date(now).toISOString();
-      await append(ctx.file, { project: ctx.project, planId, sessionId, tool: tool as ClaimTool, at, event: "claim" });
-      return { ok: true, value: { planId, sessionId, tool: tool as ClaimTool, claimedAt: at, lastAt: at, state: "active" } };
+      const w = cleanWhere(where);
+      await append(ctx.file, { project: ctx.project, planId, sessionId, tool: tool as ClaimTool, at, event: "claim", ...(w ? { where: w } : {}) });
+      return { ok: true, value: { planId, sessionId, tool: tool as ClaimTool, claimedAt: at, lastAt: at, state: "active", ...(w ? { where: w } : {}) } };
     }
     const { ready, skipped } = readyPlans(ctx.plans, ctx.decisions, views, now);
     if (!ready.some((r) => r.id === planId)) {
@@ -230,8 +255,9 @@ export function claimPlan(ctx: ClaimContext, planId: string, sessionId: string, 
       return { ok: false, error: skip ? `${planId} is not ready: ${skip.reasons.join("; ")}` : `${planId} is not a todo plan in ${ctx.project}` };
     }
     const at = new Date(now).toISOString();
-    await append(ctx.file, { project: ctx.project, planId, sessionId, tool: tool as ClaimTool, at, event: "claim" });
-    return { ok: true, value: { planId, sessionId, tool: tool as ClaimTool, claimedAt: at, lastAt: at, state: "active" } };
+    const w = cleanWhere(where);
+    await append(ctx.file, { project: ctx.project, planId, sessionId, tool: tool as ClaimTool, at, event: "claim", ...(w ? { where: w } : {}) });
+    return { ok: true, value: { planId, sessionId, tool: tool as ClaimTool, claimedAt: at, lastAt: at, state: "active", ...(w ? { where: w } : {}) } };
   });
 }
 
