@@ -309,8 +309,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Hub home rebuilt on GRAIN dashboards: tiles, queue rows, project grid.
-- Next: Dashboards treatment for each project's command center; what a handover received.
-- Waiting on: Owner consent to push the hub home commit.
+- Stopped: Hub home Your work board built: five columns, cards, GRAIN drawers.
+- Next: Propose a board component to GRAIN; dashboards for the project command center; what a handover received.
+- Waiting on: Owner consent to push the board commit.
 - Ended: handoff
-- Left: 2026-11-19T19:07:40.378Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T19:12:34.379Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
