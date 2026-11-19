@@ -39,6 +39,8 @@
     "timeline-page.ts",
     "artifacts.ts",
     "brief.ts",
+    "hub-sync.ts",
+    "resume.ts",
     "brief-routes.ts",
     "capture.ts",
     "certify.ts",

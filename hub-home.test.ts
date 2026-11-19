@@ -7,7 +7,7 @@ import { worktreeMain } from "./hub.ts";
 import { assembleBrief } from "./brief.ts";
 
 const NOW = "2026-11-05T12:00:00.000Z";
-const sum = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], ...over });
+const sum = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], ...over });
 const r = (name: string, over: Partial<HubRow> = {}): HubRow => ({ name, path: `/p/${name}`, url: `http://localhost:4401/`, up: true, summary: sum(), ...over });
 
 describe("hub home", () => {

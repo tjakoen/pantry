@@ -12,6 +12,7 @@
 // the container sees it; a worktree outside the mounted code root is invisible to it, and the tool
 // says so rather than checking the wrong tree.
 
+import { END_REASONS, writeCard, type EndReason } from "./resume.ts";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { projectFor, type HubProject, type Registry } from "./hub.ts";
@@ -89,10 +90,19 @@ export const TOOLS = [
   },
   {
     name: "pantry_release",
-    description: "End your claim: outcome done when the plan is finished (also set status: done in the plan file), released when you are handing it back unfinished.",
+    description: "End your claim: outcome done when the plan is finished (also set status: done in the plan file), released when you are handing it back unfinished. When releasing unfinished, leave a resume card (stopped, next, waitingOn, reason) so the next session, on any machine or harness, starts from it. A session ending on a usage limit passes reason limit and resumeAt.",
     inputSchema: {
       type: "object",
-      properties: { ...pathArg, planId: { type: "string" }, sessionId: { type: "string" }, outcome: { type: "string", enum: ["done", "released"] } },
+      properties: {
+        ...pathArg, planId: { type: "string" }, sessionId: { type: "string" }, outcome: { type: "string", enum: ["done", "released"] },
+        stopped: { type: "string", description: "Resume card: where the work stopped, one sentence." },
+        next: { type: "string", description: "Resume card: the next concrete step." },
+        waitingOn: { type: "string", description: "Resume card: what or who it waits on, or nothing." },
+        reason: { type: "string", enum: ["limit", "handoff", "blocked", "other"], description: "Resume card: why the session is ending." },
+        resumeAt: { type: "string", description: "Resume card: ISO time the work can continue, for reason limit." },
+        tool: { type: "string", enum: ["claude", "codex", "dsh"] },
+        model: { type: "string" },
+      },
       required: ["path", "planId", "sessionId", "outcome"],
     },
   },
@@ -219,13 +229,26 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
       if (!r.ok) return reply(r);
       const doneInFile = new Set(plans.filter((x) => x.status === "done").map((x) => x.id));
       const answers = await unreadAnswers(p.path, decisions, planId, foldClaims(await readClaims(file), Date.now(), ttlMs(), doneInFile));
-      return text(JSON.stringify({ ...(r.value as object), ...answers }, null, 2));
+      const card = plans.find((x) => x.id === planId)?.card;
+      return text(JSON.stringify({ ...(r.value as object), ...(card ? { resumeCard: card } : {}), ...answers }, null, 2));
     };
     if (name === "pantry_claim") return withAnswers(await claimPlan(ctx, str("planId"), str("sessionId"), str("tool"), { machine: hostname(), model: str("model"), account: str("account") }), str("planId"));
     if (name === "pantry_heartbeat") return withAnswers(await updateClaim(ctx, str("planId"), str("sessionId"), "heartbeat"), str("planId"));
     const outcome = str("outcome");
     if (outcome !== "done" && outcome !== "released") return text("outcome must be done or released", true);
-    return reply(await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release"));
+    const released = await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release");
+    // The card is written only after the claim check passes, so a session can leave one only on a
+    // plan it held, and only into that plan's own file.
+    if (released.ok && outcome === "released" && str("stopped") && str("next")) {
+      const plan = plans.find((x) => x.id === str("planId"));
+      const reason = (END_REASONS as readonly string[]).includes(str("reason")) ? (str("reason") as EndReason) : "other";
+      if (plan?.file) {
+        const by = [str("tool") || "a session", str("model") && `(${str("model")})`, `on ${hostname()}`].filter(Boolean).join(" ");
+        writeCard(plan.file, { stopped: str("stopped"), next: str("next"), waitingOn: str("waitingOn"), reason, ...(str("resumeAt") ? { resumeAt: str("resumeAt") } : {}), at: new Date().toISOString(), by });
+        return text(JSON.stringify({ ...(released.value as object), card: "written" }, null, 2));
+      }
+    }
+    return reply(released);
   }
   if (name === "pantry_doctor") {
     const proc = Bun.spawn(["bun", deps.cli ?? join(import.meta.dir, "cli.ts"), "doctor"], { cwd: p.path, stdout: "pipe", stderr: "pipe" });

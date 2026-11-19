@@ -17,6 +17,7 @@
 //   done, < 24h, plan file not yet done        done        blocks
 //   done, >= 24h, plan file not yet done       stale-done  does not block
 
+import { cardOf, type ResumeCard } from "./resume.ts";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -69,6 +70,8 @@ export interface PlanLike {
   file?: string;
   /** ISO date from the plan's `resume:` frontmatter. Before it, the plan is snoozed. */
   resume?: string;
+  /** the card the last session left, from the plan's Resume card section */
+  card?: ResumeCard | null;
 }
 export interface DecisionLike { id: string; status: string; blocks: string[] }
 
@@ -119,7 +122,7 @@ export function blocks(view: ClaimView | undefined, doneInFile: Set<string>): bo
   return view.state === "done" && !doneInFile.has(view.planId);
 }
 
-export interface Offer { id: string; title: string; file?: string; touches: string[] }
+export interface Offer { id: string; title: string; file?: string; touches: string[]; card?: ResumeCard }
 export interface Skip { id: string; title: string; reasons: string[] }
 
 /** Ready plans in board order (ascending id, as PROOF's renderBoard sorts a column), and every
@@ -160,7 +163,7 @@ export function readyPlans(plans: PlanLike[], decisions: DecisionLike[], claims:
       if (hit) reasons.push(`touches ${hit}, held by ${other.id} (${oc.tool} ${oc.sessionId.slice(0, 8)})`);
     }
     if (reasons.length) skipped.push({ id: p.id, title: p.title, reasons });
-    else ready.push({ id: p.id, title: p.title, file: p.file, touches: p.touches });
+    else ready.push({ id: p.id, title: p.title, file: p.file, touches: p.touches, ...(p.card ? { card: p.card } : {}) });
   }
   return { ready, skipped };
 }
@@ -306,6 +309,7 @@ export async function loadProjectWork(projectPath: string): Promise<{ plans: Pla
     ownerError: lp.errors.some((e) => e.field === "owner"),
     file: join(config.plansDir, `${lp.plan.id}.md`),
     resume: resumeOf(lp.raw),
+    card: cardOf(lp.raw),
   }));
   const decisions = (await buildDecisionsPayload(config, new Date().toISOString())).decisions
     .map((d) => ({ id: d.id, status: d.status, blocks: d.blocks }));

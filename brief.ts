@@ -12,6 +12,7 @@
  * text to copy, usually a prompt written for the agent, because the owner's usual move on a
  * misaligned row is to tell the agent what to do about it.
  */
+import { pausedUntil } from "./resume.ts";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ResolvedPantryConfig } from "./config.ts";
@@ -54,6 +55,9 @@ export interface BriefAgent {
   startedAt: string;
   lastSeenAt: string;
 }
+
+/** A plan waiting on a usage limit, with the card its last session left. */
+export interface PausedRow { planId: string; title: string; until: string; next: string }
 
 export interface InFlightRow {
   /** null for the row that gathers sessions attached to no plan */
@@ -119,6 +123,8 @@ export interface BriefPayload {
   generated: string;
   project: string;
   inFlight: InFlightRow[];
+  /** plans whose last session ended on a usage limit that has not yet reset */
+  paused: PausedRow[];
   waiting: WaitingRow[];
   drift: DriftRow[];
   next: NextRow;
@@ -287,7 +293,11 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
     actions: [{ label: "Copy session brief", kind: "copy", value: answerHandoff(a) }, { label: "Copy prompt", kind: "copy", value: a.composed || `The owner answered ${a.request.ref} (${a.request.question}): ${a.choice || "see note"}.${a.notes ? ` Note: ${a.notes}` : ""} Act on it, then run: pantry answers ack ${a.id}` }],
   }));
 
-  return { generated: input.now, project: input.project, inFlight, waiting, drift, next, answered, notes };
+  const paused: PausedRow[] = input.plans.flatMap((p) => {
+    const until = pausedUntil(p.card ?? null, Date.parse(input.now));
+    return until && p.status !== "done" ? [{ planId: p.id, title: p.title, until, next: p.card!.next }] : [];
+  });
+  return { generated: input.now, project: input.project, inFlight, paused, waiting, drift, next, answered, notes };
 }
 
 function toBriefSession(s: SessionRow): BriefSession {

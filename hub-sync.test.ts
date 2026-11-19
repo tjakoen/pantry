@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { machineSlug, readOthers, staleMachines, STATE_FILE, STATE_HEARTBEAT_MS, writeState, type MachineState } from "./hub-sync.ts";
 import { waitingBand, type HubRow, type HubSummary } from "./hub-home.ts";
 
-const sum = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], ...over });
+const sum = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], ...over });
 const row = (name: string, over: Partial<HubRow> = {}): HubRow => ({ name, path: `/p/${name}`, url: "http://localhost:4401/", up: true, summary: sum(), ...over });
 const item = { kind: "decision", title: "Pick a name", detail: "Blocks a.", label: "Answer", path: "/decisions/d1" };
 const T = new Date("2026-11-19T08:00:00.000Z");

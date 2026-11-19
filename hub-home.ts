@@ -45,7 +45,11 @@ export interface HubSummary {
   lastSeenAt: string | null;
   /** the waiting rows themselves, so the hub can say what waits and not only how many */
   items: HubItem[];
+  /** plans being worked, and plans paused on a usage limit, for the In flight band */
+  threads: HubThread[];
 }
+
+export interface HubThread { title: string; state: "active" | "paused"; who: string | null; until: string | null; next: string | null; path: string }
 
 /** One thing waiting on the owner, with the address inside its project that acts on it. */
 export interface HubItem { kind: string; title: string; detail: string; label: string; path: string }
@@ -64,7 +68,13 @@ export function summarize(b: BriefPayload): HubSummary {
     return { kind: w.kind, title: w.title, detail: w.detail, label: link?.label ?? "Open", path: link?.value ?? "/" };
   });
   const nextTitle = b.next.ready?.title ?? null;
+  const pausedIds = new Set((b.paused ?? []).map((p) => p.planId));
+  const threads: HubThread[] = [
+    ...b.inFlight.filter((r) => r.planId && !pausedIds.has(r.planId)).map((r) => ({ title: r.title, state: "active" as const, who: r.claim && r.claim.state === "active" ? r.claim.tool : null, until: null, next: null, path: `/plan/${encodeURIComponent(r.planId!)}` })),
+    ...(b.paused ?? []).map((p) => ({ title: p.title, state: "paused" as const, who: null, until: p.until, next: p.next, path: `/plan/${encodeURIComponent(p.planId)}` })),
+  ];
   return {
+    threads,
     items,
     live: unique.filter((s) => s.state !== "ended").length,
     agentsRunning: unique.reduce((n, s) => n + (s.agents ?? []).filter((a) => a.state === "running").length, 0),
@@ -138,6 +148,19 @@ function stat(n: number, label: string, href: string, loud = false): string {
   return n ? `<a class="hub-stat${loud ? " is-loud" : " is-some"}" href="${href}"><strong>${n}</strong> ${label}</a>` : "";
 }
 
+/** Every plan being worked or paused on a limit, one line each. Paused lines say when they can
+ *  resume and what the card says comes next, so a thread waiting on a reset stops looking dead. */
+export function inFlightBand(rows: HubRow[], now = Date.now()): string {
+  const lines = rows.flatMap((r) => (r.summary?.threads ?? []).map((t) => ({ r, t })));
+  if (!lines.length) return "";
+  const when = (iso: string) => { const m = Math.round((Date.parse(iso) - now) / 60_000); return m < 60 ? `in ${Math.max(m, 1)}m` : m < 48 * 60 ? `in ${Math.round(m / 60)}h` : `on ${iso.slice(0, 10)}`; };
+  const li = lines.map(({ r, t }) => {
+    const state = t.state === "paused" ? `Paused, resumes ${when(t.until!)}` : t.who ? `Active, ${e(t.who)}` : "Doing, unclaimed";
+    return `<li class="hub-item${t.state === "paused" ? " is-paused" : ""}"><span class="hub-item__kind">${state}</span><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(t.title)}</span>${t.next ? `<span class="hub-item__detail">Next: ${e(t.next)}</span>` : ""}<a class="hub-item__act" href="${e(r.url.replace(/\/$/, "") + t.path)}">Open plan</a></li>`;
+  }).join("");
+  return `<section class="hub-band" aria-labelledby="hub-flight"><h2 id="hub-flight">In flight <span class="hub-meta">${lines.length}</span></h2><ul class="hub-items">${li}</ul></section>`;
+}
+
 /** Every waiting item across every project, one line each, above the project list. Drift and
  *  out-of-scope writes stay off this band: they are an agent's diagnostics, read in the project. */
 export function waitingBand(rows: HubRow[], others: MachineState[] = [], now = Date.now()): string {
@@ -199,6 +222,7 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
     <p class="cc-meta">${rows.length} registered · ${live} live session(s) · ${waiting} item(s) waiting on you. Each row is read from that project's command center and refreshes every minute.</p>
   </header>
   ${rows.length || others.length ? waitingBand(rows, others, now) : ""}
+  ${inFlightBand(rows, now)}
   ${rows.length ? `<h2 class="hub-list-title">Projects</h2>` : ""}
   ${body}
 </main>

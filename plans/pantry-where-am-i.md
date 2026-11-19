@@ -107,12 +107,20 @@ projects behind a toggle and zero counters not rendered at all.
 
 ### Slice 3: threads that survive a token reset
 
-- [ ] When a session ends, the finish gate writes a resume card on its plan: where it stopped, what
-      is next, what it waits on. Three lines.
-- [ ] A session ended by a usage limit marks its thread paused with the expected resume time.
-- [ ] pantry_orient returns the resume card first, so the next session on any machine or harness
-      starts from it.
-- [ ] Render the In flight band from threads, with the paused state.
+- [x] A session handing a plan back leaves a resume card through pantry_release: where it stopped,
+      what is next, what it waits on, why it ended and, for a usage limit, when it can resume. The
+      card is a section in the plan file, so it travels with the plan to every machine. Built in
+      resume.ts.
+- [x] The finish gate in agent-config names every PANTRY plan the session still holds at its finish
+      signal and asks for a release with a card.
+- [x] pantry_claim returns the plan's card, and pantry_next offers carry it, so the next session on
+      any machine or harness starts from it.
+- [x] A card that ended on a limit with a future resume time marks the plan paused; the hub's In
+      flight band lists active and paused plans, with the resume time and the card's next step.
+- [ ] A session cut off by a usage limit cannot write its own card. Detect the limit in a Stop or
+      SessionEnd hook and write a minimal limit card from the hook, with the reset time if the
+      harness reports one.
+- [ ] Have pantry_orient lead with the cards of plans the session is likely to resume.
 
 ### Slice 4: what did we learn
 
