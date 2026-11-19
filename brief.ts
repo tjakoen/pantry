@@ -12,6 +12,7 @@
  * text to copy, usually a prompt written for the agent, because the owner's usual move on a
  * misaligned row is to tell the agent what to do about it.
  */
+import type { Explainer } from "./learn.ts";
 import { pausedUntil } from "./resume.ts";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -57,6 +58,9 @@ export interface BriefAgent {
 }
 
 /** A plan waiting on a usage limit, with the card its last session left. */
+export interface LearnedRow { planId: string; title: string; explainer: Explainer }
+export const LEARNED_DAYS = 7;
+
 export interface PausedRow { planId: string; title: string; until: string; next: string }
 
 export interface InFlightRow {
@@ -125,6 +129,8 @@ export interface BriefPayload {
   inFlight: InFlightRow[];
   /** plans whose last session ended on a usage limit that has not yet reset */
   paused: PausedRow[];
+  /** plans closed in the last LEARNED_DAYS days with the explainer their closing session wrote */
+  learned: LearnedRow[];
   waiting: WaitingRow[];
   drift: DriftRow[];
   next: NextRow;
@@ -297,7 +303,12 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
     const until = pausedUntil(p.card ?? null, Date.parse(input.now));
     return until && p.status !== "done" ? [{ planId: p.id, title: p.title, until, next: p.card!.next }] : [];
   });
-  return { generated: input.now, project: input.project, inFlight, paused, waiting, drift, next, answered, notes };
+  const since = Date.parse(input.now) - LEARNED_DAYS * 86_400_000;
+  const learned: LearnedRow[] = input.plans
+    .filter((p) => p.status === "done" && p.explainer && Date.parse(p.explainer.at) >= since)
+    .map((p) => ({ planId: p.id, title: p.title, explainer: p.explainer! }))
+    .toSorted((a, b) => b.explainer.at.localeCompare(a.explainer.at));
+  return { generated: input.now, project: input.project, inFlight, paused, learned, waiting, drift, next, answered, notes };
 }
 
 function toBriefSession(s: SessionRow): BriefSession {

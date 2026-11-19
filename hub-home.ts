@@ -6,6 +6,7 @@
 // The brief runs the doctor's fast checks and reads git, which is cheap once and expensive eighteen
 // times at once: probing every project in parallel once pinned the container's CPU. So the fetches
 // run a few at a time and each result is cached for HUB_BRIEF_TTL_MS.
+import { explainPrompt } from "./learn.ts";
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
 import { STYLESHEETS } from "./chrome.ts";
@@ -47,7 +48,11 @@ export interface HubSummary {
   items: HubItem[];
   /** plans being worked, and plans paused on a usage limit, for the In flight band */
   threads: HubThread[];
+  /** plans closed this week with their explainer */
+  learned: HubLearned[];
 }
+
+export interface HubLearned { planId: string; title: string; topic: string; changed: string; why: string; dropped: string; remember: string; at: string; path: string }
 
 export interface HubThread { title: string; state: "active" | "paused"; who: string | null; until: string | null; next: string | null; path: string }
 
@@ -73,7 +78,9 @@ export function summarize(b: BriefPayload): HubSummary {
     ...b.inFlight.filter((r) => r.planId && !pausedIds.has(r.planId)).map((r) => ({ title: r.title, state: "active" as const, who: r.claim && r.claim.state === "active" ? r.claim.tool : null, until: null, next: null, path: `/plan/${encodeURIComponent(r.planId!)}` })),
     ...(b.paused ?? []).map((p) => ({ title: p.title, state: "paused" as const, who: null, until: p.until, next: p.next, path: `/plan/${encodeURIComponent(p.planId)}` })),
   ];
+  const learned: HubLearned[] = (b.learned ?? []).map((l) => ({ planId: l.planId, title: l.title, ...l.explainer, path: `/plan/${encodeURIComponent(l.planId)}` }));
   return {
+    learned,
     threads,
     items,
     live: unique.filter((s) => s.state !== "ended").length,
@@ -146,6 +153,18 @@ const ago = (iso: string | null, now: number) => {
 /** A counter renders only when it counts something: twenty rows of zeros gave the eye nothing to land on. */
 function stat(n: number, label: string, href: string, loud = false): string {
   return n ? `<a class="hub-stat${loud ? " is-loud" : " is-some"}" href="${href}"><strong>${n}</strong> ${label}</a>` : "";
+}
+
+/** Plans closed this week, grouped by topic and folded, each with what changed, why, what was
+ *  dropped and the one thing to remember, plus an Explain this button that copies a prompt a session
+ *  can teach from. Folded by default: this is for learning when there is time, not a call to act. */
+export function learnedBand(rows: HubRow[]): string {
+  const all = rows.flatMap((r) => (r.summary?.learned ?? []).map((l) => ({ r, l })));
+  if (!all.length) return "";
+  const topics = new Map<string, typeof all>();
+  for (const x of all) topics.set(x.l.topic, [...(topics.get(x.l.topic) ?? []), x]);
+  const groups = [...topics].map(([topic, xs]) => `<h3 class="hub-topic">${e(topic)}</h3><ul class="hub-items">${xs.map(({ r, l }) => `<li class="hub-learned"><div class="hub-learned__head"><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(l.title)}</span><span class="hub-item__where">${e(l.at.slice(0, 10))}</span></div><dl><dt>Changed</dt><dd>${e(l.changed)}</dd><dt>Why</dt><dd>${e(l.why)}</dd><dt>Dropped</dt><dd>${e(l.dropped)}</dd><dt>Remember</dt><dd>${e(l.remember)}</dd></dl><div class="hub-learned__acts"><a class="hub-item__act" href="${e(r.url.replace(/\/$/, "") + l.path)}">Open plan</a><button type="button" class="hub-item__act" data-copy="${e(explainPrompt(r.name, l.planId, l.title))}">Copy Explain this prompt</button></div></li>`).join("")}</ul>`).join("");
+  return `<details class="hub-band"><summary><h2 id="hub-learned">Done this week <span class="hub-meta">${all.length}</span></h2></summary>${groups}</details>`;
 }
 
 /** What the menu bar shows: the count, the top items with where they open, paused plans, and one
@@ -246,10 +265,12 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   </header>
   ${rows.length || others.length ? waitingBand(rows, others, now) : ""}
   ${inFlightBand(rows, now)}
+  ${learnedBand(rows)}
   ${rows.length ? `<h2 class="hub-list-title">Projects</h2>` : ""}
   ${body}
 </main>
 ${styleBase ? `<script src="${e(styleBase)}/scripts/theme.js" defer></script>` : ""}
+<script>document.addEventListener("click", (ev) => { const b = ev.target.closest("[data-copy]"); if (!b) return; navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy Explain this prompt"; }, 1500); }).catch(() => {}); });</script>
 </body>
 </html>`;
 }

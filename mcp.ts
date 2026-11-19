@@ -12,6 +12,7 @@
 // the container sees it; a worktree outside the mounted code root is invisible to it, and the tool
 // says so rather than checking the wrong tree.
 
+import { writeExplainer } from "./learn.ts";
 import { END_REASONS, writeCard, type EndReason } from "./resume.ts";
 import { hostname } from "node:os";
 import { join } from "node:path";
@@ -90,7 +91,7 @@ export const TOOLS = [
   },
   {
     name: "pantry_release",
-    description: "End your claim: outcome done when the plan is finished (also set status: done in the plan file), released when you are handing it back unfinished. When releasing unfinished, leave a resume card (stopped, next, waitingOn, reason) so the next session, on any machine or harness, starts from it. A session ending on a usage limit passes reason limit and resumeAt.",
+    description: "End your claim: outcome done when the plan is finished (also set status: done in the plan file), released when you are handing it back unfinished. When releasing unfinished, leave a resume card (stopped, next, waitingOn, reason) so the next session, on any machine or harness, starts from it. A session ending on a usage limit passes reason limit and resumeAt. When finishing (outcome done), leave an explainer for the owner: topic, changed, why, dropped, remember.",
     inputSchema: {
       type: "object",
       properties: {
@@ -100,6 +101,11 @@ export const TOOLS = [
         waitingOn: { type: "string", description: "Resume card: what or who it waits on, or nothing." },
         reason: { type: "string", enum: ["limit", "handoff", "blocked", "other"], description: "Resume card: why the session is ending." },
         resumeAt: { type: "string", description: "Resume card: ISO time the work can continue, for reason limit." },
+        topic: { type: "string", description: "Explainer, with outcome done: a short topic to group it under, e.g. hub or sync." },
+        changed: { type: "string", description: "Explainer: what the plan changed, for the owner, in a sentence or two." },
+        why: { type: "string", description: "Explainer: why it was done this way." },
+        dropped: { type: "string", description: "Explainer: what was tried or considered and dropped." },
+        remember: { type: "string", description: "Explainer: the one thing worth remembering." },
         tool: { type: "string", enum: ["claude", "codex", "dsh"] },
         model: { type: "string" },
       },
@@ -239,6 +245,14 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
     const released = await updateClaim(ctx, str("planId"), str("sessionId"), outcome === "done" ? "done" : "release");
     // The card is written only after the claim check passes, so a session can leave one only on a
     // plan it held, and only into that plan's own file.
+    if (released.ok && outcome === "done" && str("changed") && str("why") && str("remember")) {
+      const plan = plans.find((x) => x.id === str("planId"));
+      if (plan?.file) {
+        const by = [str("tool") || "a session", str("model") && `(${str("model")})`, `on ${hostname()}`].filter(Boolean).join(" ");
+        writeExplainer(plan.file, { topic: str("topic"), changed: str("changed"), why: str("why"), dropped: str("dropped"), remember: str("remember"), at: new Date().toISOString(), by });
+        return text(JSON.stringify({ ...(released.value as object), explainer: "written" }, null, 2));
+      }
+    }
     if (released.ok && outcome === "released" && str("stopped") && str("next")) {
       const plan = plans.find((x) => x.id === str("planId"));
       const reason = (END_REASONS as readonly string[]).includes(str("reason")) ? (str("reason") as EndReason) : "other";

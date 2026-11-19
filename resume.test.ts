@@ -47,7 +47,7 @@ describe("resume cards", () => {
 
   test("plans marked doing that nobody holds are counted in one line, not listed", () => {
     const t = (title: string, who: string | null) => ({ title, state: "active" as const, who, until: null, next: null, path: "/plan/x" });
-    const row: HubRow = { name: "p", path: "/p", url: "http://localhost:4402/", up: true, summary: { live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [t("Held", "codex"), t("Stale one", null), t("Stale two", null)] } };
+    const row: HubRow = { name: "p", path: "/p", url: "http://localhost:4402/", up: true, summary: { live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], learned: [], threads: [t("Held", "codex"), t("Stale one", null), t("Stale two", null)] } };
     const html = inFlightBand([row], Date.parse(NOW));
     expect(html).toContain("Active, codex");
     expect(html).not.toContain("Stale one");

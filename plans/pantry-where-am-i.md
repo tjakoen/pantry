@@ -124,16 +124,17 @@ projects behind a toggle and zero counters not rendered at all.
 
 ### Slice 4: what did we learn
 
-- [ ] When a plan closes, the session writes a short explainer for the owner: what changed, why,
-      what was tried and dropped, the one thing worth remembering. Five lines at most, kept in the
-      plan file under its own heading.
-- [ ] Render Done since you last looked from closed plans and their explainers, folded by default.
-- [ ] Group explainers by topic into pages that grow as work lands, such as how the loop enforces
-      itself. A topic page that keeps growing is offered to create-note as a note candidate.
-- [ ] An Explain this button on any thread or topic opens a session with its explainers, plans and
-      diffs loaded, to answer questions at whatever depth he asks for.
-- [ ] Optional, off by default: a weekly recap that suggests one or two threads worth understanding
-      properly.
+- [x] A session closing a plan writes an explainer through pantry_release with outcome done: a
+      topic, what changed, why, what was dropped, and the one thing worth remembering. It is a What
+      we learned section in the plan file, so it travels with the plan. Built in learn.ts.
+- [x] The hub shows Done this week, folded by default and grouped by topic, each plan with its four
+      lines. A week stands in for "since you last looked", because the page refreshes itself every
+      minute and a visit is hard to tell from a refresh.
+- [x] An Explain this button copies a prompt that has a session read the plan, its explainer and
+      card, and the commits, then teach at whatever depth is asked, changing nothing.
+- [x] The finish gate asks for the explainer when it asks a session to release a plan as done.
+- [ ] Topic pages that grow as work lands, across weeks, and offer a growing topic to create-note.
+- [ ] Optional, off by default: a weekly recap that suggests one or two threads worth understanding.
 
 ### Slice 5: the report page
 

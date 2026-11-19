@@ -17,6 +17,7 @@
 //   done, < 24h, plan file not yet done        done        blocks
 //   done, >= 24h, plan file not yet done       stale-done  does not block
 
+import { explainerOf, type Explainer } from "./learn.ts";
 import { cardOf, type ResumeCard } from "./resume.ts";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -72,6 +73,8 @@ export interface PlanLike {
   resume?: string;
   /** the card the last session left, from the plan's Resume card section */
   card?: ResumeCard | null;
+  /** what the closing session wrote for the owner, from the plan's What we learned section */
+  explainer?: Explainer | null;
 }
 export interface DecisionLike { id: string; status: string; blocks: string[] }
 
@@ -310,6 +313,7 @@ export async function loadProjectWork(projectPath: string): Promise<{ plans: Pla
     file: join(config.plansDir, `${lp.plan.id}.md`),
     resume: resumeOf(lp.raw),
     card: cardOf(lp.raw),
+    explainer: explainerOf(lp.raw),
   }));
   const decisions = (await buildDecisionsPayload(config, new Date().toISOString())).decisions
     .map((d) => ({ id: d.id, status: d.status, blocks: d.blocks }));

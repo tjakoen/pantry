@@ -7,7 +7,7 @@ import { worktreeMain } from "./hub.ts";
 import { assembleBrief } from "./brief.ts";
 
 const NOW = "2026-11-05T12:00:00.000Z";
-const sum = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], ...over });
+const sum = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], learned: [], ...over });
 const r = (name: string, over: Partial<HubRow> = {}): HubRow => ({ name, path: `/p/${name}`, url: `http://localhost:4401/`, up: true, summary: sum(), ...over });
 
 describe("hub home", () => {
@@ -75,7 +75,7 @@ describe("hub home", () => {
 
 describe("tray summary", () => {
   const { trayPayload } = require("./hub-home.ts") as typeof import("./hub-home.ts");
-  const S = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], ...over });
+  const S = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], learned: [], ...over });
   const it = (title: string) => ({ kind: "decision", title, detail: "", label: "Answer", path: `/decisions/${title}` });
   const NOW = Date.parse("2026-11-19T08:00:00.000Z");
 

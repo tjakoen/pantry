@@ -731,6 +731,16 @@
 .hub-item__act { grid-column: 4; grid-row: 1; min-height: 24px; display: inline-flex; align-items: center; padding: 0 var(--space-2); border: 1px solid var(--ink-muted); border-radius: 4px; color: var(--ink); text-decoration: none; white-space: nowrap; }
 .hub-item__act:hover { border-color: var(--ink); }
 .hub-item__where { grid-column: 4; grid-row: 1; font-size: var(--text-xs); color: var(--ink-muted); white-space: nowrap; }
+.hub-band > summary { cursor: pointer; list-style: none; }
+.hub-band > summary h2 { display: inline-flex; }
+.hub-topic { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); margin: var(--space-3) 0 var(--space-1); }
+.hub-learned { padding: var(--space-2) 0; border-bottom: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); font-size: var(--text-sm); }
+.hub-learned__head { display: flex; gap: var(--space-3); align-items: baseline; }
+.hub-learned dl { display: grid; grid-template-columns: 6rem 1fr; gap: var(--space-1) var(--space-3); margin: var(--space-2) 0; }
+.hub-learned dt { color: var(--ink-muted); }
+.hub-learned dd { margin: 0; }
+.hub-learned__acts { display: flex; gap: var(--space-2); }
+button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .hub-stale { font-size: var(--text-sm); color: var(--ink-muted); margin: var(--space-2) 0 0; }
 @media (max-width: 720px) { .hub-item { grid-template-columns: 1fr auto; } .hub-item__kind, .hub-item__project, .hub-item__title, .hub-item__detail { grid-column: 1; } .hub-item__act { grid-column: 2; } }
 
