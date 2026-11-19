@@ -20,7 +20,7 @@ import { PANTRY_PREFIX } from "./preview.ts";
 
 export interface HubProject { name: string; path: string; port: number }
 /** sync: optional. A folder another tool keeps in sync across machines; see hub-sync.ts. */
-export interface Registry { hubPort: number; projects: HubProject[]; sync?: { dir: string; machine?: string } }
+export interface Registry { hubPort: number; projects: HubProject[]; sync?: { dir: string; machine?: string }; review?: import("./owner.ts").ReviewConfig }
 
 export const DEFAULT_HUB_PORT = 4400;
 
@@ -222,7 +222,7 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         const target = to && to.startsWith("/") && !to.startsWith("//") ? new URL(to, base).toString() : home;
         return Response.redirect(target, 302);
       }
-      if (url.pathname === "/report") {
+      if (url.pathname === "/report" || url.pathname === "/report.json") {
         const { buildReport, periodStart, reportPage } = await import("./report.ts");
         const since = periodStart(url.searchParams);
         const statuses = await Promise.all(reg.projects.map(status));
@@ -250,7 +250,10 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         const segs = segmentsOf(reg.projects.flatMap((p) => { try { return parseLines(readFileSync(claimsFile(pantryHome, p.name), "utf8")); } catch { return []; } }));
         const sinceMs = Date.parse(since);
         const codex = readCodexSessions(join(homedir(), ".codex", "sessions"), sinceMs).filter((c) => projectOfCwd(c.cwd, reg.projects));
-        const report = { ...buildReport(inputs, since), where: buildWhere(segs, sinceMs, codex, null) };
+        const { gitFacts, latestReview, ownerFindings, reviewPrompt } = await import("./owner.ts");
+        const yourSide = ownerFindings(inputs.filter((i) => i.brief), gitFacts, reg.review);
+        const report = { ...buildReport(inputs, since), where: buildWhere(segs, sinceMs, codex, null), yourSide, review: latestReview(pantryHome), reviewPrompt: reg.review?.off ? "" : reviewPrompt(pantryHome) };
+        if (url.pathname === "/report.json") return Response.json(report);
         return new Response(reportPage(report, styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       if (url.pathname === "/tray.json") {

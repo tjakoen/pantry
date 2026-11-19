@@ -44,6 +44,7 @@
     "learn.ts",
     "report.ts",
     "where.ts",
+    "owner.ts",
     "brief-routes.ts",
     "capture.ts",
     "certify.ts",

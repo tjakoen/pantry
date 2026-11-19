@@ -39,6 +39,10 @@ export interface Report {
   paused: number;
   down: string[];
   where?: WhereReport;
+  /** the owner's side: mechanical findings, the latest agent review, and the prompt that asks for one */
+  yourSide?: Finding[];
+  review?: { text: string; at: string } | null;
+  reviewPrompt?: string;
 }
 
 /** What the report reads from one project. Any piece may be missing; the report says so. */
@@ -197,6 +201,18 @@ export function whereSection(w: WhereReport | undefined): string {
 <h3>Handovers <span class="hub-meta">${w.handovers.length}${w.handovers.length ? `, ${landed} finished later` : ""}</span></h3>${hand ? `<ul>${hand}</ul>` : `<p class="cc-empty">No plan moved between machines or harnesses in this period.</p>`}</section>`;
 }
 
+/** The owner's side. The agent's review is shown as text it wrote, apart from the mechanical findings. */
+export function yourSideSection(r: Report, card: (f: Finding) => string): string {
+  if (!r.yourSide && !r.reviewPrompt) return "";
+  const fs = r.yourSide ?? [];
+  const review = r.review ? `<details class="rp-review"><summary>An agent's reading, written ${e(r.review.at.slice(0, 10))}</summary><pre>${e(r.review.text)}</pre></details>` : `<p class="hub-meta">No agent has reviewed your side yet.</p>`;
+  return `<section class="hub-band"><h2>Your side <span class="hub-meta">${fs.length}</span></h2>
+<p class="hub-meta">Where the owner is the bottleneck or left something behind. Each line recommends; none of them acts.</p>
+${fs.length ? `<ul class="rp-findings">${fs.filter((f) => f.severity !== "low").toSorted((a, b) => (a.severity === "high" ? -1 : 0) - (b.severity === "high" ? -1 : 0)).map(card).join("")}${fs.some((f) => f.severity === "low") ? `<details class="rp-low-group"><summary>${fs.filter((f) => f.severity === "low").length} low finding(s)</summary>${fs.filter((f) => f.severity === "low").map(card).join("")}</details>` : ""}</ul>` : `<p class="cc-empty">Nothing waits on you past its threshold.</p>`}
+${review}
+${r.reviewPrompt ? `<p><button type="button" data-copy-review>Copy the review prompt</button></p><textarea id="rp-review-prompt" hidden>${e(r.reviewPrompt)}</textarea>` : ""}</section>`;
+}
+
 const SEV_CLASS: Record<Severity, string> = { high: "rp-high", medium: "rp-med", low: "rp-low" };
 
 export function reportPage(r: Report, styleBase: string): string {
@@ -240,13 +256,15 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
   <div class="rp-tiles">${tile(commits, "commits")}${tile(r.projects.length, "projects moved")}${tile(r.decide.length, "waiting on you")}${tile(high, "high findings")}${tile(r.paused, "paused on a limit")}${tile(drafts, "draft notes")}</div>
   ${r.down.length ? `<p class="hub-stale">Not read, because their PANTRY did not answer: ${r.down.map(e).join(", ")}.</p>` : ""}
   <section class="hub-band"><h2>Findings <span class="hub-meta">${r.findings.length}</span></h2>${findings ? `<ul class="rp-findings">${findings}</ul>` : `<p class="cc-empty">No finding with evidence and an action in this period.</p>`}</section>
+  ${yourSideSection(r, card)}
   ${whereSection(r.where)}
   <section class="hub-band"><h2>By project</h2>${sections || `<p class="cc-empty">No commits or closed plans in this period.</p>`}</section>
   ${r.notes.length ? `<section class="hub-band"><h2>Notes <span class="hub-meta">${r.notes.length}</span></h2><table class="rp-table"><thead><tr><th>Note</th><th>Status</th><th>Date</th><th>Words</th><th>Figures</th><th>Social</th><th>Issue</th></tr></thead><tbody>${noteRows}</tbody></table></section>` : ""}
   <section class="hub-band"><h2>What to decide <span class="hub-meta">${r.decide.length}</span></h2>${decide ? `<ol class="rp-decide">${decide}</ol>` : `<p class="cc-empty">Nothing is waiting on you.</p>`}</section>
   <textarea id="rp-md" hidden>${e(md)}</textarea>
 </main>
-<script>document.querySelector("[data-copy-md]")?.addEventListener("click", (ev) => { const b = ev.currentTarget; navigator.clipboard?.writeText(document.getElementById("rp-md").value).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy as Markdown"; }, 1500); }).catch(() => {}); });</script>
+<script>document.querySelector("[data-copy-review]")?.addEventListener("click", (ev) => { const b = ev.currentTarget; navigator.clipboard?.writeText(document.getElementById("rp-review-prompt").value).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy the review prompt"; }, 1500); }).catch(() => {}); });
+document.querySelector("[data-copy-md]")?.addEventListener("click", (ev) => { const b = ev.currentTarget; navigator.clipboard?.writeText(document.getElementById("rp-md").value).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy as Markdown"; }, 1500); }).catch(() => {}); });</script>
 ${styleBase ? `<script src="${e(styleBase)}/scripts/theme.js" defer></script>` : ""}
 </body>
 </html>`;

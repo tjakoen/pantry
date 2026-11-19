@@ -199,9 +199,9 @@ the same data and flagging where the owner's side is the bottleneck or has drift
 is served to agents in the same shape the page renders, through PANTRY's MCP server and GRAIN's AI
 interface contract, so the page and the agent read one source.
 
-- [ ] Serve the report as structured data: a pantry_read surface named report, with the same
+- [x] Serve the report as structured data: a pantry_read surface named report, with the same
       findings, evidence and actions the /report page shows.
-- [ ] A review pass an agent runs on request or weekly, writing findings into the report under its
+- [x] A review pass an agent runs on request or weekly, writing findings into the report under its
       own heading, never into plans or decisions:
       - a recorded decision that contradicts a plan's stated goal or a standard, quoted side by side;
       - a human gate that has blocked work for more than a set number of days, or that blocks more
@@ -209,10 +209,15 @@ interface contract, so the page and the agent read one source.
       - worktrees idle for more than a set number of days, branches merged but not deleted, and
         claims released without their plan returned to todo;
       - plans marked doing with no claim and no commit for a week.
-- [ ] Each finding names its evidence and offers one action the owner can take, such as answer,
+
+      The mechanical half (waiting gates, idle worktrees, merged branches, quiet doing plans) runs
+      on every report in owner.ts. The judgement half is a prompt the report copies; the agent
+      writes ~/.pantry/reviews/latest.md and the report shows it under its own heading. A weekly
+      schedule for it, and claims released without their plan returned to todo, are still open.
+- [x] Each finding names its evidence and offers one action the owner can take, such as answer,
       unblock, archive the worktree or park the plan. The agent recommends; it never acts on the
       owner's gate.
-- [ ] Thresholds live in configuration, so a one-project user can turn the pass off or tune it.
+- [x] Thresholds live in configuration, so a one-project user can turn the pass off or tune it.
 
 ### Slice 8: give the menu bar and the Claude pane a purpose
 

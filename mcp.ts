@@ -26,7 +26,7 @@ import {
 
 export const MCP_PROTOCOL_VERSION = "2025-06-18";
 
-const SURFACES = ["brief", "knowledge", "decisions", "answers", "runs", "timeline", "artifacts", "map", "usage"] as const;
+const SURFACES = ["brief", "knowledge", "decisions", "answers", "runs", "timeline", "artifacts", "map", "usage", "report"] as const;
 
 const pathArg = {
   path: { type: "string", description: "An absolute directory inside the project, normally your working directory." },
@@ -209,6 +209,13 @@ export async function callTool(name: string, args: Json, reg: Registry, deps: {
   if (name === "pantry_read") {
     const surface = String(args.surface ?? "");
     if (!(SURFACES as readonly string[]).includes(surface)) return text(`surface must be one of: ${SURFACES.join(", ")}`, true);
+    // The report spans every project, so it comes from the hub rather than this project's server.
+    if (surface === "report") {
+      try {
+        const hub = await fetch(`http://127.0.0.1:${reg.hubPort ?? 4400}/report.json?days=7`, { signal: AbortSignal.timeout(30_000) });
+        return hub.ok ? text(await hub.text()) : text(`the hub answered ${hub.status} for /report.json`, true);
+      } catch { return text("the hub did not answer for /report.json", true); }
+    }
     const body = await fetchSurface(p, `/${surface}.json`);
     return body ? text(body) : text(`${p.name} did not serve /${surface}.json (surface off, or PANTRY not answering).`, true);
   }
