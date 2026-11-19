@@ -14,7 +14,8 @@ import { join } from "node:path";
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
 import type { RunsPayload } from "./runs.ts";
-import { STYLESHEETS, themeSwitch, themeSyncTag } from "./chrome.ts";
+import { STYLESHEETS, themeSyncTag } from "./chrome.ts";
+import { hubShell } from "./hub-home.ts";
 import { WHERE_MIN_N, type WhereReport } from "./where.ts";
 
 export type Severity = "high" | "medium" | "low";
@@ -298,7 +299,8 @@ export function qualitySection(r: Report): string {
 
 const SEV_CLASS: Record<Severity, string> = { high: "rp-high", medium: "rp-med", low: "rp-low" };
 
-export function reportPage(r: Report, styleBase: string): string {
+export function reportPage(r: Report, styleBase: string, projects: { name: string; url: string; up?: boolean }[] = []): string {
+  const shell = hubShell("report", projects);
   const links = styleBase ? STYLESHEETS.map((h) => `<link rel="stylesheet" href="${e(styleBase + h)}">`).join("\n  ") : "";
   const commits = r.projects.reduce((n, p) => n + p.commits, 0);
   const high = r.findings.filter((f) => f.severity === "high").length;
@@ -328,11 +330,12 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Report · PANTRY</title>
   ${styleBase ? `<script src="${e(styleBase)}/scripts/theme-boot.js"></script>` : ""}
+  ${shell.head}
   ${links}
   ${themeSyncTag()}
 </head>
 <body class="pantry-body" data-grade="smooth">
-<nav class="pantry-nav hub-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-nav__links"><span class="hub-meta">Report</span>${themeSwitch()}</span></nav>
+${shell.side}
 <main class="pantry-main">
 <div class="dash" data-surface="dashboard:report">
   <header class="dash__head">

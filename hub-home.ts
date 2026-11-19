@@ -9,7 +9,7 @@
 import { explainPrompt } from "./learn.ts";
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
-import { STYLESHEETS, themeSwitch, themeSyncTag } from "./chrome.ts";
+import { SIDE_MODE_BOOT, STYLESHEETS, themeSwitch, themeSyncTag } from "./chrome.ts";
 import { STATE_STALE_MS, type MachineState } from "./hub-sync.ts";
 
 export const HUB_BRIEF_TTL_MS = 30_000;
@@ -149,6 +149,26 @@ const ago = (iso: string | null, now: number) => {
   const m = Math.round((now - Date.parse(iso)) / 60_000);
   return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 48 * 60 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
+
+/** The sidebar every PANTRY page wears, for the hub's own pages. A project page builds the same
+ *  shell in chrome.ts; this one lists the hub's views first and every project under them, so moving
+ *  from the hub into a project keeps the frame and changes only the content. */
+export function hubShell(current: "home" | "report", projects: { name: string; url: string; up?: boolean }[]): { head: string; side: string } {
+  const item = (href: string, label: string, icon: string, on: boolean) => on
+    ? `<span class="pantry-side__item is-current" aria-current="page"><span class="pantry-side__icon" aria-hidden="true">${icon}</span>${label}</span>`
+    : `<a class="pantry-side__item" href="${href}"><span class="pantry-side__icon" aria-hidden="true">${icon}</span>${label}</a>`;
+  const list = projects.toSorted((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })).map((p) => `<a class="pantry-side__item${p.up === false ? " is-down" : ""}" href="${e(p.url)}">${e(p.name)}</a>`).join("");
+  return {
+    head: `<script>${SIDE_MODE_BOOT}</script>`,
+    side: `<button type="button" class="pantry-side-toggle" aria-controls="pantry-side" aria-expanded="false" onclick="const o=document.body.classList.toggle('side-open');this.setAttribute('aria-expanded',String(o))">☰ Menu</button>
+<nav class="pantry-nav pantry-side" id="pantry-side" aria-label="PANTRY">
+  <a class="pantry-nav__brand" href="/">PANTRY</a>
+  ${themeSwitch("pantry-nav__theme pantry-nav__theme--top")}
+  <div class="pantry-side__group"><p class="pantry-side__label">Across projects</p>${item("/", "All projects", "◉", current === "home")}${item("/report", "Report", "▤", current === "report")}</div>
+  ${projects.length ? `<div class="pantry-side__group"><p class="pantry-side__label">Projects</p>${list}</div>` : ""}
+</nav>`,
+  };
+}
 
 /** One dash-panel, GRAIN's dashboards layer, with a data-surface address an agent can point at. */
 const panel = (id: string, title: string, count: number | null, body: string, span?: "2" | "full") =>
@@ -311,6 +331,7 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   const links = styleBase ? STYLESHEETS.map((h) => `<link rel="stylesheet" href="${e(styleBase + h)}">`).join("\n  ") : "";
   const live = rows.reduce((n, r) => n + (r.summary?.live ?? 0), 0);
   const waiting = rows.reduce((n, r) => n + (r.summary ? r.summary.waiting + r.summary.answered : 0), 0);
+  const shell = hubShell("home", rows.map((r) => ({ name: r.name, url: r.url, up: r.up })));
   const paused = rows.reduce((n, r) => n + (r.summary?.threads ?? []).filter((t) => t.state === "paused").length, 0);
   const learned = rows.reduce((n, r) => n + (r.summary?.learned ?? []).length, 0);
   const tile = (n: number, label: string, href: string, tone?: "warn") => `<a class="stat" href="${href}" data-surface="stat:${href.slice(1)}"${tone && n ? ` data-tone="${tone}"` : ""}><span class="stat__value">${n}</span><span class="stat__label">${e(label)}</span></a>`;
@@ -324,11 +345,12 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>All projects · PANTRY</title>
   ${styleBase ? `<script src="${e(styleBase)}/scripts/theme-boot.js"></script>` : ""}
+  ${shell.head}
   ${links}
   ${themeSyncTag()}
 </head>
 <body class="pantry-body" data-grade="smooth">
-<nav class="pantry-nav hub-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-nav__links"><a class="hub-meta" href="/report">Report</a>${themeSwitch()}</span></nav>
+${shell.side}
 <main class="pantry-main">
 <div class="dash" data-surface="dashboard:hub">
   <header class="dash__head">

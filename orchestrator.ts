@@ -356,6 +356,25 @@ export async function boardAnnotations(projectPath: string, home: string, projec
 
 /** Insert the labels into PROOF's card markup, right after each card's top row opens. Cards are
  *  matched by their plan link, before or after PANTRY rewrites it to /plans/plan/. */
+/** Make PROOF's board readable at a glance: a card names at most three touched paths and says how
+ *  many more, and the Done column shows its five newest cards with the rest folded behind a count.
+ *  The full lists stay on each plan's page. */
+export const BOARD_TOUCHES_SHOWN = 3;
+export const BOARD_DONE_SHOWN = 5;
+export function trimBoard(html: string): string {
+  let out = html.replace(/<ul class="proof-card__touches">([\s\S]*?)<\/ul>/g, (whole, inner: string) => {
+    const items = inner.match(/<li[\s\S]*?<\/li>/g) ?? [];
+    if (items.length <= BOARD_TOUCHES_SHOWN) return whole;
+    return `<ul class="proof-card__touches">${items.slice(0, BOARD_TOUCHES_SHOWN).join("")}<li class="proof-card__chip proof-card__more">+${items.length - BOARD_TOUCHES_SHOWN} more</li></ul>`;
+  });
+  out = out.replace(/(<section class="proof-col" data-status="done">[\s\S]*?<div class="proof-col__cards">)([\s\S]*?)(<\/div>\s*<\/section>)/, (whole, head: string, cards: string, tail: string) => {
+    const list = cards.match(/<a class="card proof-card"[\s\S]*?<\/a>/g) ?? [];
+    if (list.length <= BOARD_DONE_SHOWN) return whole;
+    return `${head}${list.slice(0, BOARD_DONE_SHOWN).join("\n")}<details class="proof-col__fold"><summary>${list.length - BOARD_DONE_SHOWN} older done plans</summary>${list.slice(BOARD_DONE_SHOWN).join("\n")}</details>${tail}`;
+  });
+  return out;
+}
+
 export function annotateBoard(html: string, notes: Map<string, { kind: string; label: string }>): string {
   if (!notes.size) return html;
   return html.replace(/(href="(?:[^"]*)\/plan\/([^"]+)">\s*<div class="proof-card__top">)/g, (whole, _m, rawId: string) => {

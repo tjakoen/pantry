@@ -20,7 +20,7 @@ import { madeWith } from "@tjakoen/grain/scripts/made-with.js";
 import { createProofRoutes } from "@tjakoen/proof/routes.ts";
 import { watchPlans } from "@tjakoen/proof/live.ts";
 import { briefRoute } from "./brief-routes.ts";
-import { annotateBoard, boardAnnotations, claimsFile } from "./orchestrator.ts";
+import { annotateBoard, boardAnnotations, claimsFile, trimBoard } from "./orchestrator.ts";
 import { watchFile } from "node:fs";
 // CRUMB, carried rather than expected (plans/pantry-review-layer.md P4). PANTRY mounts the tour DATA
 // routes and serves the client + stylesheet as its own assets, so a review can be walked on a project
@@ -461,7 +461,8 @@ export function createPantryHandler(opts: PantryOptions) {
   // the hub's home, and the board shows who holds each plan. Unset under a plain `pantry serve`.
   const claimProject = process.env.PANTRY_PROJECT;
   const claimHome = process.env.PANTRY_HOME;
-  const annotate = async (html: string): Promise<string> => {
+  const annotate = async (raw: string): Promise<string> => {
+    const html = trimBoard(raw);
     if (!claimProject || !claimHome) return html;
     try { return annotateBoard(html, await boardAnnotations(config.cwd ?? dirname(config.plansDir), claimHome, claimProject)); }
     catch { return html; }

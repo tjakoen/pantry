@@ -1074,3 +1074,22 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .pantry-side .pantry-nav__theme--top { margin: 0 0 var(--space-3, 0.75rem); padding: 0 0.5rem; }
 .hub-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3, 0.75rem); }
 .hub-nav__links { display: inline-flex; align-items: center; gap: var(--space-3, 0.75rem); }
+
+/* Board cards: a path chip wraps inside its card instead of running past the edge. */
+.proof-card__chip { overflow-wrap: anywhere; max-width: 100%; }
+.proof-card__more { border-style: dashed; }
+.proof-col__fold > summary { cursor: pointer; color: var(--ink-muted); font-size: var(--text-sm); padding: var(--space-2, 0.5rem) 0; }
+.proof-col__fold[open] > summary { margin-bottom: var(--space-3, 0.75rem); }
+.proof-col__fold > a + a, .proof-col__fold > a { display: block; margin-bottom: var(--space-4, 1rem); }
+
+/* Narrow: tiles stay two or three across, so the first screen shows work, not five boxes. */
+.dash__kpis, .cc-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); }
+@media (max-width: 40rem) {
+  .dash__kpis, .cc-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2, 0.5rem); }
+  .dash__kpis .stat, .cc-tiles .stat { padding: var(--space-2, 0.5rem); }
+  .dash__kpis .stat__value, .cc-tiles .stat__value { font-size: var(--text-lg, 1.25rem); }
+  .dash__kpis .stat__label, .cc-tiles .stat__label { font-size: var(--text-xs); }
+}
+.pantry-side .pantry-side__item.is-down { opacity: 0.55; }
+/* A centred main column inside the sidebar grid shrinks to its content, and a dashboard is a size container with none, so it gets the full width outright. */
+.pantry-body:has(> .pantry-side) > .pantry-main { width: 100%; box-sizing: border-box; }

@@ -266,7 +266,7 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         built.decide = decideQueue(built.decide);
         const report = { ...built, where: buildWhere(segs, sinceMs, codex, null), yourSide, review: latestReview(pantryHome), reviewPrompt: reg.review?.off ? "" : reviewPrompt(pantryHome) };
         if (url.pathname === "/report.json") return Response.json(report);
-        return new Response(reportPage(report, styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        return new Response(reportPage(report, styleBase, statuses.map((s) => ({ name: s.name, url: s.url, up: s.up }))), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
       // One theme choice for the whole app: every PANTRY page reads it here and posts changes back,
       // since each project's page is its own origin and localStorage alone would keep it per page.

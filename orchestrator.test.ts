@@ -179,3 +179,15 @@ describe("file overlap and snooze", () => {
     expect(resumeOf("---\nid: a\n---\nresume: 2026-12-01")).toBeUndefined();
   });
 });
+
+import { trimBoard } from "./orchestrator.ts";
+test("the board shows three paths a card and five done plans, folding the rest", () => {
+  const card = (i: number, n: number) => `<a class="card proof-card" data-pad="sm" href="/plan/p${i}">\n  <div class="proof-card__top"></div>${n ? `<ul class="proof-card__touches">${Array.from({ length: n }, (_, k) => `<li class="proof-card__chip">f${k}</li>`).join("")}</ul>` : ""}\n</a>`;
+  const html = `<section class="proof-col" data-status="done">\n  <header></header>\n  <div class="proof-col__cards">${Array.from({ length: 7 }, (_, i) => card(i, i === 0 ? 5 : 0)).join("\n")}</div>\n</section>`;
+  const out = trimBoard(html);
+  expect(out).toContain(`<li class="proof-card__chip proof-card__more">+2 more</li>`);
+  expect(out).not.toContain(">f3<");
+  expect(out).toContain("<summary>2 older done plans</summary>");
+  expect(out.indexOf("p4")).toBeLessThan(out.indexOf("<details"));
+  expect(out.indexOf("p5")).toBeGreaterThan(out.indexOf("<details"));
+});

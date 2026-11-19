@@ -111,7 +111,7 @@ export interface PantryPageOptions {
 // window). It turns on below 28rem wide, or with ?mode=side, and the same URL serves both. This runs
 // in the head, before the stylesheets paint, so the wide layout never flashes first; it also follows
 // the window as it is resized. ?mode=side sticks for the tab through sessionStorage.
-const SIDE_MODE_BOOT = `(()=>{const q=new URLSearchParams(location.search).get("mode");if(q)sessionStorage.setItem("pantry-mode",q);const forced=sessionStorage.getItem("pantry-mode")==="side";const m=matchMedia("(max-width: 28rem)");const set=()=>document.documentElement.classList.toggle("is-side",forced||m.matches);set();m.addEventListener("change",set)})();`;
+export const SIDE_MODE_BOOT = `(()=>{const q=new URLSearchParams(location.search).get("mode");if(q)sessionStorage.setItem("pantry-mode",q);const forced=sessionStorage.getItem("pantry-mode")==="side";const m=matchMedia("(max-width: 28rem)");const set=()=>document.documentElement.classList.toggle("is-side",forced||m.matches);set();m.addEventListener("change",set)})();`;
 
 export function pantryPage(title: string, body: string, surfaces: PantrySurfaces, opts: PantryPageOptions = {}): string {
   // data-themes declares the flavor list theme.js cycles through; the flavors themselves are token

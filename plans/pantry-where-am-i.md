@@ -218,6 +218,12 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       dot in the current accent, and the hub keeps the one choice in ~/.pantry/theme.json, which
       every page reads and writes through theme-sync.js.
 
+- [x] The audit's high findings are fixed: the hub and report wear the project pages' sidebar shell;
+      Working now lists only plans a session holds, with closed claims folded into the finished
+      line and paths shortened to three; plan cards show three paths and a count, and Done folds
+      past five (the plans page went from 13,800 to 3,300 pixels); tiles stay three across on a
+      phone. The sidebar finding was a full-page screenshot artifact: the sidebar is sticky.
+
 ### Slice 7: an AI reading of the owner's side
 
 The reports so far tell the owner what agents did. The loop also needs the reverse: an agent reading

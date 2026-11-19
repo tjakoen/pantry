@@ -76,7 +76,7 @@ function agentCard(r: InFlightRow, now: string): string {
     return `<li class="cc-session ${live}"><span class="cc-dot" aria-hidden="true"></span><code>${e(s.id)}</code> ${e(doing)}</li>${subagents(s.agents, now)}`;
   }).join("") + (shownSessions.length < r.sessions.length ? `<li class="cc-session is-ended">${ended.length} finished</li>` : "");
   const stray = r.outOfScope.length
-    ? `<div class="cc-stray"><strong>${r.planId ? `Wrote ${r.outOfScope.length} file(s) outside the plan` : `Wrote ${r.outOfScope.length} file(s) with no plan`}</strong><ul>${r.outOfScope.slice(0, 6).map((f) => `<li><code>${e(f)}</code></li>`).join("")}${r.outOfScope.length > 6 ? `<li>and ${r.outOfScope.length - 6} more</li>` : ""}</ul>${r.unrecorded ? `<p class="cc-meta">${r.unrecorded} more writes were not recorded.</p>` : ""}</div>`
+    ? `<div class="cc-stray"><strong>${r.planId ? `Wrote ${r.outOfScope.length} file(s) outside the plan` : `Wrote ${r.outOfScope.length} file(s) with no plan`}</strong><ul>${r.outOfScope.slice(0, 3).map((f) => `<li><code title="${e(f)}">${e(shortPath(f))}</code></li>`).join("")}${r.outOfScope.length > 3 ? `<li>and ${r.outOfScope.length - 3} more</li>` : ""}</ul>${r.unrecorded ? `<p class="cc-meta">${r.unrecorded} more writes were not recorded.</p>` : ""}</div>`
     : "";
   const title = r.planId ? `<a href="/plan/${encodeURIComponent(r.planId)}">${e(r.title)}</a>` : e(r.title);
   return `<article class="cc-card${r.outOfScope.length ? " is-alert" : ""}" tabindex="0"${r.planId ? ` data-preview="${e(previewHref("plan", r.planId))}"` : ""}>
@@ -136,7 +136,13 @@ export type BriefView = (typeof VIEWS)[number];
 
 // A row is finished when every session on it has ended and nothing holds it: no live claim and no
 // file written out of scope. Those collapse into one line rather than a card each.
-const isFinished = (r: InFlightRow) => !r.outOfScope.length && r.sessions.length > 0 && r.sessions.every((s) => s.state === "ended") && (!r.claim || r.claim.state !== "active");
+/** A path as a person reads it: repo-relative stays, an absolute one keeps its last two parts. The
+ *  full path stays in the title. */
+export const shortPath = (f: string) => (f.startsWith("/") || f.startsWith("~") ? `…/${f.split("/").filter(Boolean).slice(-2).join("/")}` : f);
+
+// A claim that closed with no session on record is finished too: the live hub listed eleven such
+// plans under Working now, each saying "claude · done", which buried the one plan actually held.
+const isFinished = (r: InFlightRow) => !r.outOfScope.length && r.sessions.every((s) => s.state === "ended") && (r.sessions.length > 0 || !!r.claim) && (!r.claim || r.claim.state !== "active");
 // A card with nothing written in it (no session, no claim, no stray file) says nothing; it is dropped.
 const isEmpty = (r: InFlightRow) => !r.sessions.length && !r.claim && !r.outOfScope.length;
 
