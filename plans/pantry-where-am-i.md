@@ -144,6 +144,65 @@ demand, from the data the other slices already gather, instead of a session rebu
 - [ ] Tests for the finding rule and the period picker; a screenshot beside the 19 November page
       to show it reads the same.
 
+### Slice 6: where the work ran, and how well
+
+Tjakoen wants a record he can learn from later: which machine, harness and model ran each plan,
+what it cost in tokens, how long it took, how long it sat stalled on a usage limit, how a plan
+fared when it moved between machines or harnesses, and some signal of quality. The harnesses are
+Claude Code on a personal account, Claude Code on a work account, Codex and DSH (DeepSeek).
+
+The unit is the plan, not the session. Each plan gets a timeline of segments, and each segment
+carries the machine, harness, account, model, start and end, tokens, and how it ended.
+
+- [ ] Record on every claim: machine name, harness, account (the config directory tells personal
+      from work) and model. Do this first; data not recorded now cannot be analysed later.
+- [ ] Token readers per harness that emit one shape: Claude Code transcripts (usage.ts already
+      reads them), Codex session logs, DSH's API usage. A harness that reports nothing shows as
+      unknown, never as an estimate.
+- [ ] Split each plan's time into active, waiting on the owner, and stalled on limits. Stalled time
+      needs slice 3's record of why a session ended.
+- [ ] Record every handover between machines or harnesses: what the new session received (a resume
+      card, the plan, nothing) and what it did next (continued, redid work, or circled back).
+- [ ] Quality signals, measured and never guessed: gates passing at session end, follow-up fixes a
+      change needed, rework the owner asked for, out-of-scope writes, and work a later session
+      reverted.
+- [ ] A Usage and handovers page and a section in the slice 5 report. Every comparison shows its n
+      and stays silent below about ten. The front page gets an item only when a decision follows,
+      such as a plan that stalled on limits three times.
+- [ ] Work stays on the work machine: detail from the work account and from Edge-adjacent projects is
+      kept local, and only totals travel through agent-config.
+
+## Keeping PANTRY modular for other people
+
+PANTRY is public, and it is now an app, a menu bar item and a hub, not a script. Tjakoen builds it
+for himself first, but the slices above should not weld his estate into the core. The split:
+
+- Core, per project. The plan board, claims, the brief, decisions and the doctor. One project, no
+  hub, no registry, no agent-config. Someone who wants PANTRY on one repository installs this and
+  gets a complete tool.
+- Hub, per machine. The registry, the Waiting on you band, the project list, the report page. It
+  reads each project's brief over HTTP and holds no state of its own, which it already does today.
+- Sync, optional. Cross-machine state through a pluggable transport. The first transport writes
+  files into a folder that something else syncs; agent-config is Tjakoen's folder, and a stranger
+  could point it at Dropbox, iCloud or a git repository of their own. PANTRY never assumes a
+  particular one.
+- Harness adapters, optional. One small reader per harness for sessions and tokens: Claude Code,
+  Codex, DSH. A user with only one harness enables only that one, and adding a harness never touches
+  the core.
+- Shell, optional. The desktop app, the menu bar and the Claude pane sit on top of the hub and add
+  nothing the hub cannot already serve in a browser.
+
+The rules that keep the split honest:
+
+- [ ] Nothing in core imports from hub, sync, adapters or shell. A test fails the build if it does.
+- [ ] Every path and name specific to Tjakoen's machines lives in configuration, never in code: the
+      agent-config path, the machine names, the account folders.
+- [ ] Each optional part is switched on in pantry.config.json or the hub's own config, and the doctor
+      reports which are on.
+- [ ] INSTALL.md gains a one-project quick start that never mentions the hub, sync or adapters.
+- [ ] Slices 2 and 6 are built as a sync transport and harness adapters from the start, not
+      refactored into them afterwards.
+
 ## Done when
 
 Tjakoen can open PANTRY on any of his machines and, within ten seconds, name what is waiting on him
