@@ -76,15 +76,24 @@ export function nav(surfaces: PantrySurfaces, review: boolean, project?: string)
   // name into data-theme-name. PANTRY provides the buttons and owns none of the logic.
   return `<nav class="pantry-nav pantry-side" id="pantry-side" aria-label="PANTRY">
   <a class="pantry-nav__brand" href="/">PANTRY</a>
+  ${themeSwitch("pantry-nav__theme pantry-nav__theme--top")}
   ${projectList(project, hub)}
   <div class="pantry-side__group"><p class="pantry-side__label">Views</p>${views}</div>
   <details class="pantry-side__group pantry-side__more"><summary class="pantry-side__label">More</summary>${more}</details>
-  <span class="pantry-nav__theme">
-    <button type="button" class="pantry-nav__themebtn" data-cycle-theme title="Change flavor"><span data-theme-name>sourdough</span></button>
-    <button type="button" class="pantry-nav__themebtn" data-toggle-scheme title="Light or dark" aria-label="Toggle light and dark">◐</button>
-  </span>
 </nav>`;
 }
+
+/** GRAIN's theme controls, with a dot in the current accent so the choice is visible. theme.js binds
+ *  the buttons; theme-sync.js, served by the hub, carries the choice across every PANTRY page. */
+export function themeSwitch(cls = "pantry-nav__theme"): string {
+  return `<span class="${cls}">
+    <button type="button" class="pantry-nav__themebtn" data-cycle-theme title="Change flavor"><span class="pantry-nav__swatch" aria-hidden="true"></span><span data-theme-name>sourdough</span></button>
+    <button type="button" class="pantry-nav__themebtn" data-toggle-scheme title="Light or dark" aria-label="Toggle light and dark">◐</button>
+  </span>`;
+}
+
+export const HUB_ORIGIN = `http://127.0.0.1:${process.env.PANTRY_HUB_PORT ?? 4400}`;
+export const themeSyncTag = (hub = HUB_ORIGIN) => `<script src="${hub}/theme-sync.js" data-hub="${hub}" defer></script>`;
 
 // The one page shell every PANTRY-owned surface shares. The mounted layers (PROOF, MILL) get this
 // same wrapper injected as their `chrome`, so the host owns the head + asset links everywhere.
@@ -119,6 +128,7 @@ export function pantryPage(title: string, body: string, surfaces: PantrySurfaces
   <script src="/scripts/theme-boot.js"></script>
   <script>${SIDE_MODE_BOOT}</script>
   ${styleLinks}
+  ${themeSyncTag()}
 </head>
 <body class="pantry-body${opts.fullBleed ? " pantry-body--full" : ""}" data-grade="smooth">
   <button type="button" class="pantry-side-toggle" aria-controls="pantry-side" aria-expanded="false" onclick="const o=document.body.classList.toggle('side-open');this.setAttribute('aria-expanded',String(o))">☰ Menu</button>

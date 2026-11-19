@@ -1056,3 +1056,21 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .hub-board .proof-col[data-empty] .proof-col__empty { font-size: var(--text-xs); text-align: left; }
 .hub-board button.proof-card { width: 100%; text-align: left; font: inherit; cursor: pointer; }
 @container (max-width: 48rem) { .hub-board { grid-auto-flow: row; grid-auto-columns: auto; } }
+
+/* The accent marks what needs you, and nothing else. PANTRY never names a hue: the theme does.
+   Sourdough's accent is ink, so it stays hueless; Baguette's is blue, Brioche's amber. */
+.stat[data-tone="warn"] { border-color: var(--color-accent); background: var(--color-accent-soft); }
+.stat[data-tone="warn"] .stat__value { color: var(--color-accent); }
+.hub-board .proof-col:is([data-col="answer"], [data-col="do"]) .proof-card,
+#cc-inbox .cc-card { border-left: 3px solid var(--color-accent); }
+.hub-board .proof-col:is([data-col="answer"], [data-col="do"]) .badge,
+#cc-inbox .cc-tag { background: var(--color-accent-soft); border-color: var(--color-accent); color: var(--ink); }
+.hub-board .proof-col:is([data-col="answer"], [data-col="do"]) .proof-col__count { color: var(--color-accent); font-weight: 700; }
+.rp-decide__row .btn, .drawer .btn { background: var(--color-primary); border-color: var(--color-primary); color: var(--color-primary-contrast); }
+.rp-decide__row .btn:hover, .drawer .btn:hover { background: var(--color-primary-hover); }
+
+/* The theme switch sits at the top, with a dot in the current accent, so the choice is seen. */
+.pantry-nav__swatch { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; background: var(--color-accent); margin-right: 0.4em; vertical-align: -0.05em; box-shadow: 0 0 0 1px var(--hairline); }
+.pantry-side .pantry-nav__theme--top { margin: 0 0 var(--space-3, 0.75rem); padding: 0 0.5rem; }
+.hub-nav { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3, 0.75rem); }
+.hub-nav__links { display: inline-flex; align-items: center; gap: var(--space-3, 0.75rem); }

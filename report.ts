@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
 import type { RunsPayload } from "./runs.ts";
-import { STYLESHEETS } from "./chrome.ts";
+import { STYLESHEETS, themeSwitch, themeSyncTag } from "./chrome.ts";
 import { WHERE_MIN_N, type WhereReport } from "./where.ts";
 
 export type Severity = "high" | "medium" | "low";
@@ -329,9 +329,10 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
   <title>Report · PANTRY</title>
   ${styleBase ? `<script src="${e(styleBase)}/scripts/theme-boot.js"></script>` : ""}
   ${links}
+  ${themeSyncTag()}
 </head>
 <body class="pantry-body" data-grade="smooth">
-<nav class="pantry-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-meta">Report</span></nav>
+<nav class="pantry-nav hub-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-nav__links"><span class="hub-meta">Report</span>${themeSwitch()}</span></nav>
 <main class="pantry-main">
 <div class="dash" data-surface="dashboard:report">
   <header class="dash__head">

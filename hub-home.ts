@@ -9,7 +9,7 @@
 import { explainPrompt } from "./learn.ts";
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
-import { STYLESHEETS } from "./chrome.ts";
+import { STYLESHEETS, themeSwitch, themeSyncTag } from "./chrome.ts";
 import { STATE_STALE_MS, type MachineState } from "./hub-sync.ts";
 
 export const HUB_BRIEF_TTL_MS = 30_000;
@@ -325,9 +325,10 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   <title>All projects · PANTRY</title>
   ${styleBase ? `<script src="${e(styleBase)}/scripts/theme-boot.js"></script>` : ""}
   ${links}
+  ${themeSyncTag()}
 </head>
 <body class="pantry-body" data-grade="smooth">
-<nav class="pantry-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><a class="hub-meta" href="/report">Report</a></nav>
+<nav class="pantry-nav hub-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-nav__links"><a class="hub-meta" href="/report">Report</a>${themeSwitch()}</span></nav>
 <main class="pantry-main">
 <div class="dash" data-surface="dashboard:hub">
   <header class="dash__head">

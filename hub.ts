@@ -268,6 +268,28 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         if (url.pathname === "/report.json") return Response.json(report);
         return new Response(reportPage(report, styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
+      // One theme choice for the whole app: every PANTRY page reads it here and posts changes back,
+      // since each project's page is its own origin and localStorage alone would keep it per page.
+      if (url.pathname === "/theme-sync.js") {
+        return new Response(Bun.file(join(import.meta.dir, "theme-sync.js")), { headers: { "Content-Type": "text/javascript", "Cache-Control": "no-cache" } });
+      }
+      if (url.pathname === "/theme.json") {
+        const origin = req.headers.get("origin") ?? "";
+        const cors: Record<string, string> = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) ? { "Access-Control-Allow-Origin": origin, Vary: "Origin" } : {};
+        const file = join(process.env.PANTRY_HOME ?? join(homedir(), ".pantry"), "theme.json");
+        if (req.method === "POST") {
+          if (!cors["Access-Control-Allow-Origin"] && origin) return new Response("origin not allowed", { status: 403 });
+          try {
+            const body = JSON.parse(await req.text()) as { theme?: unknown; scheme?: unknown };
+            const pick = (v: unknown, ok: string[]) => (typeof v === "string" && ok.includes(v) ? v : null);
+            writeFileSync(file, JSON.stringify({ theme: pick(body.theme, ["sourdough", "baguette", "brioche"]), scheme: pick(body.scheme, ["light", "dark"]) }));
+          } catch { return new Response("bad theme", { status: 400, headers: cors }); }
+          return new Response(null, { status: 204, headers: cors });
+        }
+        let pref = { theme: null, scheme: null };
+        try { pref = JSON.parse(readFileSync(file, "utf8")); } catch { /* no choice saved yet */ }
+        return Response.json(pref, { headers: { ...cors, "Cache-Control": "no-store" } });
+      }
       if (url.pathname === "/tray.json") {
         const { hubRows, trayPayload } = await import("./hub-home.ts");
         const rows = await hubRows(await Promise.all(reg.projects.map(status)), 2_000);

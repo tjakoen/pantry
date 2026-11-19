@@ -212,6 +212,12 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       drawer with the detail, the plans it holds and one action. The reload skips while a drawer is
       open. A shared board component belongs in GRAIN; PANTRY borrows PROOF's until one exists.
 
+- [x] Colour follows the theme. The accent marks only what needs you (warn tiles, the Answer and Do
+      columns, the Needs you cards, each row's action button), and the theme picks its hue:
+      Sourdough stays hueless, Baguette is blue, Brioche amber. The switch sits at the top with a
+      dot in the current accent, and the hub keeps the one choice in ~/.pantry/theme.json, which
+      every page reads and writes through theme-sync.js.
+
 ### Slice 7: an AI reading of the owner's side
 
 The reports so far tell the owner what agents did. The loop also needs the reverse: an agent reading
