@@ -304,8 +304,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: What to decide rebuilt as a ranked, merged queue with one action per row.
-- Next: Dashboards treatment for the hub home and command center; what a handover received.
-- Waiting on: Owner consent to push the decide-queue commit.
+- Stopped: Hub home rebuilt on GRAIN dashboards: tiles, queue rows, project grid.
+- Next: Dashboards treatment for each project's command center; what a handover received.
+- Waiting on: Owner consent to push the hub home commit.
 - Ended: handoff
-- Left: 2026-11-19T18:56:52.634Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T19:07:40.378Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
