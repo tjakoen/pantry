@@ -46,3 +46,13 @@ test("a stretch with no recorded machine is not a handover", () => {
   expect(segs[1].machine).toBe("air");
   expect(handoversOf(segs)).toEqual([]);
 });
+
+test("a claim after a done reopens the plan, counted against the harness that said done", () => {
+  const segs = segmentsOf([
+    L("r", "s1", "codex", "2026-11-19T08:00:00Z", "claim"), L("r", "s1", "codex", "2026-11-19T08:30:00Z", "done"),
+    L("r", "s2", "claude", "2026-11-19T10:00:00Z", "claim"), L("r", "s2", "claude", "2026-11-19T10:30:00Z", "done"),
+  ]);
+  const w = buildWhere(segs, 0, [], null);
+  expect(w.outcomes.find((o) => o.key === "codex")).toEqual({ key: "codex", done: 1, released: 0, reopened: 1 });
+  expect(w.outcomes.find((o) => o.key === "claude")?.reopened).toBe(0);
+});

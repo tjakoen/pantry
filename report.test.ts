@@ -47,3 +47,12 @@ describe("report", () => {
     expect(r.notes.find((n) => n.slug === "p")).toMatchObject({ figures: 1, social: true, issue: "" });
   });
 });
+
+import { isFix, isRevert, qualitySection } from "./report.ts";
+test("fixes and reverts are read from the subject, and rates stay hidden under ten", () => {
+  expect(["🐛 Fix the tray", "fix: x", "✨ Add a fix list", "🚑 Hotfix"].map(isFix)).toEqual([true, true, false, true]);
+  expect(isRevert('Revert "x"')).toBe(true);
+  const html = qualitySection({ projects: [{ name: "p", url: "", commits: 4, fixes: 1, reverts: 0, outOfScope: 2, subjects: [], closed: [], lastRun: null }] } as any);
+  expect(html).toContain("<td>p</td><td>4</td><td>1</td>");
+  expect(html).not.toContain("%)");
+});

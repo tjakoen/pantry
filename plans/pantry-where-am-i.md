@@ -182,9 +182,11 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       card, the plan, nothing) and what it did next (continued, redid work, or circled back). Moves
       and whether the plan was later finished are on the report; what the new session received is
       still open.
-- [ ] Quality signals, measured and never guessed: gates passing at session end, follow-up fixes a
+- [x] Quality signals, measured and never guessed: gates passing at session end, follow-up fixes a
       change needed, rework the owner asked for, out-of-scope writes, and work a later session
-      reverted.
+      reverted. Built: fixes and reverts per project from commit subjects, off-plan writes, last
+      run gates, and per harness the plans done, handed back and reopened. Rework the owner asked
+      for has no record to read yet and is left out rather than guessed.
 - [x] A Usage and handovers page and a section in the slice 5 report. Every comparison shows its n
       and stays silent below about ten. The front page gets an item only when a decision follows,
       such as a plan that stalled on limits three times.

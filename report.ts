@@ -25,6 +25,11 @@ export interface ProjectReport {
   name: string;
   url: string;
   commits: number;
+  /** commits in the period whose subject marks a fix or a revert, read from the gitmoji or the word */
+  fixes: number;
+  reverts: number;
+  /** files written outside every in-flight plan's touches */
+  outOfScope: number;
   subjects: string[];
   closed: { title: string; changed: string; remember: string }[];
   lastRun: { id: string; date: string | null; gates: number; failed: number } | null;
@@ -56,6 +61,8 @@ export interface ProjectInput {
 }
 
 const DAY = 86_400_000;
+export const isFix = (subject: string) => /^(🐛|🚑|🩹)|^\W*(fix|hotfix)\b/i.test(subject);
+export const isRevert = (subject: string) => /^(⏪)|^\W*revert\b/i.test(subject);
 export const DRAFT_PILE = 5;
 export const DRAFT_STALE_DAYS = 14;
 
@@ -143,6 +150,9 @@ export function buildReport(inputs: ProjectInput[], since: string, now = Date.no
       name: p.name,
       url: p.url,
       commits: p.log.length,
+      fixes: p.log.filter(isFix).length,
+      reverts: p.log.filter(isRevert).length,
+      outOfScope: b.inFlight.reduce((n, r) => n + r.outOfScope.length, 0),
       subjects: p.log.slice(0, 5),
       closed: (b.learned ?? []).filter((l) => Date.parse(l.explainer.at) >= sinceMs).map((l) => ({ title: l.title, changed: l.explainer.changed, remember: l.explainer.remember })),
       lastRun: last ? { id: last.id, date: last.date ?? null, gates: last.gates.length, failed } : null,
@@ -213,6 +223,21 @@ ${review}
 ${r.reviewPrompt ? `<p><button type="button" data-copy-review>Copy the review prompt</button></p><textarea id="rp-review-prompt" hidden>${e(r.reviewPrompt)}</textarea>` : ""}</section>`;
 }
 
+/** Quality, measured and never guessed. Rates stay hidden below WHERE_MIN_N, as on the section above. */
+export function qualitySection(r: Report): string {
+  const ps = r.projects.filter((p) => p.commits);
+  const outs = r.where?.outcomes ?? [];
+  if (!ps.length && !outs.length) return "";
+  const rate = (k: number, n: number) => (n < WHERE_MIN_N ? `${k}` : `${k} (${Math.round((100 * k) / n)}%)`);
+  const rows = ps.map((p) => `<tr><td>${e(p.name)}</td><td>${p.commits}</td><td>${rate(p.fixes, p.commits)}</td><td>${rate(p.reverts, p.commits)}</td><td>${p.outOfScope}</td><td>${!p.lastRun ? "no run" : p.lastRun.gates ? `${p.lastRun.gates - p.lastRun.failed} of ${p.lastRun.gates}` : "no gates recorded"}</td></tr>`).join("");
+  const done = outs.reduce((n, x) => n + x.done, 0);
+  const orow = outs.map((x) => `<tr><td>${e(x.key)}</td><td>${x.done}</td><td>${x.released}</td><td>${rate(x.reopened, x.done)}</td></tr>`).join("");
+  return `<section class="hub-band"><h2>Quality <span class="hub-meta">n = ${ps.reduce((n, p) => n + p.commits, 0)} commits, ${done} plans done</span></h2>
+<p class="hub-meta">A fix or revert is read from the commit subject's gitmoji or first word. Reopened means a later session claimed a plan another had called done. Writes outside a plan come from the session logs. Percentages show from ${WHERE_MIN_N} cases up.</p>
+<div class="rp-where">${ps.length ? `<div><h3>By project</h3><table class="rp-table"><thead><tr><th>Project</th><th>Commits</th><th>Fixes</th><th>Reverts</th><th>Off-plan writes</th><th>Last run gates</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}
+${outs.length ? `<div><h3>By harness</h3><table class="rp-table"><thead><tr><th>Harness</th><th>Done</th><th>Handed back</th><th>Reopened</th></tr></thead><tbody>${orow}</tbody></table></div>` : ""}</div></section>`;
+}
+
 const SEV_CLASS: Record<Severity, string> = { high: "rp-high", medium: "rp-med", low: "rp-low" };
 
 export function reportPage(r: Report, styleBase: string): string {
@@ -258,6 +283,7 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
   <section class="hub-band"><h2>Findings <span class="hub-meta">${r.findings.length}</span></h2>${findings ? `<ul class="rp-findings">${findings}</ul>` : `<p class="cc-empty">No finding with evidence and an action in this period.</p>`}</section>
   ${yourSideSection(r, card)}
   ${whereSection(r.where)}
+  ${qualitySection(r)}
   <section class="hub-band"><h2>By project</h2>${sections || `<p class="cc-empty">No commits or closed plans in this period.</p>`}</section>
   ${r.notes.length ? `<section class="hub-band"><h2>Notes <span class="hub-meta">${r.notes.length}</span></h2><table class="rp-table"><thead><tr><th>Note</th><th>Status</th><th>Date</th><th>Words</th><th>Figures</th><th>Social</th><th>Issue</th></tr></thead><tbody>${noteRows}</tbody></table></section>` : ""}
   <section class="hub-band"><h2>What to decide <span class="hub-meta">${r.decide.length}</span></h2>${decide ? `<ol class="rp-decide">${decide}</ol>` : `<p class="cc-empty">Nothing is waiting on you.</p>`}</section>

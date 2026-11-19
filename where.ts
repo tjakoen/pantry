@@ -54,6 +54,8 @@ export interface WhereReport {
   stalledMs: number;
   handovers: Handover[];
   tokens: { tool: string; tokens: number | null; sessions: number }[];
+  /** per harness: stretches that finished a plan, that handed it back, and plans a later session had to reopen after one said done */
+  outcomes: { key: string; done: number; released: number; reopened: number }[];
 }
 
 /** Below this many stretches the report shows counts only, because a share of five says nothing. */
@@ -184,7 +186,19 @@ export function buildWhere(segs: Segment[], since: number, codex: CodexSession[]
     if (tool === "claude") return { tool, tokens: claudeTokens, sessions };
     return { tool, tokens: null, sessions };
   });
+  // A plan reopened is a claim on it after an earlier session called it done; the reopening counts
+  // against the harness that said done, since that is the claim the later session corrected.
+  const outcomes = new Map<string, { done: number; released: number; reopened: number }>();
+  const o = (k: string) => outcomes.get(k) ?? (outcomes.set(k, { done: 0, released: 0, reopened: 0 }), outcomes.get(k)!);
+  for (const s of inPeriod) { if (s.end === "done") o(s.tool).done++; if (s.end === "release") o(s.tool).released++; }
+  for (const list of byPlan.values()) {
+    for (let i = 1; i < list.length; i++) {
+      const earlier = list.slice(0, i).filter((x) => x.end === "done").at(-1);
+      if (earlier && list[i - 1] === earlier) o(earlier.tool).reopened++;
+    }
+  }
   return {
+    outcomes: [...outcomes].map(([key, v]) => ({ key, ...v })).sort((a, b) => b.done - a.done),
     segments: inPeriod.length,
     byTool: group((s) => s.tool),
     byMachine: group((s) => s.machine),
