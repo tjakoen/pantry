@@ -1049,3 +1049,5 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .is-side .cc-pane.is-open { position: absolute; inset: 0 0 auto 0; max-height: none; z-index: 2; min-height: 100%; }
 .is-side .cc-layout:has(.cc-pane.is-open) .cc-center { visibility: hidden; }
 .rp-review pre{white-space:pre-wrap;font:inherit}
+#projects .hub-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,20rem),1fr));gap:var(--space-3);}
+#projects .hub-list > li{margin:0}

@@ -150,6 +150,10 @@ const ago = (iso: string | null, now: number) => {
   return m < 1 ? "just now" : m < 60 ? `${m}m ago` : m < 48 * 60 ? `${Math.round(m / 60)}h ago` : `${Math.round(m / 1440)}d ago`;
 };
 
+/** One dash-panel, GRAIN's dashboards layer, with a data-surface address an agent can point at. */
+const panel = (id: string, title: string, count: number | null, body: string, span?: "2" | "full") =>
+  `<section class="dash-panel" id="${id}" data-surface="panel:${id}"${span ? ` data-span="${span}"` : ""}><header class="dash-panel__head"><h3 class="dash-panel__title" id="hub-${id}">${e(title)}${count !== null ? ` <span class="hub-meta">${count}</span>` : ""}</h3></header>${body}</section>`;
+
 /** A counter renders only when it counts something: twenty rows of zeros gave the eye nothing to land on. */
 function stat(n: number, label: string, href: string, loud = false): string {
   return n ? `<a class="hub-stat${loud ? " is-loud" : " is-some"}" href="${href}"><strong>${n}</strong> ${label}</a>` : "";
@@ -164,7 +168,7 @@ export function learnedBand(rows: HubRow[]): string {
   const topics = new Map<string, typeof all>();
   for (const x of all) topics.set(x.l.topic, [...(topics.get(x.l.topic) ?? []), x]);
   const groups = [...topics].map(([topic, xs]) => `<h3 class="hub-topic">${e(topic)}</h3><ul class="hub-items">${xs.map(({ r, l }) => `<li class="hub-learned"><div class="hub-learned__head"><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(l.title)}</span><span class="hub-item__where">${e(l.at.slice(0, 10))}</span></div><dl><dt>Changed</dt><dd>${e(l.changed)}</dd><dt>Why</dt><dd>${e(l.why)}</dd><dt>Dropped</dt><dd>${e(l.dropped)}</dd><dt>Remember</dt><dd>${e(l.remember)}</dd></dl><div class="hub-learned__acts"><a class="hub-item__act" href="${e(r.url.replace(/\/$/, "") + l.path)}">Open plan</a><button type="button" class="hub-item__act" data-copy="${e(explainPrompt(r.name, l.planId, l.title))}">Copy Explain this prompt</button></div></li>`).join("")}</ul>`).join("");
-  return `<details class="hub-band"><summary><h2 id="hub-learned">Done this week <span class="hub-meta">${all.length}</span></h2></summary>${groups}</details>`;
+  return panel("learned", "Done this week", all.length, `<details class="hub-learned-fold"><summary>What changed, why, and what to remember</summary>${groups}</details>`, "full");
 }
 
 /** What the menu bar shows: the count, the top items with where they open, paused plans, and one
@@ -194,29 +198,31 @@ export function inFlightBand(rows: HubRow[], now = Date.now()): string {
   const lines = all.filter(({ t }) => t.state === "paused" || t.who);
   const stale = all.length - lines.length;
   const staleNote = stale ? `<p class="hub-stale">${stale} plan(s) are marked doing with no session holding them. Return them to todo, or claim them.</p>` : "";
-  if (!lines.length) return staleNote ? `<section class="hub-band" aria-labelledby="hub-flight"><h2 id="hub-flight">In flight</h2>${staleNote}</section>` : "";
+  if (!lines.length) return staleNote ? panel("flight", "In flight", null, staleNote, "2") : "";
   const when = (iso: string) => { const m = Math.round((Date.parse(iso) - now) / 60_000); return m < 60 ? `in ${Math.max(m, 1)}m` : m < 48 * 60 ? `in ${Math.round(m / 60)}h` : `on ${iso.slice(0, 10)}`; };
   const li = lines.map(({ r, t }) => {
     const state = t.state === "paused" ? `Paused, resumes ${when(t.until!)}` : `Active, ${e(t.who ?? "")}`;
-    return `<li class="hub-item${t.state === "paused" ? " is-paused" : ""}"><span class="hub-item__kind">${state}</span><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(t.title)}</span>${t.next ? `<span class="hub-item__detail">Next: ${e(t.next)}</span>` : ""}<a class="hub-item__act" href="${e(r.url.replace(/\/$/, "") + t.path)}">Open plan</a></li>`;
+    return `<li class="rp-decide__row${t.state === "paused" ? " is-paused" : ""}"><span class="rp-sev">${t.state === "paused" ? "Paused" : "Active"}</span><div class="rp-decide__body"><p><b>${e(t.title)}</b> <span class="hub-item__project">${e(r.name)}</span></p><p class="hub-meta">${state}</p>${t.next ? `<p class="rp-act">Next: ${e(t.next)}</p>` : ""}</div><a class="btn" data-size="sm" href="${e(r.url.replace(/\/$/, "") + t.path)}">Open plan</a></li>`;
   }).join("");
-  return `<section class="hub-band" aria-labelledby="hub-flight"><h2 id="hub-flight">In flight <span class="hub-meta">${lines.length}</span></h2><ul class="hub-items">${li}</ul>${staleNote}</section>`;
+  return panel("flight", "In flight", lines.length, `<ol class="rp-decide">${li}</ol>${staleNote}`, "2");
 }
 
 /** Every waiting item across every project, one line each, above the project list. Drift and
  *  out-of-scope writes stay off this band: they are an agent's diagnostics, read in the project. */
 export function waitingBand(rows: HubRow[], others: MachineState[] = [], now = Date.now()): string {
-  const lines = rows.flatMap((r) => (r.summary?.items ?? []).map((i) => ({ r, i })));
+  // The same order as the report's queue: what holds the most agent work first, a bare blocked mark last.
+  const weight = (i: HubItem) => (i.kind === "decision" ? 0 : i.kind === "human-plan" ? 1 : 2) * 100 - (i.detail.match(/,/g)?.length ?? 0);
+  const lines = rows.flatMap((r) => (r.summary?.items ?? []).map((i) => ({ r, i }))).toSorted((a, b) => weight(a.i) - weight(b.i));
   const remote = others.flatMap((m) => m.projects.flatMap((p) => p.items.map((i) => ({ m, p, i }))));
   const stale = others.filter((m) => now - Date.parse(m.writtenAt) > STATE_STALE_MS);
   const staleNote = stale.length ? `<p class="hub-stale">${stale.map((m) => `${e(m.machine)} last reported ${ago(m.writtenAt, now)}`).join("; ")}, so its items may be out of date.</p>` : "";
-  const remoteLi = remote.map(({ m, p, i }) => `<li class="hub-item is-remote"><span class="hub-item__kind">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><span class="hub-item__project">${e(p.name)}</span><span class="hub-item__title">${e(i.title)}</span><span class="hub-item__detail">${e(i.detail)}</span><span class="hub-item__where">on ${e(m.machine)}, ${ago(m.writtenAt, now)}</span></li>`).join("");
-  if (!lines.length && !remote.length) return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you</h2><p class="cc-empty">Nothing is waiting on you in any project.</p>${staleNote}</section>`;
+  const remoteLi = remote.map(({ m, p, i }) => `<li class="rp-decide__row is-remote"><span class="rp-sev">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><div class="rp-decide__body"><p><b>${e(i.title)}</b> <span class="hub-item__project">${e(p.name)}</span></p><p class="hub-meta">${e(i.detail)}</p></div><span class="hub-meta">on ${e(m.machine)}, ${ago(m.writtenAt, now)}</span></li>`).join("");
+  if (!lines.length && !remote.length) return panel("waiting", "Waiting on you", null, `<p class="cc-empty">Nothing is waiting on you in any project.</p>${staleNote}`, "full");
   const li = lines.map(({ r, i }) => {
     const href = e(r.url.replace(/\/$/, "") + i.path);
-    return `<li class="hub-item"><span class="hub-item__kind">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><span class="hub-item__project">${e(r.name)}</span><span class="hub-item__title">${e(i.title)}</span><span class="hub-item__detail">${e(i.detail)}</span><a class="hub-item__act" href="${href}">${e(i.label)}</a></li>`;
+    return `<li class="rp-decide__row"><span class="rp-sev">${e(KIND_LABEL[i.kind] ?? i.kind)}</span><div class="rp-decide__body"><p><b>${e(i.title)}</b> <span class="hub-item__project">${e(r.name)}</span></p><p class="hub-meta">${e(i.detail)}</p></div><a class="btn" data-size="sm" href="${href}">${e(i.label)}</a></li>`;
   }).join("");
-  return `<section class="hub-band" aria-labelledby="hub-waiting"><h2 id="hub-waiting">Waiting on you <span class="hub-meta">${lines.length + remote.length}</span></h2><ul class="hub-items">${li}${remoteLi}</ul>${staleNote}</section>`;
+  return panel("waiting", "Waiting on you", lines.length + remote.length, `<ol class="rp-decide">${li}${remoteLi}</ol>${staleNote}`, "full");
 }
 
 function row(r: HubRow, now: number): string {
@@ -243,6 +249,9 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   const links = styleBase ? STYLESHEETS.map((h) => `<link rel="stylesheet" href="${e(styleBase + h)}">`).join("\n  ") : "";
   const live = rows.reduce((n, r) => n + (r.summary?.live ?? 0), 0);
   const waiting = rows.reduce((n, r) => n + (r.summary ? r.summary.waiting + r.summary.answered : 0), 0);
+  const paused = rows.reduce((n, r) => n + (r.summary?.threads ?? []).filter((t) => t.state === "paused").length, 0);
+  const learned = rows.reduce((n, r) => n + (r.summary?.learned ?? []).length, 0);
+  const tile = (n: number, label: string, href: string, tone?: "warn") => `<a class="stat" href="${href}" data-surface="stat:${href.slice(1)}"${tone && n ? ` data-tone="${tone}"` : ""}><span class="stat__value">${n}</span><span class="stat__label">${e(label)}</span></a>`;
   const body = rows.length
     ? `<ul class="hub-list">${rows.map((r) => row(r, now)).join("")}</ul>`
     : `<p class="cc-empty">No projects registered. Run <code>pantry register</code> in a project.</p>`;
@@ -257,17 +266,21 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   ${links}
 </head>
 <body class="pantry-body" data-grade="smooth">
-<nav class="pantry-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-meta">All projects</span></nav>
+<nav class="pantry-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><a class="hub-meta" href="/report">Report</a></nav>
 <main class="pantry-main">
-  <header class="hub-top">
-    <h1>All projects</h1>
-    <p class="cc-meta">${rows.length} registered · ${live} live session(s) · ${waiting} item(s) waiting on you. Each row is read from that project's command center and refreshes every minute.</p>
+<div class="dash" data-surface="dashboard:hub">
+  <header class="dash__head">
+    <h2 class="dash__title">All projects</h2>
+    <p class="dash__period">${rows.length} registered. Each row is read from that project's command center and refreshes every minute.</p>
   </header>
+  <div class="dash__kpis">${tile(waiting, "waiting on you", "#waiting", "warn")}${tile(live, "live sessions", "#flight")}${tile(paused, "paused on a limit", "#flight", "warn")}${tile(learned, "done this week", "#learned")}${tile(rows.length, "projects", "#projects")}</div>
+  <div class="dash__grid">
   ${rows.length || others.length ? waitingBand(rows, others, now) : ""}
   ${inFlightBand(rows, now)}
+  ${rows.length ? panel("projects", "Projects", rows.length, body, "full") : body}
   ${learnedBand(rows)}
-  ${rows.length ? `<h2 class="hub-list-title">Projects</h2>` : ""}
-  ${body}
+  </div>
+</div>
 </main>
 ${styleBase ? `<script src="${e(styleBase)}/scripts/theme.js" defer></script>` : ""}
 <script>document.addEventListener("click", (ev) => { const b = ev.target.closest("[data-copy]"); if (!b) return; navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy Explain this prompt"; }, 1500); }).catch(() => {}); });</script>

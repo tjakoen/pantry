@@ -204,6 +204,9 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       recommendation when a decision has one, and one button. Ranked by plans held, then age; the
       top five show and the rest fold. The Your side panel no longer repeats these.
 
+- [x] The hub home is on the dashboards layer too: linked stat tiles, then Waiting on you as queue
+      rows in the report's order, In flight, a full-width grid of project cards, and Done this week.
+
 ### Slice 7: an AI reading of the owner's side
 
 The reports so far tell the owner what agents did. The loop also needs the reverse: an agent reading
