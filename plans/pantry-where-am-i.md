@@ -289,8 +289,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Slice 6 core: where.ts timelines, handovers, Codex tokens, report section; auto-plan passes account and model.
-- Next: Slice 6 quality signals and what a handover received, or slice 7.
-- Waiting on: Owner consent to push pantry 4fa8aa4 and agent-config de6f6ea.
+- Stopped: Slice 7 built: owner.ts findings, Your side section, report.json and pantry_read report surface, review prompt.
+- Next: Weekly schedule for the agent review; released-claim check; slice 6 quality signals.
+- Waiting on: Owner consent to push pantry d7b6d73.
 - Ended: handoff
-- Left: 2026-11-19T14:43:39.839Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T14:59:57.458Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
