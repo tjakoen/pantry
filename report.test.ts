@@ -23,7 +23,7 @@ describe("report", () => {
     ];
     const r = buildReport(inputs, "2026-11-12", NOW);
     expect(r.down).toEqual(["gone"]);
-    expect(r.decide).toEqual([{ project: "pantry", kind: "blocked-plan", title: "A", detail: "Marked blocked.", href: "http://localhost:4402/plan/a" }]);
+    expect(r.decide).toMatchObject([{ project: "pantry", kind: "blocked-plan", title: "A", detail: "Marked blocked.", href: "http://localhost:4402/plan/a" }]);
     expect(r.findings.map((f) => f.title)).toEqual(["1 gate(s) failed in the last recorded run", "1 plan(s) marked doing with no session holding them", "No run recorded for this period's commits"]);
     const quiet = buildReport([{ ...inputs[0], log: [] }], "2026-11-12", NOW);
     expect(quiet.findings.some((f) => f.title.includes("gate(s) failed"))).toBe(false);
@@ -55,4 +55,11 @@ test("fixes and reverts are read from the subject, and rates stay hidden under t
   const html = qualitySection({ projects: [{ name: "p", url: "", commits: 4, fixes: 1, reverts: 0, outOfScope: 2, subjects: [], closed: [], lastRun: null }] } as any);
   expect(html).toContain("<td>p</td><td>4</td><td>1</td>");
   expect(html).not.toContain("%)");
+});
+
+import { decideQueue } from "./report.ts";
+test("the decide queue merges registry duplicates and ranks by what each item holds", () => {
+  const d = (project: string, title: string, holds: string[], days: number | null = null) => ({ project, kind: "decision", title, detail: "", href: "/", holds, days, projects: [project] });
+  const q = decideQueue([d("a", "Small", [], 9), d("b", "Big", ["p1", "p2"], 2), d("c", "Big", ["p3"], 5)]);
+  expect(q.map((x) => [x.title, x.projects, x.holds?.length, x.days])).toEqual([["Big", ["b", "c"], 3, 5], ["Small", ["a"], 0, 9]]);
 });

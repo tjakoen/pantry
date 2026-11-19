@@ -199,6 +199,11 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
       below ten cases), and a bullet graph for each project's last-run gates. A project server
       started before a GRAIN bump serves the old component bundle until it restarts.
 
+- [x] What to decide is a queue: one row per item across registry entries that share a repository,
+      a verb per kind (answer, do, unblock), what it holds, how long it has waited, the
+      recommendation when a decision has one, and one button. Ranked by plans held, then age; the
+      top five show and the rest fold. The Your side panel no longer repeats these.
+
 ### Slice 7: an AI reading of the owner's side
 
 The reports so far tell the owner what agents did. The loop also needs the reverse: an agent reading

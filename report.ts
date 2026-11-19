@@ -20,7 +20,22 @@ import { WHERE_MIN_N, type WhereReport } from "./where.ts";
 export type Severity = "high" | "medium" | "low";
 export interface Finding { severity: Severity; project: string; title: string; evidence: string; action: string }
 export interface NoteRow { project: string; slug: string; title: string; status: string; date: string; words: number; figures: number; social: boolean; issue: string }
-export interface Decision { project: string; kind: string; title: string; detail: string; href: string }
+export interface Decision {
+  project: string;
+  kind: string;
+  title: string;
+  detail: string;
+  href: string;
+  /** plan ids this item holds up */
+  holds?: string[];
+  recommendation?: string | null;
+  /** days since the item's file last changed, filled by the hub where git can tell */
+  days?: number | null;
+  /** the item's file, repo-relative, for the hub to date */
+  file?: string | null;
+  /** the registry entries it appears under, when several point into one repository */
+  projects?: string[];
+}
 export interface ProjectReport {
   name: string;
   url: string;
@@ -124,7 +139,8 @@ export function buildReport(inputs: ProjectInput[], since: string, now = Date.no
     const base = p.url.replace(/\/$/, "");
     for (const w of b.waiting) {
       const link = w.actions.find((a) => a.kind === "link" && a.value.startsWith("/"));
-      decide.push({ project: p.name, kind: w.kind, title: w.title, detail: w.detail, href: base + (link?.value ?? "/") });
+      const holds = /(?:holds|Holds) (.+?)\.?$/.exec(w.detail)?.[1].split(/,\s*/).filter(Boolean) ?? [];
+      decide.push({ project: p.name, kind: w.kind, title: w.title, detail: w.detail, href: base + (link?.value ?? "/"), holds, recommendation: w.decision?.recommendation ?? null, file: w.decision?.file ?? (w.kind === "decision" ? null : `plans/${w.id}.md`), projects: [p.name] });
     }
     paused += (b.paused ?? []).length;
     // The doctor's checks are one finding per project, not one each: listed singly they were most of
@@ -165,12 +181,34 @@ export function buildReport(inputs: ProjectInput[], since: string, now = Date.no
     until: new Date(now).toISOString().slice(0, 10),
     projects: projects.filter((x) => x.commits || x.closed.length).toSorted((a, c) => c.commits - a.commits),
     findings: findings.filter((f) => f.evidence.trim() && f.action.trim()).toSorted((a, c) => order[a.severity] - order[c.severity]),
-    decide,
+    decide: decideQueue(decide),
     notes,
     paused,
     down,
   };
 }
+
+/** One row per item, however many registry entries show it, ranked by what it holds up and then by
+ *  how long it has waited. Ranking by what it holds is the point: answering the top row frees the most. */
+export function decideQueue(ds: Decision[]): Decision[] {
+  const m = new Map<string, Decision>();
+  for (const d of ds) {
+    const k = `${d.kind}\u0000${d.title}`;
+    const had = m.get(k);
+    if (!had) { m.set(k, { ...d, projects: [...(d.projects ?? [d.project])], holds: [...(d.holds ?? [])] }); continue; }
+    had.projects = [...new Set([...(had.projects ?? []), ...(d.projects ?? [d.project])])];
+    had.holds = [...new Set([...(had.holds ?? []), ...(d.holds ?? [])])];
+    if (d.days != null && (had.days == null || d.days > had.days)) had.days = d.days;
+  }
+  const rank = (d: Decision) => (d.kind === "decision" ? 0 : d.kind === "human-plan" ? 1 : 2);
+  return [...m.values()].toSorted((a, b) => (b.holds?.length ?? 0) - (a.holds?.length ?? 0) || (b.days ?? -1) - (a.days ?? -1) || rank(a) - rank(b));
+}
+
+export const DECIDE_VERB: Record<string, { verb: string; button: string; ask: string }> = {
+  decision: { verb: "Answer", button: "Answer", ask: "A question only you can answer." },
+  "human-plan": { verb: "Do", button: "Open plan", ask: "Your plan; agent work waits on it." },
+  "blocked-plan": { verb: "Unblock", button: "Open plan", ask: "Marked blocked with no reason recorded. Say what it waits on, or unblock it." },
+};
 
 /** The same report as Markdown, for a note or a message. */
 export function reportMarkdown(r: Report): string {
@@ -275,7 +313,13 @@ export function reportPage(r: Report, styleBase: string): string {
 ${p.subjects.length ? `<ul>${p.subjects.map((s) => `<li>${e(s)}</li>`).join("")}</ul>` : ""}
 ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed: ${e(c.title)}.</b> ${e(c.changed)} <span class="hub-meta">Remember: ${e(c.remember)}</span></li>`).join("")}</ul>` : ""}</details>`).join("");
   const noteRows = r.notes.toSorted((a, c) => c.date.localeCompare(a.date)).map((n) => `<tr><td>${e(n.title)}</td><td>${e(n.status.toLowerCase())}</td><td>${e(n.date)}</td><td>${n.words.toLocaleString("en")}</td><td>${n.figures}</td><td>${n.social ? "yes" : "no"}</td><td>${e(n.issue || "none")}</td></tr>`).join("");
-  const decide = r.decide.map((d) => `<li><a href="${e(d.href)}"><b>${e(d.title)}</b></a> <span class="hub-item__project">${e(d.project)}</span> <span class="hub-meta">${e(d.detail)}</span></li>`).join("");
+  const row = (d: Decision) => {
+    const v = DECIDE_VERB[d.kind] ?? { verb: "Look", button: "Open", ask: "" };
+    const meta = [d.days != null ? `waiting ${d.days} day(s)` : "", d.holds?.length ? `holds ${d.holds.length} plan(s): ${d.holds.slice(0, 4).join(", ")}${d.holds.length > 4 ? ", and more" : ""}` : "nothing waits on it"].filter(Boolean).join(" · ");
+    return `<li class="rp-decide__row" data-surface="decide:${e(d.kind)}"><span class="rp-sev">${e(v.verb)}</span><div class="rp-decide__body"><p><b>${e(d.title)}</b> <span class="hub-item__project">${e((d.projects ?? [d.project]).join(", "))}</span></p><p class="hub-meta">${e(meta)}</p><p class="rp-act">${d.recommendation ? `Recommended: ${e(d.recommendation)}` : e(v.ask)}</p></div><a class="btn" data-size="sm" href="${e(d.href)}">${e(v.button)}</a></li>`;
+  };
+  const first = r.decide.slice(0, 5), rest = r.decide.slice(5);
+  const decide = first.length ? `<ol class="rp-decide">${first.map(row).join("")}</ol>${rest.length ? `<details class="rp-low-group"><summary>${rest.length} more, holding less</summary><ol class="rp-decide" start="6">${rest.map(row).join("")}</ol></details>` : ""}` : "";
   const md = reportMarkdown(r);
   return `<!DOCTYPE html>
 <html lang="en" data-themes="sourdough baguette brioche">
@@ -302,7 +346,7 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
   <div class="dash__kpis">${tile(r.decide.length, "waiting on you", "#decide", "warn")}${tile(high, "high findings", "#findings", "bad")}${tile(r.yourSide?.length ?? 0, "on your side", "#your-side", "warn")}${tile(r.paused, "paused on a limit", "#where-time", "warn")}${tile(commits, "commits", "#projects")}${tile(drafts, "draft notes", "#notes")}</div>
   ${r.down.length ? `<p class="hub-stale">Not read, because their PANTRY did not answer: ${r.down.map(e).join(", ")}.</p>` : ""}
   <div class="dash__grid">
-  ${panel("decide", "What to decide", decide ? `<ol class="rp-decide">${decide}</ol>` : `<p class="cc-empty">Nothing is waiting on you.</p>`, { span: "full", meta: String(r.decide.length) })}
+  ${panel("decide", "What to decide", decide || `<p class="cc-empty">Nothing is waiting on you.</p>`, { span: "full", meta: String(r.decide.length), note: "Ranked by how many plans each one holds, then by how long it has waited. The top row frees the most work." })}
   ${yourSideSection(r, card)}
   ${panel("findings", "Findings", findings ? `<ul class="rp-findings">${findings}</ul>` : `<p class="cc-empty">No finding with evidence and an action in this period.</p>`, { span: "full", meta: String(r.findings.length) })}
   ${whereSection(r.where)}

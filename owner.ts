@@ -59,14 +59,8 @@ export function ownerFindings(inputs: OwnerInput[], facts: (path: string) => Git
   for (const p of inputs) {
     const g = facts(p.path);
     const days = (t: number) => Math.floor((now - t) / DAY);
-    for (const w of p.brief?.waiting ?? []) {
-      // A decision dates from its own file; a gated plan from its plan file, by convention plans/<id>.md.
-      const file = w.decision?.file ?? (w.kind === "decision" ? null : `plans/${w.id}.md`);
-      const t = file ? g.fileAge(file) : null;
-      if (t === null || days(t) < gateDays) continue;
-      const unblocks = w.decision?.unblocks;
-      out.push({ severity: unblocks ? "high" : "medium", project: p.name, title: w.kind === "decision" ? `A decision has waited ${days(t)} days` : `A human gate has held ${days(t)} days`, evidence: `${w.title}${unblocks ? `; it blocks ${unblocks}` : ""}`, action: w.kind === "decision" ? "Answer it, or park the plans it blocks." : "Unblock it, or hand the plan to an agent." });
-    }
+    // Waiting decisions and gates are the report's What to decide queue, ranked there; listing them
+    // here as well said everything twice.
     for (const w of g.worktrees) {
       if (days(w.lastCommit) < idleDays) continue;
       out.push({ severity: w.dirty ? "medium" : "low", project: p.name, title: `A worktree idle for ${days(w.lastCommit)} days`, evidence: `${w.path} on ${w.branch}${w.dirty ? ", with uncommitted changes" : ""}`, action: w.dirty ? "Commit or park the changes, then remove the worktree." : `Remove it: git worktree remove ${w.path}` });

@@ -744,8 +744,11 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .rp-period { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; font-size: var(--text-sm); margin-top: var(--space-2); }
 .rp-period button, .rp-period input { font: inherit; min-height: 24px; }
 .rp-findings, .rp-decide { padding-left: 0; list-style: none; margin: 0; }
-.rp-decide { list-style: decimal; padding-left: 1.4em; }
-.rp-decide li { padding: var(--space-1) 0; }
+.rp-decide { list-style: none; padding-left: 0; margin: 0; }
+.rp-decide__row { display: grid; grid-template-columns: 6rem 1fr auto; gap: var(--space-3); align-items: start; padding: var(--space-3) 0; border-top: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); }
+.rp-decide__row:first-child { border-top: 0; }
+.rp-decide__body p { margin: 0 0 var(--space-1); }
+@container (max-width: 36rem) { .rp-decide__row { grid-template-columns: 1fr; } }
 .rp-finding { border-left: 3px solid var(--ink-muted); padding: var(--space-1) var(--space-3); margin: var(--space-2) 0; font-size: var(--text-sm); }
 .rp-finding p { margin: 2px 0; }
 .rp-finding.rp-high { border-left-color: var(--ink); border-left-width: 5px; }

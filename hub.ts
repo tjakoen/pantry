@@ -223,7 +223,7 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         return Response.redirect(target, 302);
       }
       if (url.pathname === "/report" || url.pathname === "/report.json") {
-        const { buildReport, periodStart, reportPage } = await import("./report.ts");
+        const { buildReport, decideQueue, periodStart, reportPage } = await import("./report.ts");
         const since = periodStart(url.searchParams);
         const statuses = await Promise.all(reg.projects.map(status));
         const read = async (s: (typeof statuses)[number], path: string) => {
@@ -252,7 +252,19 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         const codex = readCodexSessions(join(homedir(), ".codex", "sessions"), sinceMs).filter((c) => projectOfCwd(c.cwd, reg.projects));
         const { gitFacts, latestReview, ownerFindings, reviewPrompt } = await import("./owner.ts");
         const yourSide = ownerFindings(inputs.filter((i) => i.brief), gitFacts, reg.review);
-        const report = { ...buildReport(inputs, since), where: buildWhere(segs, sinceMs, codex, null), yourSide, review: latestReview(pantryHome), reviewPrompt: reg.review?.off ? "" : reviewPrompt(pantryHome) };
+        const built = buildReport(inputs, since);
+        // Date each item from its file, so the queue can say how long it has waited.
+        const pathOf = new Map(inputs.map((i) => [i.name, i.path]));
+        const factsOf = new Map<string, ReturnType<typeof gitFacts>>();
+        for (const d of built.decide) {
+          const dir = pathOf.get(d.project);
+          if (!dir || !d.file) continue;
+          const g = factsOf.get(dir) ?? factsOf.set(dir, gitFacts(dir)).get(dir)!;
+          const t = g.fileAge(d.file);
+          d.days = t === null ? null : Math.floor((Date.now() - t) / 86_400_000);
+        }
+        built.decide = decideQueue(built.decide);
+        const report = { ...built, where: buildWhere(segs, sinceMs, codex, null), yourSide, review: latestReview(pantryHome), reviewPrompt: reg.review?.off ? "" : reviewPrompt(pantryHome) };
         if (url.pathname === "/report.json") return Response.json(report);
         return new Response(reportPage(report, styleBase), { headers: { "Content-Type": "text/html; charset=utf-8" } });
       }
