@@ -207,6 +207,68 @@ export function inFlightBand(rows: HubRow[], now = Date.now()): string {
   return panel("flight", "In flight", lines.length, `<ol class="rp-decide">${li}</ol>${staleNote}`, "2");
 }
 
+/** Waiting and in-flight work as one board, so the column says what to do: answer, do, unblock, or
+ *  leave it to the session that holds it. A card names the item; its drawer, GRAIN's modal side
+ *  panel, holds the detail and the one action, with the board still visible behind it. The columns
+ *  are PROOF's, the same board every project page shows its plans on. */
+export const WORK_COLUMNS = [
+  { id: "answer", title: "Answer", hint: "Questions only you can answer." },
+  { id: "do", title: "Do", hint: "Your plans; agent work waits on them." },
+  { id: "unblock", title: "Unblock", hint: "Marked blocked with no reason recorded." },
+  { id: "active", title: "Active", hint: "A session holds it." },
+  { id: "paused", title: "Paused", hint: "Waiting on a usage limit to reset." },
+] as const;
+
+interface WorkCard { col: string; title: string; project: string; meta: string; detail: string; holds: string[]; next: string | null; href: string | null; label: string; weight: number }
+
+export function workBoard(rows: HubRow[], others: MachineState[] = [], now = Date.now()): string {
+  const colOf: Record<string, string> = { decision: "answer", "human-plan": "do", "blocked-plan": "unblock" };
+  const holdsOf = (detail: string) => /(?:holds|Holds) (.+?)\.?$/.exec(detail)?.[1].split(/,\s*/).filter(Boolean) ?? [];
+  const cards: WorkCard[] = [];
+  const merged = new Map<string, WorkCard>();
+  const add = (c: WorkCard) => {
+    const k = `${c.col}\u0000${c.title}`;
+    const had = merged.get(k);
+    if (had) { had.project = `${had.project}, ${c.project}`; return; }
+    merged.set(k, c); cards.push(c);
+  };
+  for (const r of rows) for (const i of r.summary?.items ?? []) {
+    const holds = holdsOf(i.detail);
+    add({ col: colOf[i.kind] ?? "answer", title: i.title, project: r.name, meta: holds.length ? `holds ${holds.length}` : "", detail: i.detail, holds, next: null, href: r.url.replace(/\/$/, "") + i.path, label: i.label, weight: -holds.length });
+  }
+  for (const m of others) for (const p of m.projects) for (const i of p.items) {
+    const holds = holdsOf(i.detail);
+    add({ col: colOf[i.kind] ?? "answer", title: i.title, project: p.name, meta: `on ${m.machine}, ${ago(m.writtenAt, now)}`, detail: i.detail, holds, next: null, href: null, label: "", weight: -holds.length });
+  }
+  const until = (iso: string) => { const m = Math.round((Date.parse(iso) - now) / 60_000); return m < 60 ? `in ${Math.max(m, 1)}m` : m < 48 * 60 ? `in ${Math.round(m / 60)}h` : `on ${iso.slice(0, 10)}`; };
+  let stale = 0;
+  for (const r of rows) for (const t of r.summary?.threads ?? []) {
+    if (t.state !== "paused" && !t.who) { stale++; continue; }
+    add({ col: t.state === "paused" ? "paused" : "active", title: t.title, project: r.name, meta: t.state === "paused" ? `resumes ${until(t.until!)}` : (t.who ?? ""), detail: t.state === "paused" ? `Paused on a usage limit; it can resume ${until(t.until!)}.` : `Held by ${t.who ?? "a session"}.`, holds: [], next: t.next, href: r.url.replace(/\/$/, "") + t.path, label: "Open plan", weight: 0 });
+  }
+  if (!cards.length && !stale) return `<p class="cc-empty">Nothing is waiting on you and nothing is in flight.</p>`;
+  let n = 0;
+  const drawers: string[] = [];
+  const colHtml = WORK_COLUMNS.map((c) => {
+    const list = cards.filter((x) => x.col === c.id).toSorted((a, b) => a.weight - b.weight);
+    const html = list.map((x) => {
+      const id = `work-${++n}`;
+      drawers.push(`<aside class="drawer" id="${id}" data-drawer hidden><div class="drawer__backdrop" data-drawer-close></div><div class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="${id}-title"><header class="drawer__head"><h2 id="${id}-title">${e(x.title)}</h2><button class="icon-btn" data-variant="ghost" data-drawer-close aria-label="Close">✕</button></header><div class="drawer__body">
+<p><span class="badge">${e(c.title)}</span> <span class="hub-item__project">${e(x.project)}</span></p>
+${x.holds.length ? "" : `<p>${e(x.detail)}</p>`}
+${x.holds.length ? `<h3>It holds ${x.holds.length} plan(s)</h3><ul>${x.holds.map((h) => `<li>${e(h)}</li>`).join("")}</ul>` : ""}
+${x.next ? `<h3>Next</h3><p>${e(x.next)}</p>` : ""}
+<p class="hub-meta">${e(c.hint)}</p>
+${x.href ? `<p><a class="btn" href="${e(x.href)}">${e(x.label)}</a></p>` : `<p class="hub-meta">${e(x.meta)}. Open it on that machine.</p>`}
+</div></div></aside>`);
+      return `<button type="button" class="card proof-card" data-pad="sm" data-drawer-open="${id}" data-surface="card:${id}"><div class="proof-card__top"><span class="badge">${e(c.title)}</span></div><h3 class="card__title">${e(x.title)}</h3><p class="proof-card__meta">${e([x.project, x.meta].filter(Boolean).join(" · "))}</p></button>`;
+    }).join("");
+    return `<section class="proof-col" data-col="${c.id}"${list.length ? "" : " data-empty"}><header class="proof-col__head"><h2 class="proof-col__title">${e(c.title)}</h2><span class="proof-col__count">${list.length}</span></header><div class="proof-col__cards">${html || `<p class="proof-col__empty">${e(c.hint)}</p>`}</div></section>`;
+  }).join("");
+  const staleNote = stale ? `<p class="hub-stale">${stale} plan(s) are marked doing with no session holding them. Return them to todo, or claim them.</p>` : "";
+  return `<div class="proof-board hub-board">${colHtml}</div>${staleNote}${drawers.join("")}`;
+}
+
 /** Every waiting item across every project, one line each, above the project list. Drift and
  *  out-of-scope writes stay off this band: they are an agent's diagnostics, read in the project. */
 export function waitingBand(rows: HubRow[], others: MachineState[] = [], now = Date.now()): string {
@@ -260,7 +322,6 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="${rows.some((r) => r.pending) ? 8 : 60}">
   <title>All projects · PANTRY</title>
   ${styleBase ? `<script src="${e(styleBase)}/scripts/theme-boot.js"></script>` : ""}
   ${links}
@@ -273,16 +334,17 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
     <h2 class="dash__title">All projects</h2>
     <p class="dash__period">${rows.length} registered. Each row is read from that project's command center and refreshes every minute.</p>
   </header>
-  <div class="dash__kpis">${tile(waiting, "waiting on you", "#waiting", "warn")}${tile(live, "live sessions", "#flight")}${tile(paused, "paused on a limit", "#flight", "warn")}${tile(learned, "done this week", "#learned")}${tile(rows.length, "projects", "#projects")}</div>
+  <div class="dash__kpis">${tile(waiting, "waiting on you", "#work", "warn")}${tile(live, "live sessions", "#work")}${tile(paused, "paused on a limit", "#work", "warn")}${tile(learned, "done this week", "#learned")}${tile(rows.length, "projects", "#projects")}</div>
   <div class="dash__grid">
-  ${rows.length || others.length ? waitingBand(rows, others, now) : ""}
-  ${inFlightBand(rows, now)}
+  ${rows.length || others.length ? panel("work", "Your work", null, workBoard(rows, others, now), "full") : ""}
   ${rows.length ? panel("projects", "Projects", rows.length, body, "full") : body}
   ${learnedBand(rows)}
   </div>
 </div>
 </main>
-${styleBase ? `<script src="${e(styleBase)}/scripts/theme.js" defer></script>` : ""}
+${styleBase ? `<script src="${e(styleBase)}/scripts/theme.js" defer></script><script src="${e(styleBase)}/scripts/drawer.js" defer></script>` : ""}
+<script>/* Reload to stay current, but never under an open drawer: a reload would close it mid-read. */
+setInterval(() => { if (!document.querySelector("[data-drawer]:not([hidden])")) location.reload(); }, ${rows.some((r) => r.pending) ? 8000 : 60000});</script>
 <script>document.addEventListener("click", (ev) => { const b = ev.target.closest("[data-copy]"); if (!b) return; navigator.clipboard?.writeText(b.dataset.copy).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy Explain this prompt"; }, 1500); }).catch(() => {}); });</script>
 </body>
 </html>`;

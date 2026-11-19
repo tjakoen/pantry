@@ -98,3 +98,16 @@ describe("tray summary", () => {
     expect(trayPayload(rows, [], NOW).paused).toEqual([{ label: "Slice 4 · resumes 13:00 UTC", project: "pantry", path: "/plan/a" }]);
   });
 });
+
+import { workBoard } from "./hub-home.ts";
+test("the work board sorts items into columns, merges duplicates, and gives each card a drawer", () => {
+  const s = (items: any[], threads: any[] = []) => ({ live: 0, agentsRunning: 0, waiting: items.length, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items, threads, learned: [] });
+  const row = (name: string, summary: any) => ({ name, path: `/p/${name}`, url: `http://localhost:4401/`, up: true, summary });
+  const held = { kind: "human-plan", title: "Close out", detail: "Yours, and it holds a, b.", label: "Open plan", path: "/plan/x" };
+  const html = workBoard([row("one", s([held])), row("two", s([held], [{ title: "Run", state: "active", who: "claude", until: null, next: "Ship", path: "/plan/r" }]))]);
+  expect(html).toContain(`data-col="do"><header class="proof-col__head"><h2 class="proof-col__title">Do</h2><span class="proof-col__count">1</span>`);
+  expect(html).toContain("one, two · holds 2");
+  expect(html).toContain(`data-col="answer" data-empty`);
+  expect(html.match(/data-drawer hidden/g)?.length).toBe(2);
+  expect(html).toContain("<h3>Next</h3><p>Ship</p>");
+});

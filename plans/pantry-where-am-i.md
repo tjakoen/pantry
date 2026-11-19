@@ -207,6 +207,11 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
 - [x] The hub home is on the dashboards layer too: linked stat tiles, then Waiting on you as queue
       rows in the report's order, In flight, a full-width grid of project cards, and Done this week.
 
+- [x] Waiting and in-flight work on the hub home is one board, Your work, in five columns: answer,
+      do, unblock, active, paused. Cards use PROOF's columns and GRAIN's card; each opens a GRAIN
+      drawer with the detail, the plans it holds and one action. The reload skips while a drawer is
+      open. A shared board component belongs in GRAIN; PANTRY borrows PROOF's until one exists.
+
 ### Slice 7: an AI reading of the owner's side
 
 The reports so far tell the owner what agents did. The loop also needs the reverse: an agent reading
