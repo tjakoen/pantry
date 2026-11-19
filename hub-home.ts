@@ -148,6 +148,24 @@ function stat(n: number, label: string, href: string, loud = false): string {
   return n ? `<a class="hub-stat${loud ? " is-loud" : " is-some"}" href="${href}"><strong>${n}</strong> ${label}</a>` : "";
 }
 
+/** What the menu bar shows: the count, the top items with where they open, paused plans, and one
+ *  line for the other machines. The dropdown is the shortest form of the front page, so it reads the
+ *  same rows and never disagrees with it. */
+export interface TrayLine { label: string; project: string | null; path: string }
+export interface TrayPayload { ok: true; needsYou: number; items: TrayLine[]; more: number; paused: TrayLine[]; elsewhere: string | null }
+
+export const TRAY_ITEMS = 6;
+
+export function trayPayload(rows: HubRow[], others: MachineState[] = [], now = Date.now()): TrayPayload {
+  const local = rows.flatMap((r) => (r.summary?.items ?? []).map((i) => ({ label: `${r.name} · ${i.title}`, project: r.name, path: i.path })));
+  const answered = rows.reduce((n, r) => n + (r.summary?.answered ?? 0), 0);
+  const fresh = others.filter((m) => now - Date.parse(m.writtenAt) <= STATE_STALE_MS);
+  const remoteCount = fresh.reduce((n, m) => n + m.projects.reduce((k, p) => k + p.items.length, 0), 0);
+  const paused = rows.flatMap((r) => (r.summary?.threads ?? []).filter((t) => t.state === "paused").map((t) => ({ label: `${t.title} · resumes ${t.until!.slice(11, 16)} UTC`, project: r.name, path: t.path })));
+  const elsewhere = remoteCount ? `${remoteCount} more on ${fresh.filter((m) => m.projects.some((p) => p.items.length)).map((m) => m.machine).join(", ")}` : null;
+  return { ok: true, needsYou: local.length + answered + remoteCount, items: local.slice(0, TRAY_ITEMS), more: Math.max(local.length - TRAY_ITEMS, 0), paused, elsewhere };
+}
+
 /** Every plan being worked or paused on a limit, one line each. Paused lines say when they can
  *  resume and what the card says comes next, so a thread waiting on a reset stops looking dead. */
 export function inFlightBand(rows: HubRow[], now = Date.now()): string {

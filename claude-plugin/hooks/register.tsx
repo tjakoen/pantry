@@ -22,6 +22,7 @@ type Brief = {
   inFlight?: { planId: string | null; title: string; status?: string; touches?: string[]; claim: { tool?: string; sessionId?: string; state?: string } | null; sessions: { id: string; lastSeenAt?: string }[]; actions?: BriefAction[] }[]
   drift?: { id: string; severity?: string; label: string; detail?: string; actions?: BriefAction[] }[]
   next?: { queue?: { id: string; title: string; actions?: BriefAction[] }[] }
+  paused?: { planId: string; title: string; until: string; next: string }[]
 }
 
 /** The agent prompt a brief item carries, the one the command center's copy button copies. */
@@ -157,13 +158,15 @@ async function refresh($: EngineInterface, from?: string): Promise<void> {
             return { title: r.title, detail: [who, seen && `seen ${ago(seen)}`].filter(Boolean).join(' · '), href: plan(r.planId as string) }
           })
           const upNext = (b.next?.queue ?? []).slice(0, 3).map(q => ({ title: q.title, href: plan(q.id), prompt: q.id }))
+          // Plans whose last session ran out of usage: the card says when they can resume and what comes next.
+          const paused = (b.paused ?? []).map(p => ({ title: p.title, detail: `Resumes ${new Date(p.until).toTimeString().slice(0, 5)} · Next: ${p.next}`, href: plan(p.planId), prompt: `Resume the PANTRY plan ${p.planId} ("${p.title}"): claim it with pantry_claim and start from its resume card.` }))
           const drift = (b.drift ?? []).map(d => ({ title: d.label, detail: d.detail, alert: d.severity === 'error', prompt: promptOf(d.actions) ?? `PANTRY's doctor reports ${d.label}: ${d.detail ?? ''}. Fix it.` }))
           // This session's child agents, live from the engine rather than the hub.
           const agents = (await $.agent.list().catch(() => [])).filter(a => a.status === 'running').map(a => a.description || a.type)
           // The repository's web page, from the session's git remote, in https form.
           const remote = (await $.session.repo().catch(() => null))?.remote ?? ''
           const repo = remote.replace(/^git@([^:]+):/, 'https://$1/').replace(/\.git$/, '') || undefined
-          next = { kind: 'online', repo, agents, updated: new Date().toTimeString().slice(0, 5), hub, project: h.name, current: current || undefined, url: `${prefix}/`, needs: waiting.length, waiting, working, upNext, drift }
+          next = { kind: 'online', repo, agents, updated: new Date().toTimeString().slice(0, 5), hub, project: h.name, current: current || undefined, url: `${prefix}/`, needs: waiting.length, waiting, working, upNext, drift, paused }
         }
       }
     } catch {
@@ -292,6 +295,13 @@ export const register: Register = on => {
           <Box flexDirection="column" borderStyle="bold" paddingX={1}>
             {heading('Waiting on you', v.waiting.length)}
             {v.waiting.map((w, n) => item(w, `w${n}`, 'Ask Claude', true))}
+          </Box>
+        ) : null}
+
+        {(v.paused ?? []).length ? (
+          <Box flexDirection="column" paddingX={1}>
+            {heading('Paused on a usage limit', (v.paused ?? []).length)}
+            {(v.paused ?? []).map((p, n) => item(p, `p${n}`, 'Resume'))}
           </Box>
         ) : null}
 

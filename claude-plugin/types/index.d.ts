@@ -5,7 +5,7 @@ export type PantryView =
   | { kind: 'offline'; hub: string }
   | { kind: 'unregistered'; hub: string; cwd: string }
   | { kind: 'down'; hub: string; project: string }
-  | { kind: 'online'; repo?: string; agents: string[]; updated: string; hub: string; project: string; url: string; needs: number; current?: PantryItem; waiting: PantryItem[]; working: PantryItem[]; upNext: PantryItem[]; drift: PantryItem[] }
+  | { kind: 'online'; repo?: string; agents: string[]; updated: string; hub: string; project: string; url: string; needs: number; current?: PantryItem; waiting: PantryItem[]; working: PantryItem[]; upNext: PantryItem[]; drift: PantryItem[]; paused?: PantryItem[] }
 
 declare module 'claude-code' {
   interface PluginState {

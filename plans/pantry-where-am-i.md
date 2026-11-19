@@ -214,19 +214,28 @@ interface contract, so the page and the agent read one source.
 
 ### Slice 8: give the menu bar and the Claude pane a purpose
 
-The menu bar icon carries a count and a dropdown, and the Claude pane sits beside the chat, but
-neither yet answers the question this plan exists for. Tjakoen wants both to be worth opening.
+Audit, 19 November 2026, from app/src-tauri/src/main.rs and claude-plugin/hooks/register.tsx:
 
-- [ ] Audit the menu bar icon and its dropdown against the three bands: what the count means, what
-      the dropdown lists, and what a click on each line does. Record findings in this plan.
-- [ ] The dropdown becomes the shortest form of the front page: the top Waiting on you items with
-      their action, paused threads with their resume time, and one line for other machines. Each
-      line opens the item, never just the hub.
-- [ ] The count means one thing, items waiting on the owner across every machine, and the icon
-      shows when a thread is paused on a limit, so a glance says whether anything needs him.
-- [ ] Audit the Claude pane the same way: it shows the session's own claim, its resume card, and
-      the owner's items for this project, and offers the actions a session in that project can take.
-- [ ] Screenshots of the icon, the dropdown and the pane before and after, shown in the session.
+- The dropdown held one status line ("N waiting on you · hub on :port"), Open PANTRY, Start hub, the
+  update line and Quit. It said how many and never what, and no line opened an item.
+- The count came from /health and covered this machine's waiting items only: not unread answers,
+  not the other machines, so the icon and the hub's band disagreed.
+- Start hub sat in the menu permanently, though it only matters when the hub is down.
+- The Claude pane was already purposeful: this session's plan with its steps, what waits on the
+  owner, what is being worked, what is ready to start with Here, New session and Child agent
+  buttons, and the doctor's drift. Its one gap for this plan was paused plans and their cards.
+
+- [x] The hub serves /tray.json: one count (local items, unread answers and fresh items from other
+      machines), the top six items with where each opens, paused plans with their resume time, and
+      one line for the other machines.
+- [x] The dropdown is rebuilt from it whenever it changes. Each item line opens that item in the
+      app through the same path a pantry:// link takes; a line for the rest opens the hub. Start hub
+      left the permanent menu.
+- [x] The icon's count and tooltip use the tray count, so the icon and the front page agree.
+- [x] The pane gains a Paused on a usage limit section, each plan with its resume time, its next
+      step and a Resume button that asks this session to claim it and start from its card.
+- [ ] Rebuild and install the desktop app, then screenshot the icon, the dropdown and the pane.
+- [ ] Show a paused plan on the icon itself, not only in the dropdown.
 
 ## Keeping PANTRY modular for other people
 

@@ -47,6 +47,10 @@ struct Shared {
     update: Mutex<Option<(MenuItem<tauri::Wry>, Option<String>)>>,
     /// What the toast last showed, so the icons are redrawn only when the count changes.
     mark: Mutex<Option<Mark>>,
+    /// The tray summary the dropdown was last built from, so it is rebuilt only when that changes.
+    tray_sig: Mutex<String>,
+    /// Where each item line of the dropdown opens: (project, page) by the line's position.
+    links: Mutex<Vec<(Option<String>, String)>>,
 }
 
 /// The newest published release of PANTRY, as (version, page), when it is newer than this build.
@@ -115,6 +119,83 @@ fn probe(port: u16) -> HubState {
             needs_you: v.get("needsYou").and_then(|x| x.as_u64()).unwrap_or(0),
         },
         _ => HubState { up: false, port, needs_you: 0 },
+    }
+}
+
+/// The hub's /tray.json: the count, the top waiting items, paused plans and other machines. None
+/// from a hub that predates it, which keeps the old one-line menu.
+fn tray_summary(port: u16) -> Option<serde_json::Value> {
+    ureq::get(&format!("http://127.0.0.1:{port}/tray.json"))
+        .timeout(Duration::from_millis(4000))
+        .call()
+        .ok()
+        .and_then(|r| r.into_json::<serde_json::Value>().ok())
+        .filter(|v| v.get("ok").and_then(|x| x.as_bool()) == Some(true))
+}
+
+/// Cut a menu line to a length a menu bar dropdown can show without growing wider than the screen.
+fn clip(s: &str, n: usize) -> String {
+    if s.chars().count() <= n { s.to_string() } else { format!("{}…", s.chars().take(n - 1).collect::<String>()) }
+}
+
+/// The dropdown as the shortest form of the hub's front page: what waits on the owner, each line
+/// opening its item; paused plans with their resume time; one line for the other machines; then the
+/// app's own controls. Built afresh whenever the tray summary changes.
+fn build_menu(app: &AppHandle, tray: &serde_json::Value) -> tauri::Result<Menu<tauri::Wry>> {
+    let shared = app.state::<Shared>();
+    let menu = Menu::new(app)?;
+    if let Some(status) = shared.status.lock().unwrap().as_ref() { menu.append(status)?; }
+    let mut links: Vec<(Option<String>, String)> = Vec::new();
+    let line = |v: &serde_json::Value| -> (String, Option<String>, String) {
+        let label = v.get("label").and_then(|x| x.as_str()).unwrap_or("").to_string();
+        let project = v.get("project").and_then(|x| x.as_str()).map(|x| x.to_string());
+        let path = v.get("path").and_then(|x| x.as_str()).unwrap_or("/").to_string();
+        (label, project, path)
+    };
+    let items = tray.get("items").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+    for v in &items {
+        let (label, project, path) = line(v);
+        let id = format!("go:{}", links.len());
+        links.push((project, path));
+        menu.append(&MenuItem::with_id(app, id, clip(&label, 64), true, None::<&str>)?)?;
+    }
+    let more = tray.get("more").and_then(|x| x.as_u64()).unwrap_or(0);
+    if more > 0 { menu.append(&MenuItem::with_id(app, "open", format!("{more} more on the hub…"), true, None::<&str>)?)?; }
+    let paused = tray.get("paused").and_then(|x| x.as_array()).cloned().unwrap_or_default();
+    if !paused.is_empty() {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&MenuItem::with_id(app, "paused-head", "Paused on a usage limit", false, None::<&str>)?)?;
+        for v in &paused {
+            let (label, project, path) = line(v);
+            let id = format!("go:{}", links.len());
+            links.push((project, path));
+            menu.append(&MenuItem::with_id(app, id, clip(&label, 64), true, None::<&str>)?)?;
+        }
+    }
+    if let Some(elsewhere) = tray.get("elsewhere").and_then(|x| x.as_str()) {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+        menu.append(&MenuItem::with_id(app, "elsewhere", clip(elsewhere, 64), false, None::<&str>)?)?;
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "open", "Open PANTRY", true, None::<&str>)?)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    if let Some((update, _)) = shared.update.lock().unwrap().as_ref() { menu.append(update)?; }
+    menu.append(&MenuItem::with_id(app, "quit", "Quit PANTRY", true, None::<&str>)?)?;
+    *shared.links.lock().unwrap() = links;
+    Ok(menu)
+}
+
+/// Open one dropdown line: a project page through the same path a pantry:// link takes.
+fn open_line(app: &AppHandle, index: usize) {
+    let target = app.state::<Shared>().links.lock().unwrap().get(index).cloned();
+    match target {
+        Some((Some(project), path)) => {
+            let mut link = Url::parse("pantry://project/").expect("pantry url");
+            link.set_path(&format!("/{}", urlencode(&project)));
+            link.query_pairs_mut().append_pair("to", &path);
+            handle_link(app, link.as_str());
+        }
+        _ => if let Some(w) = app.get_webview_window("main") { bring_forward(&w) },
     }
 }
 
@@ -230,7 +311,10 @@ fn tray_icon(mark: Mark) -> tauri::image::Image<'static> {
 fn poll(app: AppHandle) {
     let offline = Url::parse("tauri://localhost/index.html").ok();
     loop {
-        let next = probe(hub_port());
+        let mut next = probe(hub_port());
+        let summary = if next.up { tray_summary(next.port) } else { None };
+        // The tray's count covers every machine and unread answers, so it is the one the icon shows.
+        if let Some(n) = summary.as_ref().and_then(|t| t.get("needsYou")).and_then(|x| x.as_u64()) { next.needs_you = n; }
         let shared = app.state::<Shared>();
         *shared.state.lock().unwrap() = next.clone();
         if let Some(tray) = app.tray_by_id("pantry") {
@@ -252,6 +336,13 @@ fn poll(app: AppHandle) {
                 format!("{} waiting on you · hub on :{}", next.needs_you, next.port)
             };
             let _ = item.set_text(line);
+        }
+        let sig = summary.as_ref().map(|t| t.to_string()).unwrap_or_default();
+        if *shared.tray_sig.lock().unwrap() != sig {
+            *shared.tray_sig.lock().unwrap() = sig;
+            if let (Some(t), Some(tray)) = (summary.as_ref(), app.tray_by_id("pantry")) {
+                if let Ok(menu) = build_menu(&app, t) { let _ = tray.set_menu(Some(menu)); }
+            }
         }
         if let Some(win) = app.get_webview_window("main") {
             // A link that arrived while the hub looked down is honoured as soon as it answers, even
@@ -330,6 +421,9 @@ fn main() {
                         if let Some((_, Some(url))) = app.state::<Shared>().update.lock().unwrap().as_ref() { open_external(url); }
                     }
                     "quit" => app.exit(0),
+                    id if id.starts_with("go:") => {
+                        if let Ok(i) = id[3..].parse::<usize>() { open_line(app, i); }
+                    }
                     _ => {}
                 })
                 .build(app)?;

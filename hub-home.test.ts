@@ -72,3 +72,29 @@ describe("hub home", () => {
     expect(worktreeMain(main)).toBeNull();
   });
 });
+
+describe("tray summary", () => {
+  const { trayPayload } = require("./hub-home.ts") as typeof import("./hub-home.ts");
+  const S = (over: Partial<HubSummary> = {}): HubSummary => ({ live: 0, agentsRunning: 0, waiting: 0, answered: 0, drift: 0, outOfScope: 0, next: null, lastSeenAt: null, items: [], threads: [], ...over });
+  const it = (title: string) => ({ kind: "decision", title, detail: "", label: "Answer", path: `/decisions/${title}` });
+  const NOW = Date.parse("2026-11-19T08:00:00.000Z");
+
+  test("counts local items, answers and fresh remote items, and caps the lines it lists", () => {
+    const rows: HubRow[] = [{ name: "alpha", path: "/a", url: "http://localhost:4401/", up: true, summary: S({ answered: 1, items: Array.from({ length: 8 }, (_, i) => it(`d${i}`)) }) }];
+    const others = [
+      { machine: "pro", writtenAt: "2026-11-19T07:00:00.000Z", projects: [{ name: "grain", live: 0, lastSeenAt: null, next: null, items: [{ kind: "decision", title: "x", detail: "" }] }] },
+      { machine: "pc", writtenAt: "2026-11-10T07:00:00.000Z", projects: [{ name: "hau", live: 0, lastSeenAt: null, next: null, items: [{ kind: "decision", title: "old", detail: "" }] }] },
+    ];
+    const t = trayPayload(rows, others, NOW);
+    expect(t.needsYou).toBe(8 + 1 + 1);
+    expect(t.items.length).toBe(6);
+    expect(t.more).toBe(2);
+    expect(t.items[0]).toEqual({ label: "alpha · d0", project: "alpha", path: "/decisions/d0" });
+    expect(t.elsewhere).toBe("1 more on pro");
+  });
+
+  test("paused plans are listed with their resume time", () => {
+    const rows: HubRow[] = [{ name: "pantry", path: "/p", url: "http://localhost:4402/", up: true, summary: S({ threads: [{ title: "Slice 4", state: "paused", who: null, until: "2026-11-19T13:00:00.000Z", next: "x", path: "/plan/a" }] }) }];
+    expect(trayPayload(rows, [], NOW).paused).toEqual([{ label: "Slice 4 · resumes 13:00 UTC", project: "pantry", path: "/plan/a" }]);
+  });
+});

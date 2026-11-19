@@ -222,6 +222,12 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
         const target = to && to.startsWith("/") && !to.startsWith("//") ? new URL(to, base).toString() : home;
         return Response.redirect(target, 302);
       }
+      if (url.pathname === "/tray.json") {
+        const { hubRows, trayPayload } = await import("./hub-home.ts");
+        const rows = await hubRows(await Promise.all(reg.projects.map(status)), 2_000);
+        const others = reg.sync ? (await import("./hub-sync.ts")).readOthers(reg.sync) : [];
+        return Response.json(trayPayload(rows, others));
+      }
       if (url.pathname === "/" ) {
         const { hubRows, hubHomePage } = await import("./hub-home.ts");
         const rows = await hubRows(await Promise.all(reg.projects.map(status)));
