@@ -196,46 +196,66 @@ export function reportMarkdown(r: Report): string {
 
 const hrs = (ms: number) => ms < 3_600_000 ? `${Math.round(ms / 60_000)}m` : `${(ms / 3_600_000).toFixed(1)}h`;
 
-/** Where the work ran. Below WHERE_MIN_N stretches it gives counts only, since a share of a handful says nothing. */
+// The page is GRAIN's dashboards layer and nothing of its own: a dash with a strip of stat tiles and
+// a grid of dash-panels, rank lists for shares, a bullet graph for gates. Every panel carries a
+// data-surface address, so an agent reading the page can point at a panel by name.
+const panel = (id: string, title: string, body: string, opts: { span?: "2" | "full"; meta?: string; note?: string } = {}) =>
+  `<section class="dash-panel" id="${id}" data-surface="panel:${id}"${opts.span ? ` data-span="${opts.span}"` : ""}>
+<header class="dash-panel__head"><h3 class="dash-panel__title">${e(title)}${opts.meta ? ` <span class="hub-meta">${e(opts.meta)}</span>` : ""}</h3></header>
+${opts.note ? `<p class="dash-panel__note">${e(opts.note)}</p>` : ""}${body}</section>`;
+
+/** A rank list. Below WHERE_MIN_N the bars are left off, so a share of a handful is never drawn. */
+const rank = (rows: { name: string; value: string; share: number }[], n: number) =>
+  `<ol class="rank-list">${rows.map((r) => `<li class="rank-list__row"${n >= WHERE_MIN_N ? ` style="--share: ${r.share.toFixed(3)}"` : ""}><span class="rank-list__name">${e(r.name)}</span><span class="rank-list__value">${e(r.value)}</span></li>`).join("")}</ol>`;
+
+/** Where the work ran: harness, machine and model as rank lists, time as stat tiles, then tokens and handovers. */
 export function whereSection(w: WhereReport | undefined): string {
   if (!w || !w.segments) return "";
   const few = w.segments < WHERE_MIN_N;
-  const table = (title: string, rows: WhereReport["byTool"]) => `<div><h3>${e(title)}</h3><table class="rp-table"><thead><tr><th>${e(title)}</th><th>Sessions</th>${few ? "" : "<th>Held</th><th>Share</th>"}</tr></thead><tbody>${rows.map((r) => `<tr><td>${e(r.key)}</td><td>${r.sessions}</td>${few ? "" : `<td>${hrs(r.activeMs)}</td><td>${w.activeMs ? Math.round((100 * r.activeMs) / w.activeMs) : 0}%</td>`}</tr>`).join("")}</tbody></table></div>`;
-  const tok = w.tokens.map((t) => `<li><b>${e(t.tool)}</b>: ${t.tokens === null ? (t.tool === "claude" ? "see the Usage page of each project" : "this harness writes no token count PANTRY can read") : `${t.tokens.toLocaleString("en")} tokens over ${t.sessions} session(s)`}</li>`).join("");
+  const by = (rows: WhereReport["byTool"]) => rank(rows.map((r) => ({ name: r.key, value: few ? `${r.sessions} session(s)` : `${hrs(r.activeMs)}, ${r.sessions} session(s)`, share: w.activeMs ? r.activeMs / w.activeMs : 0 })), w.segments);
+  const n = `n = ${w.segments}`;
+  const note = few ? `Shares are hidden below ${WHERE_MIN_N} stretches.` : undefined;
+  const time = `<div class="dash__kpis"><div class="stat"><span class="stat__value">${hrs(w.activeMs)}</span><span class="stat__label">held by a session</span></div><div class="stat"><span class="stat__value">${hrs(w.waitingMs)}</span><span class="stat__label">between stretches</span></div><div class="stat"${w.stalledMs ? ` data-tone="warn"` : ""}><span class="stat__value">${hrs(w.stalledMs)}</span><span class="stat__label">after a usage limit</span></div></div>`;
+  const tok = rank(w.tokens.map((t) => ({ name: t.tool, value: t.tokens === null ? (t.tool === "claude" ? "on each Usage page" : "not readable") : `${t.tokens.toLocaleString("en")} over ${t.sessions} session(s)`, share: 0 })), 0);
   const landed = w.handovers.filter((h) => h.landed).length;
-  const hand = w.handovers.slice(0, 8).map((h) => `<li><span class="hub-item__project">${e(h.project)}</span> ${e(h.planId)}: ${e(h.from)} to ${e(h.to)} after ${hrs(h.gapMs)}${h.landed ? ", finished later" : ", not finished yet"}</li>`).join("");
-  return `<section class="hub-band"><h2>Where the work ran <span class="hub-meta">n = ${w.segments}</span></h2>
-<p class="hub-meta">Read from the claims logs and Codex's session logs on this machine. A stretch is one session holding one plan. Plans were held ${hrs(w.activeMs)}, waited ${hrs(w.waitingMs)} between stretches, ${hrs(w.stalledMs)} of it after a usage limit.${few ? ` Shares are hidden below ${WHERE_MIN_N} stretches.` : ""}</p>
-<div class="rp-where">${table("Harness", w.byTool)}${table("Machine", w.byMachine)}${table("Model", w.byModel)}</div>
-<h3>Tokens</h3><ul>${tok}</ul>
-<h3>Handovers <span class="hub-meta">${w.handovers.length}${w.handovers.length ? `, ${landed} finished later` : ""}</span></h3>${hand ? `<ul>${hand}</ul>` : `<p class="cc-empty">No plan moved between machines or harnesses in this period.</p>`}</section>`;
+  const hand = w.handovers.length ? `<ul class="rp-list">${w.handovers.slice(0, 8).map((h) => `<li><span class="hub-item__project">${e(h.project)}</span> ${e(h.planId)}: ${e(h.from)} to ${e(h.to)} after ${hrs(h.gapMs)}${h.landed ? ", finished later" : ", not finished yet"}</li>`).join("")}</ul>` : `<p class="cc-empty">No plan moved between machines or harnesses in this period.</p>`;
+  return [
+    panel("where-time", "Time on plans", time, { meta: n, note: "Read from the claims logs on this machine. A stretch is one session holding one plan." }),
+    panel("where-harness", "By harness", by(w.byTool), { meta: n, note }),
+    panel("where-machine", "By machine", by(w.byMachine), { meta: n, note }),
+    panel("where-model", "By model", by(w.byModel), { meta: n, note }),
+    panel("where-tokens", "Tokens", tok, { note: "Codex totals come from its session logs; a harness that writes none shows as not readable." }),
+    panel("where-handovers", "Handovers", hand, { meta: `${w.handovers.length}${w.handovers.length ? `, ${landed} finished later` : ""}` }),
+  ].join("\n");
 }
 
 /** The owner's side. The agent's review is shown as text it wrote, apart from the mechanical findings. */
 export function yourSideSection(r: Report, card: (f: Finding) => string): string {
   if (!r.yourSide && !r.reviewPrompt) return "";
   const fs = r.yourSide ?? [];
+  const low = fs.filter((f) => f.severity === "low");
+  const list = fs.length ? `<ul class="rp-findings">${fs.filter((f) => f.severity !== "low").toSorted((a, b) => (a.severity === "high" ? -1 : 0) - (b.severity === "high" ? -1 : 0)).map(card).join("")}${low.length ? `<details class="rp-low-group"><summary>${low.length} low finding(s)</summary>${low.map(card).join("")}</details>` : ""}</ul>` : `<p class="cc-empty">Nothing waits on you past its threshold.</p>`;
   const review = r.review ? `<details class="rp-review"><summary>An agent's reading, written ${e(r.review.at.slice(0, 10))}</summary><pre>${e(r.review.text)}</pre></details>` : `<p class="hub-meta">No agent has reviewed your side yet.</p>`;
-  return `<section class="hub-band"><h2>Your side <span class="hub-meta">${fs.length}</span></h2>
-<p class="hub-meta">Where the owner is the bottleneck or left something behind. Each line recommends; none of them acts.</p>
-${fs.length ? `<ul class="rp-findings">${fs.filter((f) => f.severity !== "low").toSorted((a, b) => (a.severity === "high" ? -1 : 0) - (b.severity === "high" ? -1 : 0)).map(card).join("")}${fs.some((f) => f.severity === "low") ? `<details class="rp-low-group"><summary>${fs.filter((f) => f.severity === "low").length} low finding(s)</summary>${fs.filter((f) => f.severity === "low").map(card).join("")}</details>` : ""}</ul>` : `<p class="cc-empty">Nothing waits on you past its threshold.</p>`}
-${review}
-${r.reviewPrompt ? `<p><button type="button" data-copy-review>Copy the review prompt</button></p><textarea id="rp-review-prompt" hidden>${e(r.reviewPrompt)}</textarea>` : ""}</section>`;
+  const prompt = r.reviewPrompt ? `<p><button type="button" data-copy-review>Copy the review prompt</button></p><textarea id="rp-review-prompt" hidden>${e(r.reviewPrompt)}</textarea>` : "";
+  return panel("your-side", "Your side", list + review + prompt, { span: "full", meta: String(fs.length), note: "Where the owner is the bottleneck or left something behind. Each line recommends; none of them acts." });
 }
 
-/** Quality, measured and never guessed. Rates stay hidden below WHERE_MIN_N, as on the section above. */
+/** Quality, measured and never guessed: per project fixes and gates, per harness outcomes. */
 export function qualitySection(r: Report): string {
   const ps = r.projects.filter((p) => p.commits);
   const outs = r.where?.outcomes ?? [];
   if (!ps.length && !outs.length) return "";
   const rate = (k: number, n: number) => (n < WHERE_MIN_N ? `${k}` : `${k} (${Math.round((100 * k) / n)}%)`);
-  const rows = ps.map((p) => `<tr><td>${e(p.name)}</td><td>${p.commits}</td><td>${rate(p.fixes, p.commits)}</td><td>${rate(p.reverts, p.commits)}</td><td>${p.outOfScope}</td><td>${!p.lastRun ? "no run" : p.lastRun.gates ? `${p.lastRun.gates - p.lastRun.failed} of ${p.lastRun.gates}` : "no gates recorded"}</td></tr>`).join("");
+  const rows = ps.map((p) => {
+    const g = p.lastRun?.gates ? `<div class="bullet" role="img" aria-label="${p.lastRun.gates - p.lastRun.failed} of ${p.lastRun.gates} gates passed" style="--value: ${((p.lastRun.gates - p.lastRun.failed) / p.lastRun.gates).toFixed(2)}; --target: 1; --poor: 0.5; --fair: 0.9"><span class="bullet__bar"></span><span class="bullet__target"></span></div>` : `<span class="hub-meta">${p.lastRun ? "no gates recorded" : "no run"}</span>`;
+    return `<tr><td>${e(p.name)}</td><td>${p.commits}</td><td>${rate(p.fixes, p.commits)}</td><td>${rate(p.reverts, p.commits)}</td><td>${p.outOfScope}</td><td>${g}</td></tr>`;
+  }).join("");
   const done = outs.reduce((n, x) => n + x.done, 0);
   const orow = outs.map((x) => `<tr><td>${e(x.key)}</td><td>${x.done}</td><td>${x.released}</td><td>${rate(x.reopened, x.done)}</td></tr>`).join("");
-  return `<section class="hub-band"><h2>Quality <span class="hub-meta">n = ${ps.reduce((n, p) => n + p.commits, 0)} commits, ${done} plans done</span></h2>
-<p class="hub-meta">A fix or revert is read from the commit subject's gitmoji or first word. Reopened means a later session claimed a plan another had called done. Writes outside a plan come from the session logs. Percentages show from ${WHERE_MIN_N} cases up.</p>
-<div class="rp-where">${ps.length ? `<div><h3>By project</h3><table class="rp-table"><thead><tr><th>Project</th><th>Commits</th><th>Fixes</th><th>Reverts</th><th>Off-plan writes</th><th>Last run gates</th></tr></thead><tbody>${rows}</tbody></table></div>` : ""}
-${outs.length ? `<div><h3>By harness</h3><table class="rp-table"><thead><tr><th>Harness</th><th>Done</th><th>Handed back</th><th>Reopened</th></tr></thead><tbody>${orow}</tbody></table></div>` : ""}</div></section>`;
+  return [
+    ps.length ? panel("quality-projects", "Quality by project", `<table class="rp-table"><thead><tr><th>Project</th><th>Commits</th><th>Fixes</th><th>Reverts</th><th>Off-plan writes</th><th>Last run gates</th></tr></thead><tbody>${rows}</tbody></table>`, { span: "2", meta: `n = ${ps.reduce((n, p) => n + p.commits, 0)} commits`, note: `Fixes and reverts are read from the commit subject. Percentages show from ${WHERE_MIN_N} commits up.` }) : "",
+    outs.length ? panel("quality-harness", "Outcomes by harness", `<table class="rp-table"><thead><tr><th>Harness</th><th>Done</th><th>Handed back</th><th>Reopened</th></tr></thead><tbody>${orow}</tbody></table>`, { meta: `n = ${done} plans done`, note: "Reopened means a later session claimed a plan another had called done." }) : "",
+  ].join("\n");
 }
 
 const SEV_CLASS: Record<Severity, string> = { high: "rp-high", medium: "rp-med", low: "rp-low" };
@@ -245,15 +265,15 @@ export function reportPage(r: Report, styleBase: string): string {
   const commits = r.projects.reduce((n, p) => n + p.commits, 0);
   const high = r.findings.filter((f) => f.severity === "high").length;
   const drafts = r.notes.filter((n) => n.status === "DRAFT").length;
-  const tile = (n: number | string, label: string) => `<div class="rp-tile"><strong>${e(String(n))}</strong><span>${e(label)}</span></div>`;
+  const tile = (n: number, label: string, href: string, tone?: "warn" | "bad") => `<a class="stat" href="${href}" data-surface="stat:${href.slice(1)}"${tone && n ? ` data-tone="${tone}"` : ""}><span class="stat__value">${n}</span><span class="stat__label">${e(label)}</span></a>`;
   const card = (f: Finding) => `<li class="rp-finding ${SEV_CLASS[f.severity]}"><p><span class="rp-sev">${f.severity}</span> <span class="hub-item__project">${e(f.project)}</span> <b>${e(f.title)}</b></p><p class="rp-ev">Evidence: ${e(f.evidence)}</p><p class="rp-act">${e(f.action)}</p></li>`;
   const top = r.findings.filter((f) => f.severity !== "low").map(card).join("");
   const low = r.findings.filter((f) => f.severity === "low");
   const findings = top + (low.length ? `<details class="rp-low-group"><summary>${low.length} low finding(s)</summary>${low.map(card).join("")}</details>` : "");
-  const sections = r.projects.map((p) => `<section class="rp-project"><h3><a href="${e(p.url)}">${e(p.name)}</a> <span class="hub-meta">${p.commits} commit(s)</span></h3>
-<p class="hub-meta">${p.lastRun ? `Last recorded run: ${e(p.lastRun.id)}, ${e(p.lastRun.date ?? "undated")}, ${p.lastRun.gates} gate(s)${p.lastRun.failed ? `, ${p.lastRun.failed} failed` : ""}` : "No run recorded. Gate results are read from run reports, never run by this page."}</p>
+  const moved = rank(r.projects.map((p) => ({ name: p.name, value: `${p.commits} commit(s)${p.closed.length ? `, ${p.closed.length} closed` : ""}`, share: commits ? p.commits / commits : 0 })), commits);
+  const sections = r.projects.map((p) => `<details class="rp-project"><summary><a href="${e(p.url)}">${e(p.name)}</a> <span class="hub-meta">${p.commits} commit(s)${p.lastRun ? `, last run ${e(p.lastRun.id)}` : ", no run recorded"}</span></summary>
 ${p.subjects.length ? `<ul>${p.subjects.map((s) => `<li>${e(s)}</li>`).join("")}</ul>` : ""}
-${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed: ${e(c.title)}.</b> ${e(c.changed)} <span class="hub-meta">Remember: ${e(c.remember)}</span></li>`).join("")}</ul>` : ""}</section>`).join("");
+${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed: ${e(c.title)}.</b> ${e(c.changed)} <span class="hub-meta">Remember: ${e(c.remember)}</span></li>`).join("")}</ul>` : ""}</details>`).join("");
   const noteRows = r.notes.toSorted((a, c) => c.date.localeCompare(a.date)).map((n) => `<tr><td>${e(n.title)}</td><td>${e(n.status.toLowerCase())}</td><td>${e(n.date)}</td><td>${n.words.toLocaleString("en")}</td><td>${n.figures}</td><td>${n.social ? "yes" : "no"}</td><td>${e(n.issue || "none")}</td></tr>`).join("");
   const decide = r.decide.map((d) => `<li><a href="${e(d.href)}"><b>${e(d.title)}</b></a> <span class="hub-item__project">${e(d.project)}</span> <span class="hub-meta">${e(d.detail)}</span></li>`).join("");
   const md = reportMarkdown(r);
@@ -269,25 +289,29 @@ ${p.closed.length ? `<ul class="rp-closed">${p.closed.map((c) => `<li><b>Closed:
 <body class="pantry-body" data-grade="smooth">
 <nav class="pantry-nav"><a class="pantry-nav__brand" href="/">PANTRY</a><span class="hub-meta">Report</span></nav>
 <main class="pantry-main">
-  <header class="hub-top">
-    <h1>Report</h1>
-    <p class="cc-meta">${e(r.since)} to ${e(r.until)}. Built from each project's command center, its recorded runs, its git log and its notes. Nothing here was run to make it.</p>
+<div class="dash" data-surface="dashboard:report">
+  <header class="dash__head">
+    <h2 class="dash__title">Report</h2>
+    <p class="dash__period">${e(r.since)} to ${e(r.until)}. Built from each project's command center, its recorded runs, its git log and its notes. Nothing here was run to make it.</p>
     <form class="rp-period" method="get" action="/report">
       <a href="/report?days=7">Last 7 days</a> <a href="/report?days=30">Last 30 days</a>
       <label>Since <input type="date" name="since" value="${e(r.since)}"></label> <button type="submit">Show</button>
       <button type="button" data-copy-md>Copy as Markdown</button>
     </form>
   </header>
-  <div class="rp-tiles">${tile(commits, "commits")}${tile(r.projects.length, "projects moved")}${tile(r.decide.length, "waiting on you")}${tile(high, "high findings")}${tile(r.paused, "paused on a limit")}${tile(drafts, "draft notes")}</div>
+  <div class="dash__kpis">${tile(r.decide.length, "waiting on you", "#decide", "warn")}${tile(high, "high findings", "#findings", "bad")}${tile(r.yourSide?.length ?? 0, "on your side", "#your-side", "warn")}${tile(r.paused, "paused on a limit", "#where-time", "warn")}${tile(commits, "commits", "#projects")}${tile(drafts, "draft notes", "#notes")}</div>
   ${r.down.length ? `<p class="hub-stale">Not read, because their PANTRY did not answer: ${r.down.map(e).join(", ")}.</p>` : ""}
-  <section class="hub-band"><h2>Findings <span class="hub-meta">${r.findings.length}</span></h2>${findings ? `<ul class="rp-findings">${findings}</ul>` : `<p class="cc-empty">No finding with evidence and an action in this period.</p>`}</section>
+  <div class="dash__grid">
+  ${panel("decide", "What to decide", decide ? `<ol class="rp-decide">${decide}</ol>` : `<p class="cc-empty">Nothing is waiting on you.</p>`, { span: "full", meta: String(r.decide.length) })}
   ${yourSideSection(r, card)}
+  ${panel("findings", "Findings", findings ? `<ul class="rp-findings">${findings}</ul>` : `<p class="cc-empty">No finding with evidence and an action in this period.</p>`, { span: "full", meta: String(r.findings.length) })}
   ${whereSection(r.where)}
   ${qualitySection(r)}
-  <section class="hub-band"><h2>By project</h2>${sections || `<p class="cc-empty">No commits or closed plans in this period.</p>`}</section>
-  ${r.notes.length ? `<section class="hub-band"><h2>Notes <span class="hub-meta">${r.notes.length}</span></h2><table class="rp-table"><thead><tr><th>Note</th><th>Status</th><th>Date</th><th>Words</th><th>Figures</th><th>Social</th><th>Issue</th></tr></thead><tbody>${noteRows}</tbody></table></section>` : ""}
-  <section class="hub-band"><h2>What to decide <span class="hub-meta">${r.decide.length}</span></h2>${decide ? `<ol class="rp-decide">${decide}</ol>` : `<p class="cc-empty">Nothing is waiting on you.</p>`}</section>
-  <textarea id="rp-md" hidden>${e(md)}</textarea>
+  ${panel("projects", "By project", r.projects.length ? moved + sections : `<p class="cc-empty">No commits or closed plans in this period.</p>`, { span: "2", meta: `${r.projects.length} moved` })}
+  ${r.notes.length ? panel("notes", "Notes", `<table class="rp-table"><thead><tr><th>Note</th><th>Status</th><th>Date</th><th>Words</th><th>Figures</th><th>Social</th><th>Issue</th></tr></thead><tbody>${noteRows}</tbody></table>`, { span: "full", meta: String(r.notes.length) }) : ""}
+  </div>
+</div>
+<textarea id="rp-md" hidden>${e(md)}</textarea>
 </main>
 <script>document.querySelector("[data-copy-review]")?.addEventListener("click", (ev) => { const b = ev.currentTarget; navigator.clipboard?.writeText(document.getElementById("rp-review-prompt").value).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy the review prompt"; }, 1500); }).catch(() => {}); });
 document.querySelector("[data-copy-md]")?.addEventListener("click", (ev) => { const b = ev.currentTarget; navigator.clipboard?.writeText(document.getElementById("rp-md").value).then(() => { b.textContent = "Copied"; setTimeout(() => { b.textContent = "Copy as Markdown"; }, 1500); }).catch(() => {}); });</script>

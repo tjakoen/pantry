@@ -1,6 +1,6 @@
 ---
 id: pantry-where-am-i
-status: doing
+status: todo
 track: ui
 depends: []
 touches: [hub-home.ts, hub-home.test.ts, hub.ts, hub.test.ts, brief.ts, brief.test.ts, sessions.ts, mcp.ts, pantry.css, app.ts, app.test.ts, PLAN.md, INSTALL.md]
@@ -193,6 +193,11 @@ carries the machine, harness, account, model, start and end, tokens, and how it 
 - [x] Work stays on the work machine: detail from the work account and from Edge-adjacent projects is
       kept local, and only totals travel through agent-config. The timeline is built on the report
       page from local logs; the state file carries none of it.
+
+- [x] The report page is built on GRAIN's dashboards layer: a dash with linked stat tiles, a
+      grid of dash-panels each with a data-surface address, rank lists for shares (bars hidden
+      below ten cases), and a bullet graph for each project's last-run gates. A project server
+      started before a GRAIN bump serves the old component bundle until it restarts.
 
 ### Slice 7: an AI reading of the owner's side
 

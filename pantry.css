@@ -743,10 +743,6 @@
 button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .rp-period { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-3); align-items: center; font-size: var(--text-sm); margin-top: var(--space-2); }
 .rp-period button, .rp-period input { font: inherit; min-height: 24px; }
-.rp-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: var(--space-2); margin: var(--space-4) 0; }
-.rp-tile { border: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); border-radius: 4px; padding: var(--space-2) var(--space-3); display: grid; }
-.rp-tile strong { font-size: var(--text-xl, 1.6rem); }
-.rp-tile span { font-size: var(--text-xs); color: var(--ink-muted); }
 .rp-findings, .rp-decide { padding-left: 0; list-style: none; margin: 0; }
 .rp-decide { list-style: decimal; padding-left: 1.4em; }
 .rp-decide li { padding: var(--space-1) 0; }
@@ -1049,5 +1045,4 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .is-side .cc-layout { position: relative; }
 .is-side .cc-pane.is-open { position: absolute; inset: 0 0 auto 0; max-height: none; z-index: 2; min-height: 100%; }
 .is-side .cc-layout:has(.cc-pane.is-open) .cc-center { visibility: hidden; }
-.rp-where{display:grid;grid-template-columns:repeat(auto-fit,minmax(14rem,1fr));gap:var(--space-4,1rem)}
 .rp-review pre{white-space:pre-wrap;font:inherit}
