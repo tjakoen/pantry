@@ -119,6 +119,29 @@ projects behind a toggle and zero counters not rendered at all.
 - [ ] Optional, off by default: a weekly recap that suggests one or two threads worth understanding
       properly.
 
+### Slice 5: the report page
+
+On 19 November a session published an audit page that Tjakoen liked: a summary line, a row of
+stat tiles, a section per area with what landed and graded findings, a sortable and filterable
+table of notes, and a closing list of decisions. PANTRY should produce that page itself, on
+demand, from the data the other slices already gather, instead of a session rebuilding it by hand.
+
+- [ ] Add a Report surface at /report on the hub, built on GRAIN's dashboard strip and stat tiles,
+      with the same shape: summary, tiles, one section per project or area, findings graded high,
+      medium and low, a table, and What to decide at the end.
+- [ ] Each finding carries its evidence (a file and line, a gate result or a commit) and an action.
+      A finding with neither is not rendered, the same rule as the Waiting on you band.
+- [ ] A period picker: since last visit, this week, or a date. The default is since last visit.
+- [ ] Gate results come from the latest recorded runs, never from a fresh run the page starts. The
+      page says how old each one is and names any gate that was not run.
+- [ ] A notes section for repositories with content/notes: status, date, words, figures, social
+      copy and issue per note, with the drafts-piling-up check.
+- [ ] Generate the What to decide list from the Waiting on you items, so the report and the band
+      never disagree.
+- [ ] A Copy as Markdown button, so a report can go into a note or a message without a session.
+- [ ] Tests for the finding rule and the period picker; a screenshot beside the 19 November page
+      to show it reads the same.
+
 ## Done when
 
 Tjakoen can open PANTRY on any of his machines and, within ten seconds, name what is waiting on him
