@@ -283,8 +283,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Slices 1, 2 and 3 are built and pushed or committed; resume cards, paused plans and the In flight band work.
-- Next: Detect a usage limit in a Stop hook and write a minimal limit card, then start slice 4 or slice 8.
-- Waiting on: Tjakoen to set sync.dir on the MacBook Pro and Windows PC, and to pick slice 4 or 8.
+- Stopped: Slices 1 to 4 and 8 are built; explainers, the Done this week section and Explain this prompts work.
+- Next: Slice 5, the report page, or slice 6 token readers; the usage-limit card hook in slice 3 is still open.
+- Waiting on: Tjakoen to pick the next slice and to set sync.dir on the other two machines.
 - Ended: handoff
-- Left: 2026-11-19T07:48:32.223Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T13:05:24.844Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
