@@ -296,8 +296,8 @@ Each slice ships with its tests green and a screenshot shown in the session that
 
 ## Resume card
 
-- Stopped: Slice 6 quality signals built: Quality section with fixes, reverts, off-plan writes, gates, and per-harness done, handed back, reopened.
-- Next: What a handover received; weekly agent review schedule; released-claim check.
-- Waiting on: Owner consent to push pantry e6ecbd0.
+- Stopped: Report page rebuilt on GRAIN dashboards (stat tiles, dash-panels, rank lists, bullet graphs).
+- Next: Same treatment for the hub home and the per-project command center; dedupe registry duplicates in What to decide; what a handover received.
+- Waiting on: Owner consent to push pantry 269735f.
 - Ended: handoff
-- Left: 2026-11-19T18:46:04.581Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
+- Left: 2026-11-19T18:51:27.016Z by claude (claude-opus-5-5) on Tjakoens-MacBook-Air.local
