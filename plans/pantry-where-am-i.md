@@ -1,6 +1,6 @@
 ---
 id: pantry-where-am-i
-status: doing
+status: todo
 track: ui
 depends: []
 touches: [hub-home.ts, hub-home.test.ts, hub.ts, hub.test.ts, brief.ts, brief.test.ts, sessions.ts, mcp.ts, pantry.css, app.ts, app.test.ts, PLAN.md, INSTALL.md]
