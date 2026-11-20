@@ -370,6 +370,13 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   const shelved = rows.filter((r) => shelfReason(r, now) !== null);
   const paused = rows.reduce((n, r) => n + (r.summary?.threads ?? []).filter((t) => t.state === "paused").length, 0);
   const learned = rows.reduce((n, r) => n + (r.summary?.learned ?? []).length, 0);
+  // The tile names the board's own columns, so its count can be checked against them at a glance.
+  const verbs: Record<string, string> = { decision: "answer", "human-plan": "do", "blocked-plan": "unblock" };
+  const byVerb = new Map<string, number>();
+  for (const r of rows) for (const i of r.summary?.items ?? []) { const v = verbs[i.kind] ?? "answer"; byVerb.set(v, (byVerb.get(v) ?? 0) + 1); }
+  const unread = rows.reduce((n, r) => n + (r.summary?.answered ?? 0), 0);
+  if (unread) byVerb.set("unread", unread);
+  const waitingLabel = byVerb.size ? `waiting on you: ${["answer", "do", "unblock", "unread"].filter((v) => byVerb.get(v)).map((v) => `${byVerb.get(v)} ${v}`).join(", ")}` : "waiting on you";
   const tile = (n: number, label: string, href: string, tone?: "warn") => `<a class="stat" href="${href}" data-surface="stat:${href.slice(1)}"${tone && n ? ` data-tone="${tone}"` : ""}><span class="stat__value">${n}</span><span class="stat__label">${e(label)}</span></a>`;
   const body = rows.length
     ? `<ul class="hub-list">${active.map((r) => row(r, now)).join("")}</ul>${shelved.length ? `<details class="hub-shelf" data-surface="shelf:projects"><summary>Inactive, held or sunset <span class="hub-meta">${shelved.length}</span></summary><ul class="hub-list">${shelved.map((r) => row(r, now).replace('<span class="hub-meta">', `<span class="hub-shelf__why">${e(shelfReason(r, now)!)}</span><span class="hub-meta">`)).join("")}</ul></details>` : ""}`
@@ -393,7 +400,7 @@ ${shell.side}
     <h2 class="dash__title">All projects</h2>
     <p class="dash__period">${rows.length} registered, read from each project's command center at ${new Date().toISOString().slice(11, 16)} UTC and again every minute.</p>
   </header>
-  <div class="dash__kpis">${tile(waiting, "waiting on you", "#work", "warn")}${tile(live, "live sessions", "#work")}${tile(paused, "paused on a limit", "#work", "warn")}${tile(learned, "done this week", "#learned")}${tile(rows.length, "projects", "#projects")}</div>
+  <div class="dash__kpis">${tile(waiting, waitingLabel, "#work", "warn")}${tile(live, "live sessions", "#work")}${tile(paused, "paused on a limit", "#work", "warn")}${tile(learned, "done this week", "#learned")}${tile(rows.length, "projects", "#projects")}</div>
   <div class="dash__grid">
   ${rows.length || others.length ? panel("work", "Your work", null, workBoard(rows, others, now), "full") : ""}
   ${rows.length ? panel("projects", "Projects", rows.length, body, "full") : body}
