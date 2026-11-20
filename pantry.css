@@ -17,7 +17,6 @@
   font-family: var(--display);
   font-size: var(--text-lg);
   color: var(--ink) !important;
-  letter-spacing: 0.04em;
 }
 
 .pantry-main { max-width: min(100%, 72rem); margin: 0 auto; padding: var(--space-8, 2rem); }
@@ -29,8 +28,6 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   color: var(--ink-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 
 /* The reshape (piece 8): board-forward home + demoted reference row + not-yet-built AI teasers. */
@@ -64,7 +61,7 @@
   border: var(--hairline, 1px) solid var(--rule); border-radius: var(--radius, 0.5rem);
   color: var(--ink-muted); background: transparent;
 }
-.pantry-pill__label { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink); font-weight: 600; }
+.pantry-pill__label { font-family: var(--font-mono); color: var(--ink); font-weight: 600; }
 .pantry-pill__detail { color: var(--ink-muted); }
 /* ok recedes; due (an overdue chore) and danger (a broken link) pick up a token-mixed tint so a stale
    check reads at a glance without a bespoke hue. muted is the quiet fallback for a non-ok info check. */
@@ -118,7 +115,6 @@
 .pantry-cmdk__title { color: var(--ink); font-size: var(--text-sm); }
 .pantry-cmdk__kind {
   font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-faint);
-  text-transform: uppercase; letter-spacing: 0.06em;
 }
 .pantry-cmdk__route { grid-column: 1 / -1; color: var(--ink-muted); font-family: var(--font-mono); font-size: var(--text-xs); }
 
@@ -202,8 +198,7 @@
 /* ── the decision inbox (piece 11d) ─────────────────────────────────────── */
 /* status badge — open reads as "needs you", resolved recedes. Tokens only, no new palette. */
 .pantry-decision-badge {
-  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
-  letter-spacing: 0.04em; padding: 0.1em 0.5em; border-radius: var(--radius, 0.5rem);
+  font-family: var(--font-mono); font-size: var(--text-xs); padding: 0.1em 0.5em; border-radius: var(--radius, 0.5rem);
   border: var(--hairline, 1px) solid var(--rule); color: var(--ink-muted); vertical-align: middle;
 }
 .pantry-decision-badge[data-status="open"] {
@@ -285,8 +280,7 @@
 /* The badge reuses the decision-badge pill shape. Only `blocked` picks up a tint: a partial run is a
    normal outcome and should not shout, a blocked one is the whole reason to open the page. */
 .pantry-run-badge {
-  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
-  letter-spacing: 0.04em; padding: 0.1em 0.5em; border-radius: var(--radius, 0.5rem);
+  font-family: var(--font-mono); font-size: var(--text-xs); padding: 0.1em 0.5em; border-radius: var(--radius, 0.5rem);
   border: var(--hairline, 1px) solid var(--rule); color: var(--ink-muted); vertical-align: middle;
 }
 .pantry-run-badge[data-status="blocked"] {
@@ -327,8 +321,7 @@
 }
 .pantry-run-summary-block div[data-tone="due"] b { color: var(--ink); }
 .pantry-run-summary-block span {
-  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
-  letter-spacing: 0.04em; color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-faint);
 }
 .pantry-run-section { margin-top: var(--space-6, 1.5rem); }
 /* The folded middle sections. Only the run's inventory of itself folds — never the gaps, the scope
@@ -351,8 +344,7 @@
    row to itself and leaves the short facts stranded in ragged columns beside it. */
 .pantry-run-meta > div { max-width: 60ch; }
 .pantry-run-meta dt {
-  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
-  letter-spacing: 0.04em; color: var(--ink-faint);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-faint);
 }
 .pantry-run-meta dd { margin: 0; color: var(--ink); font-variant-numeric: tabular-nums; }
 /* Gate output is pasted verbatim into a fence, so it must scroll rather than reflow — a wrapped log
@@ -412,7 +404,7 @@
 
 .pantry-review__group { margin-bottom: var(--space-5, 1.25rem); }
 .pantry-review__grouptitle {
-  font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em;
+  font-size: var(--text-sm);
   color: var(--ink-faint); margin: 0 0 var(--space-2, 0.5rem); font-weight: normal;
 }
 .pantry-review__tours, .pantry-review__steps, .pantry-review__links { list-style: none; margin: 0; padding: 0; }
@@ -515,8 +507,7 @@
 /* The outcome, in words rather than in hue — GRAIN collapses success and danger to ink, so a
    coloured border would be inventing a token the palette closed on purpose. */
 .pantry-review__receipteyebrow {
-  margin: 0; font-size: var(--text-sm); font-weight: 700;
-  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
+  margin: 0; font-size: var(--text-sm); font-weight: 700; color: var(--ink);
 }
 .pantry-review__receiptmsg { margin: 0; font-size: var(--text-base, 1rem); line-height: 1.45; color: var(--ink); }
 /* A failure gets the quieter frame and the louder word. The reviewer has to read it either way, so
@@ -570,8 +561,7 @@
 .pantry-lamp[data-state="lit"] .pantry-lamp__label { color: var(--ink); }
 .pantry-lamp[data-state="unobserved"] .pantry-lamp__label { color: var(--ink-muted); }
 .pantry-lamp__state {
-  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
-  letter-spacing: 0.04em; color: var(--ink-muted);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted);
 }
 .pantry-lamp__shared {
   margin-inline-start: var(--space-2, 0.5rem); padding: 0.1em 0.5em;
@@ -724,7 +714,7 @@
 .hub-band h2 .hub-meta { margin-left: 0; font-size: var(--text-sm); }
 .hub-items { list-style: none; padding: 0; margin: 0; border-top: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); }
 .hub-item { display: grid; grid-template-columns: 8.5rem 11rem 1fr auto; gap: var(--space-1) var(--space-3); align-items: baseline; padding: var(--space-2) 0; border-bottom: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); font-size: var(--text-sm); }
-.hub-item__kind { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); }
+.hub-item__kind { font-size: var(--text-xs); color: var(--ink-muted); }
 .hub-item__project { color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-item__title { font-weight: 600; color: var(--ink); }
 .hub-item__detail { grid-column: 3; color: var(--ink-muted); }
@@ -733,7 +723,7 @@
 .hub-item__where { grid-column: 4; grid-row: 1; font-size: var(--text-xs); color: var(--ink-muted); white-space: nowrap; }
 .hub-band > summary { cursor: pointer; list-style: none; }
 .hub-band > summary h2 { display: inline-flex; }
-.hub-topic { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-muted); margin: var(--space-3) 0 var(--space-1); }
+.hub-topic { font-size: var(--text-sm); color: var(--ink-muted); margin: var(--space-3) 0 var(--space-1); }
 .hub-learned { padding: var(--space-2) 0; border-bottom: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); font-size: var(--text-sm); }
 .hub-learned__head { display: flex; gap: var(--space-3); align-items: baseline; }
 .hub-learned dl { display: grid; grid-template-columns: 6rem 1fr; gap: var(--space-1) var(--space-3); margin: var(--space-2) 0; }
@@ -753,13 +743,13 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .rp-finding p { margin: 2px 0; }
 .rp-finding.rp-high { border-left-color: var(--ink); border-left-width: 5px; }
 .rp-finding.rp-low { border-left-style: dashed; }
-.rp-sev { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; }
+.rp-sev { font-size: var(--text-xs); font-weight: 700; }
 .rp-ev, .rp-act { color: var(--ink-muted); }
 .rp-project { margin: var(--space-3) 0; font-size: var(--text-sm); }
 .rp-project h3 { font-size: var(--text-lg); margin: 0; display: flex; gap: var(--space-2); align-items: baseline; }
 .rp-table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
 .rp-table th, .rp-table td { text-align: left; padding: var(--space-1) var(--space-2); border-bottom: 1px solid color-mix(in srgb, var(--hairline) 28%, transparent); vertical-align: top; }
-.rp-table th { font-size: var(--text-xs); color: var(--ink-muted); text-transform: uppercase; }
+.rp-table th { font-size: var(--text-xs); color: var(--ink-muted); }
 .hub-stale { font-size: var(--text-sm); color: var(--ink-muted); margin: var(--space-2) 0 0; }
 @media (max-width: 720px) { .hub-item { grid-template-columns: 1fr auto; } .hub-item__kind, .hub-item__project, .hub-item__title, .hub-item__detail { grid-column: 1; } .hub-item__act { grid-column: 2; } }
 
@@ -774,7 +764,7 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .ax-tree a:hover, .ax-facet:hover { background: color-mix(in srgb, var(--hairline) 12%, transparent); color: var(--ink); }
 .ax-tree a[aria-current] { background: color-mix(in srgb, var(--hairline) 22%, transparent); color: var(--ink); font-weight: 600; }
 .ax-n { margin-left: auto; font-size: var(--text-xs); color: var(--ink-muted); font-weight: 400; }
-.ax-filters h2 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin: var(--space-3) 0 var(--space-1); font-weight: 600; }
+.ax-filters h2 { font-size: var(--text-xs); color: var(--ink-muted); margin: var(--space-3) 0 var(--space-1); font-weight: 600; }
 .ax-filters h2:first-child { margin-top: 0; }
 .ax-facet.is-on { color: var(--ink); font-weight: 600; }
 .ax-check { width: 1em; color: var(--ink-muted); }
@@ -873,7 +863,7 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .act-detail { margin-top: var(--space-2); font-size: var(--text-sm); }
 .act-detail summary { cursor: pointer; color: var(--ink-muted); font-size: var(--text-xs); }
 .act-detail-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-4); margin-top: var(--space-2); }
-.act-detail h3 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-muted); margin: 0 0 var(--space-1); }
+.act-detail h3 { font-size: var(--text-xs); color: var(--ink-muted); margin: 0 0 var(--space-1); }
 .act-files { margin: 0; padding-left: 0; list-style: none; font-size: var(--text-xs); max-height: 16rem; overflow: auto; }
 .act-files li { padding: 0.1rem 0; }
 .act-files time { color: var(--ink-muted); margin-right: 0.4em; }
@@ -941,8 +931,7 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
   border: 1px solid var(--ink-faint); border-radius: var(--radius-md, 0.5rem);
 }
 .pantry-gate__label {
-  font-family: var(--font-mono); font-size: var(--text-xs); text-transform: uppercase;
-  letter-spacing: 0.04em; color: var(--ink-muted);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-muted);
 }
 .pantry-gate__value { font-size: var(--text-xl, 1.5rem); font-weight: 600; color: var(--ink); line-height: 1.1; }
 .pantry-gate__note { font-size: var(--text-sm, 0.875rem); color: var(--ink-muted); }
@@ -1083,7 +1072,8 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .proof-col__fold > a + a, .proof-col__fold > a { display: block; margin-bottom: var(--space-4, 1rem); }
 
 /* Narrow: tiles stay two or three across, so the first screen shows work, not five boxes. */
-.dash__kpis, .cc-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 9rem), 1fr)); }
+/* DASHBOARD section 3: the KPI strip fills its row instead of leaving a gap on the right. */
+.dash__kpis, .cc-tiles { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); }
 @media (max-width: 40rem) {
   .dash__kpis, .cc-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2, 0.5rem); }
   .dash__kpis .stat, .cc-tiles .stat { padding: var(--space-2, 0.5rem); }
@@ -1093,3 +1083,9 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .pantry-side .pantry-side__item.is-down { opacity: 0.55; }
 /* A centred main column inside the sidebar grid shrinks to its content, and a dashboard is a size container with none, so it gets the full width outright. */
 .pantry-body:has(> .pantry-side) > .pantry-main { width: 100%; box-sizing: border-box; }
+
+/* DASHBOARD section 5: sentence case everywhere, including GRAIN's board column heads. */
+.proof-col__title, .proof-col__count { text-transform: none; letter-spacing: normal; }
+/* DASHBOARD section 2: housekeeping links sit quietly after the line the reader reads first. */
+.cc-house { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--ink-faint); }
+.cc-house a { color: var(--ink-muted); }

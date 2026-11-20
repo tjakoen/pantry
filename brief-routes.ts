@@ -202,7 +202,7 @@ export function briefBody(b: BriefPayload, view?: BriefView): string {
 
   return `<div class="cc" id="cc" data-generated="${e(b.generated)}"${view ? ` data-view="${view}"` : ""}>
 <header class="cc-head">
-  <div class="cc-title"><h1>${e(b.project)}</h1><p class="cc-sub"><span class="cc-live" data-live>updated ${e(b.generated.slice(11, 19))} UTC</span> · <a href="/brief.json">json</a> · <a href="/brief.txt">agent's copy</a> · <span class="cc-keys">j k move · enter preview · c copy · o open · r refresh</span></p></div>
+  <div class="cc-title"><h1>${e(b.project)}</h1><p class="cc-sub"><span class="cc-live" data-live>updated ${e(b.generated.slice(11, 19))} UTC</span></p><p class="cc-house"><a href="/brief.json">json</a> · <a href="/brief.txt">agent's copy</a> · <span class="cc-keys">j k move · enter preview · c copy · o open · r refresh</span></p></div>
   <nav class="cc-tiles" aria-label="Summary">${view ? `<a class="cc-tile cc-tile--all" href="/">All</a>` : ""}${tiles.map(([to, l, n, t]) => `<a class="stat cc-tile${t}" href="/?view=${to}"${t === " is-alert" ? ` data-tone="bad"` : t === " is-warn" ? ` data-tone="warn"` : ""}${view === to ? ` aria-current="page"` : ""}><span class="stat__value">${n}</span><span class="stat__label">${e(l)}</span></a>`).join("")}</nav>
   ${b.notes.length ? `<ul class="cc-notes">${b.notes.map((n) => `<li>${e(n)}</li>`).join("")}</ul>` : ""}
 </header>
