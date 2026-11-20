@@ -1,0 +1,35 @@
+externals:
+  - { id: visitor, label: Visitor, region: anywhere }
+processes:
+  - { id: open-share, label: Open share link, boundary: eu-app }
+stores:
+  - { id: share-store, label: Shares table, boundary: eu-db }
+  - { id: analytics, label: Analytics, region: us }
+boundaries:
+  - { id: eu-app, label: App (EU), region: eu }
+  - { id: eu-db, label: Database (EU), region: eu }
+flows:
+  - id: flow-share-open
+    label: Visitor opens a link
+    from: visitor
+    to: open-share
+    data: [token]
+    region: eu
+    retention: none
+    purpose: Resolve the link
+  - id: flow-share-read
+    label: Look up the share
+    from: open-share
+    to: share-store
+    data: [erd#shares, erd#documents]
+    region: eu
+    retention: as long as the share
+    purpose: Check the token and expiry
+  - id: flow-share-analytics
+    label: Count opens
+    from: open-share
+    to: analytics
+    data: [erd#shares]
+    region: us
+    retention: 30 days
+    purpose: Usage counts

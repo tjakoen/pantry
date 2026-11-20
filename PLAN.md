@@ -198,6 +198,7 @@ What a host **provides** (by convention, overridable in `pantry.config`):
 |---|---|---|---|
 | Plans (the board) | `./plans/*.md` | yes (it's the cockpit's point) | `proof init` scaffolds · `proof check` lints |
 | The project's own docs | `./docs/**/*.md` | optional — mounted as a MILL collection when present | `pantry.config` for non-standard locations |
+| Design artifacts | `./design/` (DESIGN-STANDARD: erd, dictionary, dfd, architecture, flows/, wireframes/, decisions/, requirements) | optional — the Design surface and its doctor rows appear only when present | the `design` skill writes them; `pantry doctor` checks alignment |
 | Config | `pantry.config.(json\|ts)` | optional — surface toggles, extra doc dirs, project name | `pantry init` scaffolds |
 
 What PANTRY **bundles** (the host provides nothing for these): the framework docs
@@ -594,3 +595,21 @@ tokensave already computes), then its dashboard presentation for `/control`: one
 tests, board and advice side by side, decisions answered in place with Agree, Disagree or Later,
 and the before-and-after design view with Approve beneath it. Its UX persona rounds come last,
 because they cost a model run per round and need a decision on budget first.
+
+## The Design surface (2026-11-20)
+
+`/design` renders a project's `design/` folder as linked, display-only views: the ERD (a table opens
+its columns, dictionary meanings, RLS rules with their test state, the plans that cite it and the DFD
+flows that carry it), the DFD (a flow opens its data, region, retention and purpose, and a flow whose
+ends sit in different regions is highlighted), the C4 architecture, user flows (a step opens its
+wireframe and shows its test), wireframes in a sandboxed iframe whose `data-screen` links post the
+next screen to the page, the decisions list, and the requirement × test matrix with gaps linking to
+the plan that owes the test. Plan cards and plan pages show the artifacts their `design: [...]`
+field names. The format is DESIGN-STANDARD's; design.ts reads it and design-page.ts renders it.
+
+The same model is served at `/design.json` (the `design` surface of `pantry_read`) and feeds five
+tier 1 doctor rows, one per rule of the contract's alignment check, plus a parse row. They appear
+only in a project with a `design/` folder. Test results come from `design/test-results.json`, a map
+of test reference to `pass` or `fail`; the contract names no results file yet, so this is PANTRY's
+reading until DESIGN-STANDARD settles one. PROOF's parser ignores unknown frontmatter keys, so the
+`design` field passes its lint already; PANTRY reads the field itself.

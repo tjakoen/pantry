@@ -57,6 +57,7 @@ export function nav(surfaces: PantrySurfaces, review: boolean, project?: string)
     surfaces.plans && link("/plans", "Plans", "☰"),
     review && link("/review", "Review", "◐"),
     link("/map", "Project", "▦"),
+    link("/design", "Design", "◇"),
   ].filter(Boolean).join("");
   const more = [
     surfaces.decisions && `<a class="pantry-side__item" href="/decisions">Decisions</a>`,

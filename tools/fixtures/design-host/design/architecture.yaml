@@ -1,0 +1,12 @@
+context:
+  nodes:
+    - { id: user, kind: person, label: Owner }
+    - { id: system, kind: system, label: Share app }
+  relations:
+    - { from: user, to: system, label: shares documents }
+containers:
+  nodes:
+    - { id: web, kind: container, label: Web app, tech: BATCH }
+    - { id: db, kind: container, label: Database, tech: Supabase Postgres }
+  relations:
+    - { from: web, to: db, label: reads and writes }

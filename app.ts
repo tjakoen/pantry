@@ -58,6 +58,8 @@ import { controlBody } from "./control-page.ts";
 import { type PantryServer, answersBody, decisionDetailBody, decisionsIndexBody, recordAnswerRequest } from "./decisions-page.ts";
 import { aboutBody, docsBody, homeBody } from "./home-page.ts";
 import { mapBody } from "./map-page.ts";
+import { buildDesignPayload, loadDesign } from "./design.ts";
+import * as designPage from "./design-page.ts";
 import { runDetailBody, runsIndexBody } from "./runs-page.ts";
 import { usageBody } from "./usage-page.ts";
 import { buildUsageForConfig } from "./usage.ts";
@@ -641,6 +643,33 @@ export function createPantryHandler(opts: PantryOptions) {
     if (path === "/map")
       return html(page("Mindmap", mapBody(await buildMapPayload(config, new Date().toISOString()))));
 
+    // --- the Design surface: a project's design/ folder (DESIGN-STANDARD), display-only. The pages,
+    // /design.json and the doctor's alignment rows all read design.ts, so they cannot disagree.
+    if (path === "/design.json" || path === "/design" || path.startsWith("/design/")) {
+      const designOpts = { project: config.projectName, plansDir: config.plansDir };
+      if (path === "/design.json") return Response.json(await buildDesignPayload(config.cwd, designOpts, new Date().toISOString()));
+      const dm = await loadDesign(config.cwd, designOpts);
+      if (!dm.available) return html(page("Design", designPage.designUnavailable(dm)));
+      const seg = path.split("/").slice(2).map((x) => decodeURIComponent(x));
+      const [view, id] = seg;
+      if (view === "wireframe-raw" && id && dm.wireframes.includes(id)) {
+        const raw = await bunRuntime.readFile(join(dm.dir, "wireframes", `${id}.html`));
+        // The CSP sandbox holds even when the raw URL is opened directly, outside the iframe.
+        return new Response(designPage.wireframeRaw(raw), { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": "sandbox allow-scripts" } });
+      }
+      let body: string | null = null;
+      if (!view) body = designPage.designOverview(await buildDesignPayload(config.cwd, designOpts, new Date().toISOString()));
+      else if (view === "erd") body = designPage.erdBody(dm, id);
+      else if (view === "dfd") body = designPage.dfdBody(dm, id);
+      else if (view === "architecture" && !id) body = designPage.architectureBody(dm);
+      else if (view === "flows") body = id ? designPage.flowBody(dm, id) : designPage.flowsIndex(dm);
+      else if (view === "wireframes") body = id ? designPage.wireframeBody(dm, id) : designPage.wireframesIndex(dm);
+      else if (view === "decisions" && !id) body = designPage.decisionsBody(dm);
+      else if (view === "requirements" && !id) body = designPage.requirementsBody(dm);
+      if (body !== null) return html(page("Design", body));
+      return new Response("Not found", { status: 404 });
+    }
+
     // --- the control center (C0): the machine twin only. One row per session the harness emitter
     // saw in this project, folded from an append-only log PANTRY reads and never writes. The page
     // that joins these rows to the plan board is C1; until then this is the record and nothing else.
@@ -845,7 +874,19 @@ ${body}`));
     // plan's "one parser, never a second" rule kept by importing the parser rather than by having
     // none, which is what P1 could get away with when the project always had its own.
     if (crumbRoutes) { const c = await crumbRoutes(path); if (c) return c; }
-    if (surfaces.plans) { const r = await proofRoutes(path); if (r) return fixProofResponse(r, annotate); }
+    if (surfaces.plans) {
+      const r = await proofRoutes(path);
+      if (r) {
+        // Plan cards and the plan page show the design artifacts their `design` field names.
+        const planId = path.startsWith("/plans/plan/") ? decodeURIComponent(path.slice(12)) : null;
+        return fixProofResponse(r, async (h) => {
+          const out = await annotate(h);
+          const dm = await loadDesign(config.cwd, { plansDir: config.plansDir }).catch(() => null);
+          if (!dm?.available) return out;
+          return planId ? designPage.annotatePlanPage(out, dm, planId) : designPage.annotateDesign(out, dm);
+        });
+      }
+    }
     const m = await millRoutes(path); if (m) return m;
     return null;   // not one of PANTRY's — the caller decides (404, or the preview target)
   };

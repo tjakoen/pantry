@@ -32,7 +32,11 @@ describe("tier ceilings", () => {
   });
   test("an unknown check id defaults to tier 3, quiet for strangers", () => {
     expect(tierOf("something-new")).toBe(3);
-    expect(Object.values(CHECK_TIERS).filter((t) => t === 1).length).toBe(3);
+    // Three core contract checks, plus the design alignment rows, which only exist in a host that
+    // has a design/ folder and so only fail a project that adopted DESIGN-STANDARD.
+    const tier1 = Object.entries(CHECK_TIERS).filter(([, t]) => t === 1).map(([id]) => id);
+    expect(tier1.filter((id) => !id.startsWith("design-")).length).toBe(3);
+    expect(tier1.filter((id) => id.startsWith("design-")).sort()).toEqual(["design-done-tests", "design-erd-fresh", "design-parse", "design-refs", "design-schema-plans", "design-superseded"]);
   });
 });
 

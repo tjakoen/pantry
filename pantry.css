@@ -1091,3 +1091,43 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .cc-house a { color: var(--ink-muted); }
 /* DASHBOARD section 4: the verb chip that opens a Needs you card carries the theme's accent. */
 .cc-tag.is-verb, #cc-inbox .cc-tag.is-verb { font-family: inherit; background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink, var(--paper)); font-weight: 600; }
+
+/* ── Design surface (design-page.ts): display-only views of a project's design/ folder ── */
+.pantry-design__tabs { display: flex; flex-wrap: wrap; gap: var(--space-2, .5rem); margin-block: var(--space-3, 1rem); }
+.pantry-design__tab { padding: .25rem .6rem; border-radius: 999px; border: var(--hairline, 1px) solid var(--rule); text-decoration: none; }
+.pantry-design__tab[aria-current="page"] { background: var(--ink); color: var(--paper); }
+.pantry-design__split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: var(--space-4, 1.25rem); align-items: start; }
+@media (max-width: 900px) { .pantry-design__split { grid-template-columns: 1fr; } }
+.pantry-design__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); gap: var(--space-3, 1rem); }
+.pantry-design__entity { text-decoration: none; color: inherit; }
+.pantry-design__entity[aria-current="true"], .pantry-design__table tr[aria-current="true"] { outline: 2px solid var(--ink); }
+.pantry-design__cols { list-style: none; padding: 0; margin: 0; font-size: .9em; }
+.pantry-design__cols li[data-pk] code { font-weight: 700; }
+.pantry-design__detail { position: sticky; top: 1rem; }
+.pantry-design__table { width: 100%; border-collapse: collapse; }
+.pantry-design__table th, .pantry-design__table td { padding: .3rem .5rem; border-bottom: var(--hairline, 1px) solid var(--rule); text-align: left; vertical-align: top; }
+.pantry-design__chip { display: inline-block; font-size: .75em; padding: 0 .4rem; border-radius: 999px; border: 1px solid currentColor; opacity: .8; }
+/* The palette is closed (GRAIN collapses status hues to ink), so a region crossing is a treatment:
+   a heavier, dashed mark plus the words "crosses region". */
+.pantry-design__chip[data-cross] { border-style: dashed; border-width: 2px; font-weight: 600; opacity: 1; }
+.pantry-design__table tr[data-cross] td { font-weight: 600; border-bottom-style: dashed; }
+.pantry-design__test { font-size: .8em; padding: 0 .4rem; border-radius: 4px; }
+/* Test states differ by treatment and by their word (passing, failing, no result), never by hue. */
+.pantry-design__test[data-test] { border: var(--hairline, 1px) solid var(--rule); color: var(--ink-muted); }
+.pantry-design__test[data-test="pass"] { color: var(--ink); }
+.pantry-design__test[data-test="fail"] { color: var(--paper); background: var(--ink); font-weight: 600; }
+.pantry-design__test[data-test="missing"], .pantry-design__test[data-test="none"] { border-style: dashed; color: var(--ink-faint); }
+.pantry-design__matrix td[data-test] { text-align: center; }
+.pantry-design__matrix td[data-test="fail"] { background: var(--ink); color: var(--paper); }
+.pantry-design__matrix td[data-test="unrun"], .pantry-design__matrix td[data-test="missing"] { color: var(--ink-faint); }
+.pantry-design__matrix td[data-gap] { border: 2px dashed var(--ink); font-weight: 600; }
+.pantry-design__boundaries { display: flex; flex-wrap: wrap; gap: var(--space-3, 1rem); margin-block: var(--space-3, 1rem); }
+.pantry-design__node { display: inline-block; margin: .15rem; padding: .15rem .5rem; border: 1px solid currentColor; }
+.pantry-design__node[data-kind="process"] { border-radius: 999px; }
+.pantry-design__node[data-kind="store"] { border-inline-width: 0; }
+.pantry-design__node[data-kind="external"] { border-width: 2px; }
+.pantry-design__steps { list-style: none; padding: 0; display: grid; gap: var(--space-2, .5rem); }
+.pantry-design__frame { width: 100%; height: 28rem; border: var(--hairline, 1px) solid var(--rule); background: var(--paper); }
+.pantry-design__rules { list-style: none; padding: 0; }
+.pantry-design__rule[data-ok="false"] b { background: var(--ink); color: var(--paper); padding: 0 .3rem; }
+.pantry-design__rule[data-ok="true"] b { color: var(--ink-muted); }

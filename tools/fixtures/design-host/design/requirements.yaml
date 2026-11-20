@@ -1,0 +1,16 @@
+requirements:
+  - id: R1
+    text: An expired link opens nothing.
+    plan: share-links
+    artifacts: [erd#shares, dictionary#shares-expired, flows/share-link#open]
+    tests: ["supabase/tests/shares.test.sql::expired share opens nothing"]
+  - id: R2
+    text: An owner sees their own documents.
+    plan: share-links
+    artifacts: [dictionary#documents-owner-read]
+    tests: ["supabase/tests/shares.test.sql::owner reads own documents"]
+  - id: R3
+    text: Opens are counted.
+    plan: analytics
+    artifacts: [dfd#flow-share-analytics]
+    tests: []

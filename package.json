@@ -32,6 +32,8 @@
     "session-door.ts",
     "control-page.ts",
     "decisions-page.ts",
+    "design.ts",
+    "design-page.ts",
     "home-page.ts",
     "map-page.ts",
     "runs-page.ts",

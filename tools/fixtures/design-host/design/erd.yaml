@@ -1,0 +1,34 @@
+generated_from: [supabase/schemas/shares.sql]
+notation: crows-foot
+enums: []
+entities:
+  - id: documents
+    schema: public
+    rls: true
+    primary_key: [id]
+    columns:
+      - { id: id, type: uuid, nullable: false, pk: true }
+      - { id: owner_id, type: uuid, nullable: false }
+      - { id: title, type: text, nullable: false }
+    foreign_keys:
+      - { id: documents.owner_id, columns: [owner_id], references: auth.users, ref_columns: [id], cardinality: many-to-one }
+  - id: shares
+    schema: public
+    rls: true
+    primary_key: [id]
+    columns:
+      - { id: id, type: uuid, nullable: false, pk: true }
+      - { id: document_id, type: uuid, nullable: false }
+      - { id: token, type: text, nullable: false }
+      - { id: expires_at, type: timestamptz, nullable: true }
+    foreign_keys:
+      - { id: shares.document_id, columns: [document_id], references: documents, ref_columns: [id], cardinality: many-to-one, on_delete: cascade }
+  - id: auth.users
+    schema: auth
+    rls: false
+    primary_key: [id]
+    columns:
+      - { id: id, type: uuid, nullable: false, pk: true }
+    foreign_keys: []
+skipped:
+  - "create extension pgcrypto"

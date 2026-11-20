@@ -13,9 +13,10 @@ import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
 
 // ── The artifact shapes (as read; every field optional, because the files are hand-edited) ───────
 
-export interface ErdColumn { name: string; type?: string; pk?: boolean; nullable?: boolean; references?: string }
-export interface ErdEntity { id: string; label?: string; columns: ErdColumn[] }
-export interface ErdRelation { id: string; from: string; to: string; label?: string }
+export interface ErdColumn { name: string; type?: string; pk?: boolean; nullable?: boolean; default?: string }
+export interface ErdEntity { id: string; schema?: string; rls?: boolean; primaryKey: string[]; columns: ErdColumn[] }
+/** A foreign key, flattened. `id` is the contract's `<entity>.<cols>`; cardinality reads from→to. */
+export interface ErdRelation { id: string; from: string; to: string; columns: string[]; refColumns: string[]; cardinality?: string; onDelete?: string }
 
 export interface RlsRule { id: string; op?: string; rule: string; test?: string }
 export interface DictTable { id: string; meaning?: string; columns: Record<string, string>; rls: RlsRule[] }
@@ -49,7 +50,7 @@ export interface DesignModel {
   reason?: string;
   project: string;
   dir: string;
-  erd: { entities: ErdEntity[]; relations: ErdRelation[] } | null;
+  erd: { entities: ErdEntity[]; relations: ErdRelation[]; enums: { id: string; values: string[] }[]; skipped: string[]; generatedFrom: string[] } | null;
   dictionary: DictTable[] | null;
   dfd: { nodes: DfdNode[]; boundaries: DfdBoundary[]; flows: DfdFlow[] } | null;
   architecture: { context: ArchLevel; containers: ArchLevel } | null;
@@ -104,12 +105,20 @@ export async function loadDesign(cwd: string, opts: LoadDesignOptions = {}): Pro
   if (!existsSync(dir)) return { ...empty, reason: `No design/ folder in ${project}. The design skill writes one (DESIGN-STANDARD).` };
 
   const erdRaw = await readYaml(join(dir, "erd.yaml"), errors, "erd.yaml");
+  // erd.yaml is written by the design skill's scripts/erd.ts (contract: "erd.yaml shape").
+  const erdEntities = erdRaw ? objs(erdRaw.entities) : [];
   const erd = erdRaw && {
-    entities: objs(erdRaw.entities).map((e) => ({
-      id: str(e.id) ?? "", label: str(e.label),
-      columns: objs(e.columns).map((c) => ({ name: str(c.name) ?? "", type: str(c.type), pk: c.pk === true, nullable: c.nullable === true, references: str(c.references) })),
+    generatedFrom: list(erdRaw.generated_from),
+    enums: objs(erdRaw.enums).map((e) => ({ id: str(e.id) ?? "", values: list(e.values) })).filter((e) => e.id),
+    skipped: list(erdRaw.skipped),
+    entities: erdEntities.map((e) => ({
+      id: str(e.id) ?? "", schema: str(e.schema), rls: e.rls === true, primaryKey: list(e.primary_key),
+      columns: objs(e.columns).map((c) => ({ name: str(c.id) ?? str(c.name) ?? "", type: str(c.type), pk: c.pk === true || list(e.primary_key).includes(str(c.id) ?? ""), nullable: c.nullable === true, default: str(c.default) })),
     })).filter((e) => e.id),
-    relations: objs(erdRaw.relations).map((r, i) => ({ id: str(r.id) ?? `rel-${i + 1}`, from: str(r.from) ?? "", to: str(r.to) ?? "", label: str(r.label) })),
+    relations: erdEntities.flatMap((e) => objs(e.foreign_keys).map((k) => {
+      const cols = list(k.columns);
+      return { id: str(k.id) ?? `${str(e.id)}.${cols.join("_")}`, from: str(e.id) ?? "", to: str(k.references) ?? "", columns: cols, refColumns: list(k.ref_columns), cardinality: str(k.cardinality), onDelete: str(k.on_delete) };
+    })),
   };
 
   const dictRaw = await readYaml(join(dir, "dictionary.yaml"), errors, "dictionary.yaml");
@@ -264,7 +273,9 @@ export function resolves(idx: Map<string, Set<string>>, ref: string): boolean {
 export function refHref(ref: string): string {
   const { file, id } = parseRef(ref);
   const enc = encodeURIComponent;
-  if (file === "erd" || file === "dictionary") return id ? `/design/erd/${enc(id.split(/-rls-|\./)[0]!)}` : "/design/erd";
+  // The erd route resolves an entity, a foreign key or an RLS rule id to its table itself, because
+  // entity ids can carry a dot of their own (auth.users) and a split here would guess wrong.
+  if (file === "erd" || file === "dictionary") return id ? `/design/erd/${enc(id)}` : "/design/erd";
   if (file === "dfd") return id ? `/design/dfd/${enc(id)}` : "/design/dfd";
   if (file === "architecture") return `/design/architecture${id ? `#${enc(id)}` : ""}`;
   if (file === "requirements") return `/design/requirements${id ? `#req-${enc(id)}` : ""}`;
@@ -287,6 +298,16 @@ export function allRefs(m: DesignModel): { from: string; ref: string }[] {
   for (const t of m.dictionary ?? []) if (m.erd) out.push({ from: `dictionary#${t.id}`, ref: `erd#${t.id}` });
   for (const p of m.plans) for (const d of p.design) out.push({ from: `plan ${p.id}`, ref: d });
   return out;
+}
+
+/** The table a erd/dictionary id belongs to: an entity itself, the owner of a foreign key, or the
+ *  table that holds an RLS rule. */
+export function tableFor(m: DesignModel, id: string): string | undefined {
+  if (m.erd?.entities.some((e) => e.id === id)) return id;
+  const fk = m.erd?.relations.find((r) => r.id === id);
+  if (fk) return fk.from;
+  const t = m.dictionary?.find((x) => x.id === id || x.rls.some((r) => r.id === id));
+  return t?.id;
 }
 
 // ── cross-references the views show ─────────────────────────────────────────────────────────────

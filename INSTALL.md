@@ -59,6 +59,10 @@ Before either path: PANTRY is a lens, not a destination. It reads your project's
 moves them, and never edits the framework docs it bundles. Your plan files stay the single
 source of truth for your project's plan board; PANTRY's board is only a projection of them.
 
+The **Design surface** (`/design`) works the same way: it reads your `design/` folder (the
+`design` skill writes it, DESIGN-STANDARD defines it) and never edits it. With a `design/` folder,
+`pantry doctor` also runs the alignment check, and its rows can fail the run.
+
 The **mindmap** (`/map`) works the same way: PANTRY reads a code+document graph *you* generate,
 it never runs a code analyzer of its own (and no model, it's AI-legible, not AI-powered). Run
 `graphify update .` in your project (optionally `graphify merge-graphs` across repos for a

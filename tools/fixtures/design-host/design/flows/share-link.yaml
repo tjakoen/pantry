@@ -1,0 +1,7 @@
+title: Open a share link
+steps:
+  - { id: start, kind: start, label: Visitor has a link, next: [open] }
+  - { id: open, kind: action, label: Opens the link, screen: share-open, test: "supabase/tests/shares.test.sql::expired share opens nothing", next: [check] }
+  - { id: check, kind: decision, label: Expired?, next: [expired, done] }
+  - { id: expired, kind: end, label: Sees the expired page, screen: share-expired }
+  - { id: done, kind: end, label: Reads the document, screen: share-open }

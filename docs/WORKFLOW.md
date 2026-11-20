@@ -28,6 +28,12 @@ This is what PANTRY cannot work without, and the only tier that can fail *pantry
 - The PANTRY MCP server registered with at least one agent, so the agent can read the plans and
   claim one.
 
+A project that keeps a *design* folder (DESIGN-STANDARD) also signs up to its alignment check, and
+those rows are tier 1 too. The ERD must be newer than every file in *supabase/schemas*, a plan that
+touches the schemas must cite the ERD or the dictionary, every reference must resolve, a done plan's
+requirements must have tests that are not failing, and no plan may cite a superseded decision. A
+project with no *design* folder gets none of these rows.
+
 *pantry init* scaffolds both: the plans folder with its schema README and a first plan, a
 *pantry.config.json*, and a project *.mcp.json* that registers the server for Claude Code.
 

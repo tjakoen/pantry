@@ -1,0 +1,2 @@
+-- expired share opens nothing
+-- owner reads own documents

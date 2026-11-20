@@ -17,6 +17,7 @@ import { existsSync } from "node:fs";
 import { join, basename, resolve, dirname, relative } from "node:path";
 import { homedir } from "node:os";
 import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
+import { loadDesign, checkAlignment } from "./design.ts";
 import { loadPantryConfig, type ResolvedPantryConfig } from "./config.ts";
 import { checkPantryDrift, checkPantrySymbolDrift, usesMergedGraph } from "./drift.ts";
 import { checkPantryDeps } from "./deps.ts";
@@ -1227,6 +1228,19 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
       }
     } catch (err) {
       checks.push({ id: "scope-radius", severity: "info", ok: true, label: "scope growth vs the graph", detail: `skipped: ${err instanceof Error ? err.message : String(err)}` });
+    }
+  }
+
+  // ── Design alignment (DESIGN-STANDARD contract v0) ─────────────────────────
+  // Only in a project with a design/ folder: a project that has not adopted the standard is not
+  // misaligned with it. Each rule is its own row, so a failure names the rule that broke.
+  if (existsSync(join(cwd, "design"))) {
+    try {
+      const dm = await loadDesign(cwd, { project: config.projectName, plansDir: config.plansDir });
+      for (const r of await checkAlignment(cwd, dm)) checks.push({ id: r.id, severity: "error", ok: r.ok, label: r.label, detail: r.detail });
+      if (dm.errors.length) checks.push({ id: "design-parse", severity: "error", ok: false, label: "design: files parse", detail: dm.errors.map((x) => `${x.file}: ${x.message}`).join("; ") });
+    } catch (err) {
+      checks.push({ id: "design-parse", severity: "error", ok: false, label: "design: files parse", detail: err instanceof Error ? err.message : String(err) });
     }
   }
 

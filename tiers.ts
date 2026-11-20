@@ -25,6 +25,13 @@ export const WORKFLOW_DOC = "docs/WORKFLOW.md";
 export const CHECK_TIERS: Record<string, DoctorTier> = {
   "plans-dir": 1,
   "plans-schema": 1,
+  // the design alignment check (DESIGN-STANDARD): the contract a project with design/ signed up to
+  "design-erd-fresh": 1,
+  "design-schema-plans": 1,
+  "design-refs": 1,
+  "design-done-tests": 1,
+  "design-superseded": 1,
+  "design-parse": 1,
   "mcp-registered": 1,
   "pantry-config": 2,
   "hub-registered": 2,

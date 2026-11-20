@@ -1,0 +1,1 @@
+{ "supabase/tests/shares.test.sql::expired share opens nothing": "pass", "supabase/tests/shares.test.sql::owner reads own documents": "pass" }

@@ -1,0 +1,22 @@
+tables:
+  - id: documents
+    meaning: A document a user owns and may share.
+    columns:
+      id: Stable id.
+      owner_id: The user who owns the document.
+      title: Shown in lists and on the share page.
+    rls:
+      - id: documents-owner-read
+        op: select
+        rule: An owner reads their own documents.
+        test: "supabase/tests/shares.test.sql::owner reads own documents"
+  - id: shares
+    meaning: A link that opens one document without signing in.
+    columns:
+      token: The secret in the link.
+      expires_at: After this the link opens nothing.
+    rls:
+      - id: shares-expired
+        op: select
+        rule: An expired share opens nothing.
+        test: "supabase/tests/shares.test.sql::expired share opens nothing"
