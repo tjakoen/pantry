@@ -6,7 +6,7 @@ import {
   type DesignPayload, type DesignModel, type ArchLevel, type TestState, type DfdFlow,
   refHref, plansForTable, flowsForTable, crossesRegion, tableFor, plansFor,
 } from "./design.ts";
-import { erdSvg, dfdSvg, c4Svg, flowSvg, DIAGRAM_SCRIPT } from "./design-diagrams.ts";
+import { erdSvg, dfdSvg, c4Svg, flowSvg, DIAGRAM_SCRIPT, DIAGRAM_MARKER } from "./design-diagrams.ts";
 
 const TEST_LABEL: Record<TestState, string> = { pass: "passing", fail: "failing", unrun: "no result", missing: "test file missing" };
 
@@ -39,7 +39,7 @@ function shell(m: DesignModel, active: string, title: string, lede: string, body
 <nav class="pantry-design__tabs" aria-label="Design views">${tabs}</nav>
 ${errors}
 ${body}
-${body.includes("pantry-diagram") ? DIAGRAM_SCRIPT : ""}`;
+${body.includes(DIAGRAM_MARKER) ? DIAGRAM_SCRIPT : ""}`;
 }
 
 const missing = (what: string, file: string) =>
