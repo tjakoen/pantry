@@ -1131,3 +1131,51 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .pantry-design__rules { list-style: none; padding: 0; }
 .pantry-design__rule[data-ok="false"] b { background: var(--ink); color: var(--paper); padding: 0 .3rem; }
 .pantry-design__rule[data-ok="true"] b { color: var(--ink-muted); }
+
+/* The shelf: inactive, held and sunset projects, folded so the active list stays short. */
+.hub-shelf { margin-top: var(--space-3, 0.75rem); }
+.hub-shelf > summary { cursor: pointer; color: var(--color-text-muted, inherit); padding: var(--space-2, 0.5rem) 0; }
+.hub-shelf .hub-row { opacity: 0.75; }
+.hub-shelf__why { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, inherit); margin-inline: 0.5em; }
+.pantry-side__shelf > summary { cursor: pointer; list-style: revert; }
+.pantry-side__shelf > a { padding-inline-start: 1.25em; opacity: 0.75; }
+
+/* ── Design diagrams (design-diagrams.ts): inline SVG in each method's notation ── */
+.pantry-diagram { margin: 0 0 var(--space-3, 1rem); border: var(--hairline, 1px) solid var(--rule); border-radius: 10px; background: var(--paper); overflow: hidden; }
+.pantry-diagram__bar { display: flex; gap: .4rem; align-items: center; padding: .4rem .6rem; border-bottom: var(--hairline, 1px) solid var(--rule); }
+.pantry-diagram__bar button { font: inherit; min-width: 2rem; padding: .15rem .5rem; border: var(--hairline, 1px) solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink); cursor: pointer; }
+.pantry-diagram__svg { display: block; width: 100%; height: auto; max-height: 75vh; min-height: 18rem; cursor: grab; touch-action: none; user-select: none; font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; }
+.pantry-diagram__svg.is-panning { cursor: grabbing; }
+.pantry-diagram__svg text { fill: var(--ink); }
+.pantry-diagram__svg .pd-box { fill: var(--paper); stroke: var(--ink); stroke-width: 1.4; }
+.pantry-diagram__svg .pd-fill { fill: var(--paper); stroke: none; }
+.pantry-diagram__svg .pd-outline, .pantry-diagram__svg .pd-head { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+.pantry-diagram__svg .pd-shadow { fill: var(--ink); opacity: .18; }
+.pantry-diagram__svg .pd-heavy { stroke-width: 2.6; }
+.pantry-diagram__svg .pd-dashed, .pantry-diagram__svg .pd-stub .pd-box { stroke-dasharray: 5 4; }
+.pantry-diagram__svg .pd-title { font-weight: 600; font-family: var(--font-sans, system-ui, sans-serif); font-size: 13px; }
+.pantry-diagram__svg .pd-type, .pantry-diagram__svg .pd-key, .pantry-diagram__svg .pd-tag { fill: var(--ink-muted); font-size: 11px; }
+.pantry-diagram__svg .pd-pk { font-weight: 700; text-decoration: underline; }
+.pantry-diagram__svg .pd-line, .pantry-diagram__svg .pd-card { fill: none; stroke: var(--ink); stroke-width: 1.3; }
+.pantry-diagram__svg .pd-ring { fill: var(--paper); }
+.pantry-diagram__svg .pd-optional { stroke-dasharray: 6 4; }
+.pantry-diagram__svg .pd-arrowhead { fill: var(--ink); }
+.pantry-diagram__svg .pd-hit { fill: none; stroke: transparent; stroke-width: 14; }
+.pantry-diagram__svg .pd-elabel rect { fill: var(--paper); stroke: var(--rule); }
+.pantry-diagram__svg .pd-elabel text { font-size: 11px; font-family: var(--font-sans, system-ui, sans-serif); }
+/* A flow that crosses a region boundary is heavier and dashed, and says so in its title. */
+.pantry-diagram__svg .pd-cross .pd-line { stroke-width: 2.6; stroke-dasharray: 8 5; }
+.pantry-diagram__svg .pd-boundary rect { fill: none; stroke: var(--ink-muted); stroke-width: 1.2; stroke-dasharray: 10 6; }
+.pantry-diagram__svg a { cursor: pointer; }
+.pantry-diagram__svg .is-selected .pd-box, .pantry-diagram__svg .is-selected .pd-line { stroke-width: 3; }
+.pantry-diagram__svg .pd-nodes a:hover .pd-box { stroke-width: 2.6; }
+.pantry-diagram__svg .pd-node, .pantry-diagram__svg .pd-edge { transition: opacity .12s; }
+.pantry-diagram__svg.is-tracing .pd-node:not(.is-lit), .pantry-diagram__svg.is-tracing .pd-edge:not(.is-lit) { opacity: .18; }
+.pantry-diagram__svg.is-tracing .pd-edge.is-lit .pd-line { stroke-width: 2.6; }
+.pantry-design__split[data-wide] { grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); }
+.pantry-design__alt { margin-block: var(--space-3, 1rem); }
+.pantry-design__alt > summary { cursor: pointer; color: var(--ink-muted); }
+.pantry-design__step.is-current { outline: 2px solid var(--ink); }
+.pantry-design__preview .pantry-design__frame { height: 32rem; }
+.pantry-diagram__svg a, .pantry-diagram__svg text { text-decoration: none; }
+.pantry-diagram[data-diagram="flow"] .pantry-diagram__svg { min-height: 34rem; }

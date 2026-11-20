@@ -6,6 +6,7 @@ import {
   type DesignPayload, type DesignModel, type ArchLevel, type TestState, type DfdFlow,
   refHref, plansForTable, flowsForTable, crossesRegion, tableFor, plansFor,
 } from "./design.ts";
+import { erdSvg, dfdSvg, c4Svg, flowSvg, DIAGRAM_SCRIPT } from "./design-diagrams.ts";
 
 const TEST_LABEL: Record<TestState, string> = { pass: "passing", fail: "failing", unrun: "no result", missing: "test file missing" };
 
@@ -37,7 +38,8 @@ function shell(m: DesignModel, active: string, title: string, lede: string, body
 </header>
 <nav class="pantry-design__tabs" aria-label="Design views">${tabs}</nav>
 ${errors}
-${body}`;
+${body}
+${body.includes("pantry-diagram") ? DIAGRAM_SCRIPT : ""}`;
 }
 
 const missing = (what: string, file: string) =>
@@ -88,10 +90,11 @@ export function erdBody(m: DesignModel, selected?: string): string {
   const skipped = m.erd.skipped.length ? `<details class="card" data-pad="sm"><summary>${m.erd.skipped.length} schema statement${m.erd.skipped.length === 1 ? "" : "s"} the generator could not read</summary><ul>${m.erd.skipped.map((s) => `<li><code>${e(s)}</code></li>`).join("")}</ul></details>` : "";
   const enums = m.erd.enums.length ? `<p class="pantry-member__role">Enums: ${m.erd.enums.map((x) => `<code>${e(x.id)}</code> (${e(x.values.join(", "))})`).join("; ")}</p>` : "";
   return shell(m, "/design/erd", "ERD", `Entities and relations, generated from ${e(m.erd.generatedFrom.join(", ") || "supabase/schemas")}.`, `
-<div class="pantry-design__split">
-  <div class="pantry-design__grid">${cards}</div>
+<div class="pantry-design__split" data-wide>
+  ${erdSvg(m, table)}
   <aside class="pantry-design__detail">${detail}</aside>
 </div>
+<details class="pantry-design__alt"><summary>Tables as a list</summary><div class="pantry-design__grid">${cards}</div></details>
 ${enums}
 ${skipped}`);
 }
@@ -140,7 +143,8 @@ export function dfdBody(m: DesignModel, selected?: string): string {
   ${plansFor(m, `dfd#${f.id}`).map((p) => planLink(p.id, p.title)).join(", ")}
 </div>` : selected ? `<div class="card" data-pad="md"><p>No flow named <code>${e(selected)}</code>.</p></div>` : `<p class="pantry-member__role">Click a flow for its data, region, retention and purpose. Rows marked as crossing a region carry data between regions.</p>`;
   return shell(m, "/design/dfd", "Data flow", "Processes, stores, externals and trust boundaries, with every flow between them.", `
-<div class="pantry-design__boundaries">${boundaries}</div>
+${dfdSvg(m, selected)}
+<details class="pantry-design__alt"><summary>Boundaries as a list</summary><div class="pantry-design__boundaries">${boundaries}</div></details>
 <div class="pantry-design__split">
   <table class="pantry-design__table"><thead><tr><th>Flow</th><th>From → to</th><th>Region</th></tr></thead><tbody>${d.flows.map(flowRow).join("")}</tbody></table>
   <aside class="pantry-design__detail">${detail}</aside>
@@ -151,10 +155,14 @@ export function dfdBody(m: DesignModel, selected?: string): string {
 
 export function architectureBody(m: DesignModel): string {
   if (!m.architecture) return shell(m, "/design/architecture", "Architecture", "C4 levels 1 and 2.", missing("architecture", "architecture.yaml"));
+  const sys = m.architecture.context.nodes.find((n) => n.kind === "system")?.label;
   const level = (title: string, l: ArchLevel) => `<section>
   <h2 class="pantry-section-title">${title}</h2>
+  ${c4Svg(l, title === "Context" ? "context" : "containers", sys)}
+  <details class="pantry-design__alt"><summary>${title} as a list</summary>
   <div class="pantry-design__grid">${l.nodes.map((n) => `<div class="card" data-pad="sm" id="${e(n.id)}"><h3 class="card__title">${e(n.label)} <span class="pantry-design__chip">${e(n.kind)}</span></h3>${n.tech ? `<p class="pantry-member__role">${e(n.tech)}</p>` : ""}${n.description ? `<p>${e(n.description)}</p>` : ""}</div>`).join("")}</div>
   <ul>${l.relations.map((r) => `<li><a href="#${e(r.from)}">${e(r.from)}</a> → <a href="#${e(r.to)}">${e(r.to)}</a> ${e(r.label ?? "")}</li>`).join("")}</ul>
+  </details>
 </section>`;
   return shell(m, "/design/architecture", "Architecture", "C4 levels 1 and 2: the system in its context, then its containers.", level("Context", m.architecture.context) + level("Containers", m.architecture.containers));
 }
@@ -169,13 +177,21 @@ export function flowsIndex(m: DesignModel): string {
 export function flowBody(m: DesignModel, id: string): string | null {
   const f = m.flows.find((x) => x.id === id);
   if (!f) return null;
-  const steps = f.steps.map((s) => `<li class="card pantry-design__step" data-pad="sm" data-kind="${e(s.kind)}" id="step-${e(s.id)}">
+  const steps = f.steps.map((s) => `<li class="card pantry-design__step" data-pad="sm" data-kind="${e(s.kind)}" id="step-${e(s.id)}" data-label="${e(s.label)}"${s.screen ? ` data-screen="${e(s.screen)}"` : ""}>
   <p><span class="pantry-design__chip">${e(s.kind)}</span> <b>${e(s.label)}</b></p>
   <p>${s.screen ? `<a href="/design/wireframes/${encodeURIComponent(s.screen)}" data-step-screen="${e(s.screen)}">Open screen ${e(s.screen)}</a>` : `<span class="pantry-member__role">no screen</span>`} ${testBadge(m, s.test)}</p>
   ${s.next.length ? `<p class="pantry-member__role">next: ${s.next.map((n) => `<a href="#step-${e(n)}">${e(n)}</a>`).join(", ")}</p>` : ""}
 </li>`).join("");
   const plans = plansFor(m, `flows/${f.id}`);
-  return shell(m, "/design/flows", f.title, `User flow <code>flows/${e(f.id)}</code>.${plans.length ? ` Plans: ${plans.map((p) => planLink(p.id, p.title)).join(", ")}.` : ""}`, `<ol class="pantry-design__steps">${steps}</ol>`);
+  return shell(m, "/design/flows", f.title, `User flow <code>flows/${e(f.id)}</code>.${plans.length ? ` Plans: ${plans.map((p) => planLink(p.id, p.title)).join(", ")}.` : ""}`, `<div class="pantry-design__split">
+  ${flowSvg(m, f)}
+  <aside class="pantry-design__detail pantry-design__preview">
+    <p class="pantry-member__role" data-step-caption>Click a step to preview its screen.</p>
+    <iframe class="pantry-design__frame" title="Screen for the selected step" sandbox="allow-scripts" data-step-preview hidden></iframe>
+    <p class="pantry-member__role" data-step-empty hidden>This step has no screen.</p>
+  </aside>
+</div>
+<details class="pantry-design__alt" open><summary>Steps, screens and tests</summary><ol class="pantry-design__steps">${steps}</ol></details>`);
 }
 
 // ── wireframes ─────────────────────────────────────────────────────────────────────────────────
