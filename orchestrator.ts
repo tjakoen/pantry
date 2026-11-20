@@ -382,6 +382,10 @@ export function trimBoard(html: string): string {
     if (list.length <= BOARD_DONE_SHOWN) return whole;
     return `${head}${list.slice(0, BOARD_DONE_SHOWN).join("\n")}<details class="proof-col__fold"><summary>${list.length - BOARD_DONE_SHOWN} older done plans</summary>${list.slice(BOARD_DONE_SHOWN).join("\n")}</details>${tail}`;
   });
+  // An empty column is dropped, as on the hub: a blank Doing column took a quarter of the width.
+  out = out.replace(/<section class="proof-col" data-status="[^"]+">\s*<header(?:(?!<\/header>)[\s\S])*<\/header>\s*<div class="proof-col__cards"><p class="proof-col__empty">[^<]*<\/p><\/div>\s*<\/section>/g, "");
+  const cols = (out.match(/<section class="proof-col"/g) ?? []).length;
+  if (cols) out = out.replace(/<div class="proof-board"/, `<div class="proof-board" style="--board-cols:${cols}"`);
   return out;
 }
 
@@ -391,6 +395,7 @@ export function annotateBoard(html: string, notes: Map<string, { kind: string; l
     const n = notes.get(decodeURIComponent(rawId).replace(/&amp;/g, "&"));
     if (!n) return whole;
     const safe = n.label.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-    return `${whole}\n    <span class="badge" data-claim="${n.kind}">${safe}</span>`;
-  });
+    // "ready for an agent" already says the plan is todo, so the todo chip after it is dropped.
+    return `${whole}\n    <span class="badge" data-claim="${n.kind}">${safe}</span>${n.kind === "ready" ? "<!--ready-->" : ""}`;
+  }).replace(/<!--ready-->(\s*)<span class="badge" data-status="todo">todo<\/span>/g, "");
 }

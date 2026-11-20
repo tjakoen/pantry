@@ -46,7 +46,7 @@ function projectList(project: string | undefined, hub: ReturnType<typeof hubRegi
   }).join("");
   // Folded by default: the list of every project is a switcher, used rarely, and open it pushed this
   // project's own views below the fold. The current project stays visible as the summary.
-  return `<details class="pantry-side__group pantry-side__switch"><summary class="pantry-side__label">Project: <b>${escapeHtml(project)}</b> <span class="pantry-side__hint">switch</span></summary><a class="pantry-side__item" href="${hub.url}">All projects</a>${rows}</details>`;
+  return `<details class="pantry-side__group pantry-side__switch"><summary class="pantry-side__label">This project <b>${escapeHtml(project)}</b> <span class="pantry-side__hint">change</span></summary>${rows}</details>`;
 }
 
 export function nav(surfaces: PantrySurfaces, review: boolean, project?: string): string {
@@ -58,7 +58,7 @@ export function nav(surfaces: PantrySurfaces, review: boolean, project?: string)
     surfaces.brief && link("/", "Now", "◉"),
     surfaces.plans && link("/plans", "Plans", "☰"),
     review && link("/review", "Review", "◐"),
-    link("/map", "Project", "▦"),
+    link("/map", "Map", "▦"),
     link("/design", "Design", "◇"),
   ].filter(Boolean).join("");
   const more = [
@@ -78,11 +78,12 @@ export function nav(surfaces: PantrySurfaces, review: boolean, project?: string)
   // binds anything carrying data-toggle-scheme or data-cycle-theme, and writes the current flavor
   // name into data-theme-name. PANTRY provides the buttons and owns none of the logic.
   return `<nav class="pantry-nav pantry-side" id="pantry-side" aria-label="PANTRY">
-  <a class="pantry-nav__brand" href="/">PANTRY</a>
+  <a class="pantry-nav__brand" href="${hub ? hub.url : "/"}">PANTRY</a>
   ${themeSwitch("pantry-nav__theme pantry-nav__theme--top")}
+  ${hub ? `<div class="pantry-side__group"><a class="pantry-side__item" href="${hub.url}"><span class="pantry-side__icon" aria-hidden="true">◂</span>All projects</a></div>` : ""}
   ${projectList(project, hub)}
   <div class="pantry-side__group"><p class="pantry-side__label">Views</p>${views}</div>
-  <details class="pantry-side__group pantry-side__more"><summary class="pantry-side__label">More</summary>${more}</details>
+  <details class="pantry-side__group pantry-side__more"><summary class="pantry-side__label">More views <span class="pantry-side__hint">${(more.match(/<a /g) ?? []).length}</span></summary>${more}</details>
 </nav>`;
 }
 

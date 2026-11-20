@@ -921,10 +921,10 @@ test("the sidebar leads with four views and folds the rest under More", async ()
   const html = pantryPage("t", "", { plans: true, decisions: true, control: true, runs: true, artifacts: true, timeline: true, standards: true, docs: true, reference: true, brief: true } as never);
   const nav = html.slice(html.indexOf(`<nav class="pantry-nav pantry-side"`), html.indexOf("</nav>"));
   expect(nav).toContain(">Views</p>");
-  for (const v of [">Now<", ">Plans<", ">Project<"]) expect(nav).toContain(v);
-  expect(nav).toContain(`>More</summary>`);
+  for (const v of [">Now<", ">Plans<", ">Map<"]) expect(nav).toContain(v);
+  expect(nav).toContain(`>More views <span class="pantry-side__hint">`);
   expect(nav).toContain(`href="/activity"`);
-  expect(nav.indexOf(">Now<")).toBeLessThan(nav.indexOf(">More</summary>"));
+  expect(nav.indexOf(">Now<")).toBeLessThan(nav.indexOf(">More views <span"));
 });
 
 describe("session control routes", () => {

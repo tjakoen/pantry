@@ -1132,14 +1132,6 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .pantry-design__rule[data-ok="false"] b { background: var(--ink); color: var(--paper); padding: 0 .3rem; }
 .pantry-design__rule[data-ok="true"] b { color: var(--ink-muted); }
 
-/* The shelf: inactive, held and sunset projects, folded so the active list stays short. */
-.hub-shelf { margin-top: var(--space-3, 0.75rem); }
-.hub-shelf > summary { cursor: pointer; color: var(--color-text-muted, inherit); padding: var(--space-2, 0.5rem) 0; }
-.hub-shelf .hub-row { opacity: 0.75; }
-.hub-shelf__why { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, inherit); margin-inline: 0.5em; }
-.pantry-side__shelf > summary { cursor: pointer; list-style: revert; }
-.pantry-side__shelf > a { padding-inline-start: 1.25em; opacity: 0.75; }
-
 /* Design diagrams: drawn and styled by GRAIN's diagram organism (components/organisms/diagram). */
 .pantry-design__split[data-wide] { grid-template-columns: minmax(0, 7fr) minmax(0, 3fr); }
 .pantry-design__alt { margin-block: var(--space-3, 1rem); }
@@ -1160,4 +1152,34 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 /* The project switcher: folded, with the current project as its summary. */
 .pantry-side__switch > summary { cursor: pointer; list-style: revert; }
 .pantry-side__switch > summary b { font-weight: 600; }
-.pantry-side__hint { opacity: 0.6; font-size: 0.85em; }
+
+
+/* Audit 2026-11-21, against the Dashboard Design and Design review skills.
+   Muted text: GRAIN's --ink-muted measured 3.47:1 on the sidebar, under the 4.5:1 that 13 and 14px
+   text needs. Inside PANTRY's chrome it is mixed toward --ink instead, which holds in every theme. */
+.pantry-side, .cc-house, .cc-notes, .dash__period { --ink-muted: color-mix(in srgb, var(--ink) 78%, var(--paper)); }
+.cc-notes { color: var(--ink-muted); }
+/* Opacity lowered contrast on shelved and down items; a muted colour says the same and still reads. */
+.hub-shelf .hub-row, .pantry-side__shelf > a, .pantry-side .pantry-side__item.is-down { opacity: 1; color: var(--ink-muted); }
+.pantry-side__hint { font-size: var(--text-xs); font-weight: 400; color: var(--ink-muted); }
+/* Every control is at least 24px tall (WCAG 2.2 target size). */
+.pantry-nav__themebtn, .pantry-side__label, .pantry-side summary, .hub-stale > summary, .hub-learned-fold > summary, .cc-house a, .cc-keys > summary, .hub-stat, .hub-stale a, .cc-card a:not(.btn), .proof-card__more { min-height: 24px; display: inline-flex; align-items: center; }
+.pantry-side summary, .pantry-side__label { display: flex; }
+.pantry-nav__brand { display: block; min-height: 24px; line-height: 24px; }
+.hub-stale li, .cc-card li { padding-block: 2px; }
+/* One type scale: controls and icons take the text size around them rather than the browser's 13.33px. */
+.pantry-side button, .pantry-side summary, .cc-keys, .pantry-side__icon { font: inherit; font-size: inherit; }
+/* Keyboard shortcuts sit behind a toggle instead of being the second line of the page. */
+.cc-keys { display: inline; }
+.cc-keys > summary { display: inline-flex; cursor: pointer; list-style: none; text-decoration: underline dotted; }
+.cc-keys[open] > span { display: block; font-family: var(--font-mono); font-size: var(--text-xs); }
+/* "+N more" is a count, not a button: no dashed box. */
+.proof-card__more { border: 0 !important; background: none !important; color: var(--ink-muted); padding-inline: 0; }
+/* Boards take the column count they draw; the hub board stacks on a phone. */
+.proof-board[style*="--board-cols"] { grid-template-columns: repeat(var(--board-cols), minmax(0, 1fr)); }
+@media (max-width: 640px) { .hub-board, .proof-board[style*="--board-cols"] { grid-template-columns: 1fr; } }
+/* The switcher and More summaries read as one line of words, not two ends of a bar. */
+.pantry-side__switch > summary, .pantry-side__more > summary { display: flex; flex-wrap: wrap; justify-content: flex-start; align-items: baseline; gap: 0.15em 0.4em; }
+.pantry-side__switch > summary b { flex-basis: 100%; order: 2; color: var(--ink); font-size: var(--text-sm); }
+.pantry-side__switch > summary .pantry-side__hint { order: 1; margin-inline-start: auto; text-decoration: underline dotted; }
+.cc-house { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.35em; }
