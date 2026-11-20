@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp, cp, utimes, writeFile, readFile, rm } from "node:fs/promises";
 import {
-  loadDesign, checkAlignment, refIndex, resolves, refHref, plansForTable, flowsForTable, crossesRegion, tableFor, buildDesignPayload,
+  loadDesign, checkAlignment, schemaHash, refIndex, resolves, refHref, plansForTable, flowsForTable, crossesRegion, tableFor, buildDesignPayload,
 } from "./design.ts";
 import { annotateDesign, annotatePlanPage, wireframeRaw, WIREFRAME_SHIM } from "./design-page.ts";
 import { createPantryHandler } from "./app.ts";
@@ -121,6 +121,22 @@ describe("the alignment rules", () => {
     const now = new Date("2026-03-01T00:00:00Z");
     await utimes(join(dir, "supabase", "schemas", "shares.sql"), now, now);
     expect((await rules(dir))["design-erd-fresh"]).toMatchObject({ ok: false });
+  });
+
+  test("erd-fresh judges content, not file times, once erd.yaml records a schema hash", async () => {
+    const erd = join(dir, "design", "erd.yaml");
+    await writeFile(erd, `schemas_sha256: ${await schemaHash(join(dir, "supabase", "schemas"))}\n` + (await readFile(erd, "utf8")));
+    const now = new Date("2026-03-01T00:00:00Z");
+    await utimes(join(dir, "supabase", "schemas", "shares.sql"), now, now);
+    expect((await rules(dir))["design-erd-fresh"]).toMatchObject({ ok: true });
+  });
+
+  test("erd-fresh fails when a schema's content changes after the recorded hash", async () => {
+    const erd = join(dir, "design", "erd.yaml");
+    await writeFile(erd, `schemas_sha256: ${await schemaHash(join(dir, "supabase", "schemas"))}\n` + (await readFile(erd, "utf8")));
+    const sql = join(dir, "supabase", "schemas", "shares.sql");
+    await writeFile(sql, (await readFile(sql, "utf8")) + "\n-- changed\n");
+    expect((await rules(dir))["design-erd-fresh"]!.detail).toContain("changed since design/erd.yaml was generated");
   });
 
   test("schema-plans fails when a plan touches the schemas without an erd or dictionary ref", async () => {

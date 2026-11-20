@@ -7,6 +7,7 @@
 // /design.json (what pantry_read serves agents), and the alignment rows in `pantry doctor`. They
 // share this module so an agent, the owner and the doctor never disagree about what the design says.
 import { readFile, readdir, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
@@ -355,6 +356,15 @@ async function newestMtime(dir: string): Promise<{ file: string; mtime: number }
   return best;
 }
 
+// The same hash the design skill's erd.ts writes: sha256 over each .sql file in name order, as
+// "<basename>\n<content>\n". The two must agree byte for byte.
+export async function schemaHash(dir: string): Promise<string> {
+  const h = createHash("sha256");
+  const names = (await readdir(dir)).filter((f) => f.endsWith(".sql")).sort((a, b) => (a < b ? -1 : 1));
+  for (const f of names) h.update(`${f}\n${await readFile(join(dir, f), "utf8")}\n`);
+  return h.digest("hex");
+}
+
 const some = (xs: string[], n = 4) => xs.slice(0, n).join("; ") + (xs.length > n ? `; and ${xs.length - n} more` : "");
 
 export async function checkAlignment(cwd: string, m: DesignModel): Promise<AlignmentRule[]> {
@@ -362,14 +372,31 @@ export async function checkAlignment(cwd: string, m: DesignModel): Promise<Align
   const rule = (id: string, label: string, problems: string[], okDetail: string) =>
     rules.push({ id, label, ok: problems.length === 0, problems, detail: problems.length ? some(problems) : okDetail });
 
-  // 1. erd.yaml is generated from supabase/schemas, so it is stale the moment a schema is newer.
-  const schemas = await newestMtime(join(cwd, "supabase", "schemas"));
+  // 1. erd.yaml is generated from supabase/schemas. The generator records a hash of the schema
+  // files, so freshness is judged on content: a checkout or pull writes files in whatever order it
+  // likes, and file times alone report drift that is not there. ERDs without the hash fall back to
+  // comparing file times.
+  const schemaDir = join(cwd, "supabase", "schemas");
   const erdFile = join(m.dir, "erd.yaml");
-  const erdStat = existsSync(erdFile) ? await stat(erdFile) : null;
   const erdProblems: string[] = [];
-  if (schemas && !erdStat) erdProblems.push("supabase/schemas exists but design/erd.yaml does not; generate it");
-  else if (schemas && erdStat && schemas.mtime > erdStat.mtimeMs) erdProblems.push(`supabase/schemas/${schemas.file} is newer than design/erd.yaml; regenerate the ERD`);
-  rule("design-erd-fresh", "design: ERD matches the schemas", erdProblems, schemas ? "erd.yaml is newer than every schema file" : "no supabase/schemas to compare against");
+  let erdOk = "no supabase/schemas to compare against";
+  if (existsSync(schemaDir)) {
+    if (!existsSync(erdFile)) erdProblems.push("supabase/schemas exists but design/erd.yaml does not; generate it");
+    else {
+      const recorded = (await readFile(erdFile, "utf8")).match(/^schemas_sha256:\s*([0-9a-f]{64})\s*$/m)?.[1];
+      if (recorded) {
+        const current = await schemaHash(schemaDir);
+        if (current !== recorded) erdProblems.push("supabase/schemas changed since design/erd.yaml was generated; regenerate the ERD");
+        erdOk = "erd.yaml was generated from the current schema files";
+      } else {
+        const schemas = await newestMtime(schemaDir);
+        const erdStat = await stat(erdFile);
+        if (schemas && schemas.mtime > erdStat.mtimeMs) erdProblems.push(`supabase/schemas/${schemas.file} is newer than design/erd.yaml; regenerate the ERD`);
+        erdOk = "erd.yaml is newer than every schema file (regenerate it to record a schema hash)";
+      }
+    }
+  }
+  rule("design-erd-fresh", "design: ERD matches the schemas", erdProblems, erdOk);
 
   // 2. A plan that touches the schemas must say which part of the data model it changes.
   const schemaPlans = m.plans.filter((p) => p.touches.some((t) => t.replace(/^\.\//, "").startsWith("supabase/schemas")));
