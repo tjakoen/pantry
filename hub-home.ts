@@ -100,7 +100,9 @@ export function summarize(b: BriefPayload): HubSummary {
   const nextTitle = b.next.ready?.title ?? null;
   const pausedIds = new Set((b.paused ?? []).map((p) => p.planId));
   const threads: HubThread[] = [
-    ...b.inFlight.filter((r) => r.planId && !pausedIds.has(r.planId)).map((r) => ({ title: r.title, state: "active" as const, who: r.claim && r.claim.state === "active" ? r.claim.tool : null, until: null, next: null, path: `/plan/${encodeURIComponent(r.planId!)}` })),
+    // A plan whose claim ended done, or whose file says done, finished recently; it is not in flight,
+    // and counting it made the stale note claim twenty-eight stuck plans when three were.
+    ...b.inFlight.filter((r) => r.planId && !pausedIds.has(r.planId) && r.claim?.state !== "done" && r.status !== "done").map((r) => ({ title: r.title, state: "active" as const, who: r.claim && r.claim.state === "active" ? r.claim.tool : null, until: null, next: null, path: `/plan/${encodeURIComponent(r.planId!)}` })),
     ...(b.paused ?? []).map((p) => ({ title: p.title, state: "paused" as const, who: null, until: p.until, next: p.next, path: `/plan/${encodeURIComponent(p.planId)}` })),
   ];
   const learned: HubLearned[] = (b.learned ?? []).map((l) => ({ planId: l.planId, title: l.title, ...l.explainer, path: `/plan/${encodeURIComponent(l.planId)}` }));
