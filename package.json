@@ -34,6 +34,7 @@
     "decisions-page.ts",
     "design.ts",
     "design-page.ts",
+    "design-diagrams.ts",
     "home-page.ts",
     "map-page.ts",
     "runs-page.ts",
