@@ -1,6 +1,6 @@
 ---
 id: pantry-pane
-status: doing
+status: done
 track: companion
 depends: []
 touches: [claude-plugin/]

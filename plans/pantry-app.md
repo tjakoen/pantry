@@ -1,6 +1,6 @@
 ---
 id: pantry-app
-status: doing
+status: todo
 track: app
 depends: []
 touches: [cli.ts, app/]
