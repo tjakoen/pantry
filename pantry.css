@@ -1154,3 +1154,10 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .hub-shelf__why { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, inherit); margin-inline: 0.5em; }
 .pantry-side__shelf > summary { cursor: pointer; list-style: revert; }
 .pantry-side__shelf > a { padding-inline-start: 1.25em; opacity: 0.75; }
+
+/* The hub board draws only columns that hold cards, so the grid takes their count. */
+.hub-board { grid-template-columns: repeat(var(--hub-cols, 5), minmax(0, 1fr)); }
+/* The project switcher: folded, with the current project as its summary. */
+.pantry-side__switch > summary { cursor: pointer; list-style: revert; }
+.pantry-side__switch > summary b { font-weight: 600; }
+.pantry-side__hint { opacity: 0.6; font-size: 0.85em; }

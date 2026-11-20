@@ -298,7 +298,10 @@ export function workBoard(rows: HubRow[], others: MachineState[] = [], now = Dat
   if (!cards.length && !stale) return `<p class="cc-empty">Nothing is waiting on you and nothing is in flight.</p>`;
   let n = 0;
   const drawers: string[] = [];
-  const colHtml = WORK_COLUMNS.map((c) => {
+  // An empty column is dropped rather than drawn: three blank columns squeezed the full ones into
+  // narrow strips that wrapped every title onto three lines.
+  const shown = WORK_COLUMNS.filter((c) => cards.some((x) => x.col === c.id));
+  const colHtml = shown.map((c) => {
     const list = cards.filter((x) => x.col === c.id).toSorted((a, b) => a.weight - b.weight);
     const html = list.map((x) => {
       const id = `work-${++n}`;
@@ -315,7 +318,7 @@ ${x.href ? `<p><a class="btn" href="${e(x.href)}">${e(x.label)}</a></p>` : `<p c
     return `<section class="proof-col" data-col="${c.id}"${list.length ? "" : " data-empty"}><header class="proof-col__head"><h2 class="proof-col__title">${e(c.title)}</h2><span class="proof-col__count">${list.length}</span></header><div class="proof-col__cards">${html || `<p class="proof-col__empty">${e(c.hint)}</p>`}</div></section>`;
   }).join("");
   const staleNote = stale ? `<p class="hub-stale">${stale} plan(s) are marked doing with no session holding them. Return them to todo, or claim them.</p>` : "";
-  return `<div class="proof-board hub-board">${colHtml}</div>${staleNote}${drawers.join("")}`;
+  return `<div class="proof-board hub-board" style="--hub-cols:${Math.max(shown.length, 1)}">${colHtml}</div>${staleNote}${drawers.join("")}`;
 }
 
 /** Every waiting item across every project, one line each, above the project list. Drift and

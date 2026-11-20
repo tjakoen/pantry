@@ -44,7 +44,9 @@ function projectList(project: string | undefined, hub: ReturnType<typeof hubRegi
     const open = kids.includes(project) ? " open" : "";
     return `${item(r)}<details class="pantry-side__fold"${open}><summary>${kids.length} more</summary>${kids.map(item).join("")}</details>`;
   }).join("");
-  return `<div class="pantry-side__group"><p class="pantry-side__label">Projects <a class="pantry-side__hub" href="${hub.url}">all</a></p>${rows}</div>`;
+  // Folded by default: the list of every project is a switcher, used rarely, and open it pushed this
+  // project's own views below the fold. The current project stays visible as the summary.
+  return `<details class="pantry-side__group pantry-side__switch"><summary class="pantry-side__label">Project: <b>${escapeHtml(project)}</b> <span class="pantry-side__hint">switch</span></summary><a class="pantry-side__item" href="${hub.url}">All projects</a>${rows}</details>`;
 }
 
 export function nav(surfaces: PantrySurfaces, review: boolean, project?: string): string {

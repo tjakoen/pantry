@@ -107,7 +107,8 @@ test("the work board sorts items into columns, merges duplicates, and gives each
   const html = workBoard([row("one", s([held])), row("two", s([held], [{ title: "Run", state: "active", who: "claude", until: null, next: "Ship", path: "/plan/r" }]))]);
   expect(html).toContain(`data-col="do"><header class="proof-col__head"><h2 class="proof-col__title">Do</h2><span class="proof-col__count">1</span>`);
   expect(html).toContain("one, two · holds 2");
-  expect(html).toContain(`data-col="answer" data-empty`);
+  expect(html).not.toContain(`data-col="answer"`);
+  expect(html).toContain("--hub-cols:2");
   expect(html.match(/data-drawer hidden/g)?.length).toBe(2);
   expect(html).toContain("<h3>Next</h3><p>Ship</p>");
 });
