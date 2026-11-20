@@ -1179,3 +1179,11 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 .pantry-design__preview .pantry-design__frame { height: 32rem; }
 .pantry-diagram__svg a, .pantry-diagram__svg text { text-decoration: none; }
 .pantry-diagram[data-diagram="flow"] .pantry-diagram__svg { min-height: 34rem; }
+
+/* The shelf: inactive, held and sunset projects, folded so the active list stays short. */
+.hub-shelf { margin-top: var(--space-3, 0.75rem); }
+.hub-shelf > summary { cursor: pointer; color: var(--color-text-muted, inherit); padding: var(--space-2, 0.5rem) 0; }
+.hub-shelf .hub-row { opacity: 0.75; }
+.hub-shelf__why { font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, inherit); margin-inline: 0.5em; }
+.pantry-side__shelf > summary { cursor: pointer; list-style: revert; }
+.pantry-side__shelf > a { padding-inline-start: 1.25em; opacity: 0.75; }

@@ -6,6 +6,8 @@
 // The brief runs the doctor's fast checks and reads git, which is cheap once and expensive eighteen
 // times at once: probing every project in parallel once pinned the container's CPU. So the fetches
 // run a few at a time and each result is cached for HUB_BRIEF_TTL_MS.
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { explainPrompt } from "./learn.ts";
 import { escapeHtml as e } from "@tjakoen/mill/core/engine.ts";
 import type { BriefPayload } from "./brief.ts";
@@ -28,6 +30,29 @@ export interface HubRow {
   summary: HubSummary | null;
   /** true while the first read of this project's brief is still running */
   pending?: boolean;
+  /** "held" or "sunset" when the project's pantry.config.json says so; absent means active */
+  lifecycle?: "held" | "sunset";
+}
+
+/** A project with no session for this long, and nothing live or waiting, counts as inactive. */
+export const INACTIVE_AFTER_MS = 14 * 24 * 60 * 60_000;
+
+/** Reads the owner's call from pantry.config.json: `"lifecycle": "held"` or `"sunset"`. */
+export function readLifecycle(path: string): "held" | "sunset" | undefined {
+  try {
+    const v = (JSON.parse(readFileSync(join(path, "pantry.config.json"), "utf8")) as { lifecycle?: string }).lifecycle;
+    return v === "held" || v === "sunset" ? v : undefined;
+  } catch { return undefined; }
+}
+
+/** Why a row belongs on the shelf rather than the main list, or null when it is active. */
+export function shelfReason(r: HubRow, now = Date.now()): string | null {
+  if (r.lifecycle) return r.lifecycle;
+  if (!r.up) return "inactive";
+  const s = r.summary;
+  if (!s || s.live || s.waiting || s.answered) return null;
+  if (!s.lastSeenAt || now - Date.parse(s.lastSeenAt) > INACTIVE_AFTER_MS) return "inactive";
+  return null;
 }
 
 export interface HubSummary {
@@ -134,7 +159,7 @@ export async function hubRows(statuses: HubStatus[], waitMs = HUB_RENDER_WAIT_MS
   await Promise.race([all, new Promise((r) => setTimeout(r, waitMs))]);
   return sortRows(statuses.map((s) => {
     const hit = cache.get(s.name);
-    return { name: s.name, path: s.path, url: s.url, up: s.up, note: s.note, summary: hit?.summary ?? null, pending: s.up && !hit };
+    return { name: s.name, path: s.path, url: s.url, up: s.up, note: s.note, summary: hit?.summary ?? null, pending: s.up && !hit, lifecycle: readLifecycle(s.path) };
   }));
 }
 
@@ -153,11 +178,15 @@ const ago = (iso: string | null, now: number) => {
 /** The sidebar every PANTRY page wears, for the hub's own pages. A project page builds the same
  *  shell in chrome.ts; this one lists the hub's views first and every project under them, so moving
  *  from the hub into a project keeps the frame and changes only the content. */
-export function hubShell(current: "home" | "report", projects: { name: string; url: string; up?: boolean }[]): { head: string; side: string } {
+export function hubShell(current: "home" | "report", projects: { name: string; url: string; up?: boolean; shelved?: boolean }[]): { head: string; side: string } {
   const item = (href: string, label: string, icon: string, on: boolean) => on
     ? `<span class="pantry-side__item is-current" aria-current="page"><span class="pantry-side__icon" aria-hidden="true">${icon}</span>${label}</span>`
     : `<a class="pantry-side__item" href="${href}"><span class="pantry-side__icon" aria-hidden="true">${icon}</span>${label}</a>`;
-  const list = projects.toSorted((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })).map((p) => `<a class="pantry-side__item${p.up === false ? " is-down" : ""}" href="${e(p.url)}">${e(p.name)}</a>`).join("");
+  const link = (p: { name: string; url: string; up?: boolean }) => `<a class="pantry-side__item${p.up === false ? " is-down" : ""}" href="${e(p.url)}">${e(p.name)}</a>`;
+  const sorted = projects.toSorted((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
+  const shelf = sorted.filter((p) => p.shelved);
+  const list = sorted.filter((p) => !p.shelved).map(link).join("")
+    + (shelf.length ? `<details class="pantry-side__shelf"><summary class="pantry-side__item">Inactive, held or sunset (${shelf.length})</summary>${shelf.map(link).join("")}</details>` : "");
   return {
     head: `<script>${SIDE_MODE_BOOT}</script>`,
     side: `<button type="button" class="pantry-side-toggle" aria-controls="pantry-side" aria-expanded="false" onclick="const o=document.body.classList.toggle('side-open');this.setAttribute('aria-expanded',String(o))">☰ Menu</button>
@@ -331,12 +360,14 @@ export function hubHomePage(rows: HubRow[], now = Date.now(), others: MachineSta
   const links = styleBase ? STYLESHEETS.map((h) => `<link rel="stylesheet" href="${e(styleBase + h)}">`).join("\n  ") : "";
   const live = rows.reduce((n, r) => n + (r.summary?.live ?? 0), 0);
   const waiting = rows.reduce((n, r) => n + (r.summary ? r.summary.waiting + r.summary.answered : 0), 0);
-  const shell = hubShell("home", rows.map((r) => ({ name: r.name, url: r.url, up: r.up })));
+  const shell = hubShell("home", rows.map((r) => ({ name: r.name, url: r.url, up: r.up, shelved: shelfReason(r, now) !== null })));
+  const active = rows.filter((r) => shelfReason(r, now) === null);
+  const shelved = rows.filter((r) => shelfReason(r, now) !== null);
   const paused = rows.reduce((n, r) => n + (r.summary?.threads ?? []).filter((t) => t.state === "paused").length, 0);
   const learned = rows.reduce((n, r) => n + (r.summary?.learned ?? []).length, 0);
   const tile = (n: number, label: string, href: string, tone?: "warn") => `<a class="stat" href="${href}" data-surface="stat:${href.slice(1)}"${tone && n ? ` data-tone="${tone}"` : ""}><span class="stat__value">${n}</span><span class="stat__label">${e(label)}</span></a>`;
   const body = rows.length
-    ? `<ul class="hub-list">${rows.map((r) => row(r, now)).join("")}</ul>`
+    ? `<ul class="hub-list">${active.map((r) => row(r, now)).join("")}</ul>${shelved.length ? `<details class="hub-shelf" data-surface="shelf:projects"><summary>Inactive, held or sunset <span class="hub-meta">${shelved.length}</span></summary><ul class="hub-list">${shelved.map((r) => row(r, now).replace('<span class="hub-meta">', `<span class="hub-shelf__why">${e(shelfReason(r, now)!)}</span><span class="hub-meta">`)).join("")}</ul></details>` : ""}`
     : `<p class="cc-empty">No projects registered. Run <code>pantry register</code> in a project.</p>`;
   return `<!DOCTYPE html>
 <html lang="en" data-themes="sourdough baguette brioche">

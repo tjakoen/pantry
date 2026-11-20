@@ -111,3 +111,21 @@ test("the work board sorts items into columns, merges duplicates, and gives each
   expect(html.match(/data-drawer hidden/g)?.length).toBe(2);
   expect(html).toContain("<h3>Next</h3><p>Ship</p>");
 });
+
+test("inactive, held and sunset projects fold into one dropdown", async () => {
+  const { hubHomePage, shelfReason } = await import("./hub-home.ts");
+  const now = Date.parse("2026-11-20T00:00:00Z");
+  const sum = (lastSeenAt: string | null) => ({ live: 0, waiting: 0, answered: 0, lastSeenAt } as never);
+  const rows = [
+    { name: "fresh", path: "/x", url: "http://a/", up: true, summary: sum("2026-11-19T00:00:00Z") },
+    { name: "stale", path: "/x", url: "http://b/", up: true, summary: sum("2026-10-01T00:00:00Z") },
+    { name: "parked", path: "/x", url: "http://c/", up: true, summary: sum("2026-11-19T00:00:00Z"), lifecycle: "held" as const },
+    { name: "gone", path: "/x", url: "http://d/", up: false, summary: null },
+  ];
+  expect(rows.map((r) => shelfReason(r as never, now))).toEqual([null, "inactive", "held", "inactive"]);
+  const html = hubHomePage(rows as never, now);
+  const shelf = html.slice(html.indexOf('<details class="hub-shelf"'));
+  expect(shelf).toContain("parked");
+  expect(shelf).toContain("stale");
+  expect(shelf).not.toContain(">fresh<");
+});
