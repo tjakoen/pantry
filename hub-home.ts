@@ -291,8 +291,9 @@ export function workBoard(rows: HubRow[], others: MachineState[] = [], now = Dat
   }
   const until = (iso: string) => { const m = Math.round((Date.parse(iso) - now) / 60_000); return m < 60 ? `in ${Math.max(m, 1)}m` : m < 48 * 60 ? `in ${Math.round(m / 60)}h` : `on ${iso.slice(0, 10)}`; };
   let stale = 0;
+  const staleLinks: string[] = [];
   for (const r of rows) for (const t of r.summary?.threads ?? []) {
-    if (t.state !== "paused" && !t.who) { stale++; continue; }
+    if (t.state !== "paused" && !t.who) { stale++; staleLinks.push(`<li><a href="${e(r.url.replace(/\/$/, "") + t.path)}">${e(t.title)}</a> <span class="hub-item__project">${e(r.name)}</span></li>`); continue; }
     add({ col: t.state === "paused" ? "paused" : "active", title: t.title, project: r.name, meta: t.state === "paused" ? `resumes ${until(t.until!)}` : (t.who ?? ""), detail: t.state === "paused" ? `Paused on a usage limit; it can resume ${until(t.until!)}.` : `Held by ${t.who ?? "a session"}.`, holds: [], next: t.next, href: r.url.replace(/\/$/, "") + t.path, label: "Open plan", weight: 0 });
   }
   if (!cards.length && !stale) return `<p class="cc-empty">Nothing is waiting on you and nothing is in flight.</p>`;
@@ -317,7 +318,8 @@ ${x.href ? `<p><a class="btn" href="${e(x.href)}">${e(x.label)}</a></p>` : `<p c
     }).join("");
     return `<section class="proof-col" data-col="${c.id}"${list.length ? "" : " data-empty"}><header class="proof-col__head"><h2 class="proof-col__title">${e(c.title)}</h2><span class="proof-col__count">${list.length}</span></header><div class="proof-col__cards">${html || `<p class="proof-col__empty">${e(c.hint)}</p>`}</div></section>`;
   }).join("");
-  const staleNote = stale ? `<p class="hub-stale">${stale} plan(s) are marked doing with no session holding them. Return them to todo, or claim them.</p>` : "";
+  // The note lists the plans it counts, so the reader can open one rather than go looking for it.
+  const staleNote = stale ? `<details class="hub-stale"><summary>${stale} plan(s) are marked doing with no session holding them. Return them to todo, or claim them.</summary><ul>${staleLinks.join("")}</ul></details>` : "";
   return `<div class="proof-board hub-board" style="--hub-cols:${Math.max(shown.length, 1)}">${colHtml}</div>${staleNote}${drawers.join("")}`;
 }
 

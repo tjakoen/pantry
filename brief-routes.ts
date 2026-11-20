@@ -127,9 +127,16 @@ function answeredCard(a: BriefPayload["answered"][number], now: string): string 
 </article>`;
 }
 
-function plainCard(w: WaitingRow): string {
+function plainCard(w: WaitingRow, shared?: string): string {
   const prev = w.kind !== "decision" ? ` data-preview="${e(previewHref("plan", w.id))}"` : "";
-  return `<article class="cc-card" tabindex="0"${prev}><header><h3>${e(w.title)}</h3><span class="cc-tag is-verb">${w.kind === "human-plan" ? "Do" : "Unblock"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
+  // A detail every card in the list shares is said once above the list, not on each card.
+  const detail = w.detail === shared ? "" : `<p class="cc-meta">${e(w.detail)}</p>`;
+  return `<article class="cc-card" tabindex="0"${prev}><header><h3>${e(w.title)}</h3><span class="cc-tag is-verb">${w.kind === "human-plan" ? "Do" : "Unblock"}</span></header>${detail}${actions(w.actions)}</article>`;
+}
+
+/** The detail every card shares, when there are two or more of them, so it is said once. */
+function sharedDetail(rows: WaitingRow[]): string | undefined {
+  return rows.length > 1 && rows.every((r) => r.detail === rows[0].detail) ? rows[0].detail : undefined;
 }
 
 /** The four filtered views a tile opens. Each tile has its own, so no two share a target. */
@@ -188,7 +195,7 @@ export function briefBody(b: BriefPayload, view?: BriefView): string {
   const answeredIds = new Set(b.answered.map((a) => a.ref));
   const open = decisions.filter((w) => !answeredIds.has(w.id));
   const inbox = (open.length || otherWaiting.length
-    ? open.map(decisionCard).join("") + otherWaiting.map(plainCard).join("")
+    ? open.map(decisionCard).join("") + ((sh) => (sh ? `<p class="cc-meta cc-shared">${e(sh)}</p>` : "") + otherWaiting.map((w) => plainCard(w, sh)).join(""))(sharedDetail(otherWaiting))
     : empty("Nothing is waiting on you."))
     + (b.answered.length ? `<details class="cc-more" data-key="answered"><summary>Answered, waiting for an agent: ${b.answered.length}</summary>${b.answered.map((a) => answeredCard(a, b.generated)).join("")}</details>` : "");
 
