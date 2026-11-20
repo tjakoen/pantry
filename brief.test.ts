@@ -152,7 +152,7 @@ test("an unread answer carries a handoff brief and the routing rule for a sessio
   expect(text).toContain("> Decision: d9 (plans/decisions/d9.md).");
 });
 
-test("a session's subagents show under it in the Agents column, running ones first", () => {
+test("a session's running subagents show under it, and finished ones fold into a count", () => {
   const b = assembleBrief(inputs({
     plans: [plan("a", { status: "doing", touches: ["src"] })],
     sessions: [session("s1", ["src/a.ts"], { agents: [
@@ -162,7 +162,8 @@ test("a session's subagents show under it in the Agents column, running ones fir
   }));
   const html = briefBody(b);
   expect(html).toContain("Write the tests");
-  expect(html.indexOf("implementer")).toBeLessThan(html.indexOf("Explore"));
+  expect(html).not.toContain("Find the routes");
+  expect(html).toContain("and 1 subagent(s) finished");
   expect(html).toContain("cc-agent is-running");
 });
 

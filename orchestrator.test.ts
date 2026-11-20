@@ -191,3 +191,9 @@ test("the board shows three paths a card and five done plans, folding the rest",
   expect(out.indexOf("p4")).toBeLessThan(out.indexOf("<details"));
   expect(out.indexOf("p5")).toBeGreaterThan(out.indexOf("<details"));
 });
+
+import { waitsOf } from "./orchestrator.ts";
+test("a blocked plan's waits line is its reason, and a plan without one gives none", () => {
+  expect(waitsOf("---\nid: a\nstatus: blocked\nwaits: the owner's call on the archive layout\n---\n# A")).toBe("the owner's call on the archive layout");
+  expect(waitsOf("---\nid: a\nstatus: blocked\n---\n# A")).toBeUndefined();
+});

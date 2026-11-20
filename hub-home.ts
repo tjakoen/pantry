@@ -355,7 +355,7 @@ ${shell.side}
 <div class="dash" data-surface="dashboard:hub">
   <header class="dash__head">
     <h2 class="dash__title">All projects</h2>
-    <p class="dash__period">${rows.length} registered. Each row is read from that project's command center and refreshes every minute.</p>
+    <p class="dash__period">${rows.length} registered, read from each project's command center at ${new Date().toISOString().slice(11, 16)} UTC and again every minute.</p>
   </header>
   <div class="dash__kpis">${tile(waiting, "waiting on you", "#work", "warn")}${tile(live, "live sessions", "#work")}${tile(paused, "paused on a limit", "#work", "warn")}${tile(learned, "done this week", "#learned")}${tile(rows.length, "projects", "#projects")}</div>
   <div class="dash__grid">

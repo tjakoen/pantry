@@ -49,7 +49,9 @@ const empty = (text: string) => `<p class="cc-empty">${e(text)}</p>`;
 
 // The subagents a session spawned, under it. Running and quiet ones always show; finished ones show
 // only the last few, because a session that ran forty lookups is a wall nobody reads.
-const AGENT_DONE_SHOWN = 3;
+// DASHBOARD section 6: a card lists what is running; finished subagents are one count line, since
+// three rows of "done 14 h ago" told the owner nothing they could act on.
+const AGENT_DONE_SHOWN = 0;
 function subagents(agents: BriefAgent[] | undefined, now: string): string {
   if (!agents?.length) return "";
   const open = agents.filter((a) => a.state !== "done");
@@ -60,7 +62,7 @@ function subagents(agents: BriefAgent[] | undefined, now: string): string {
     const when = a.state === "done" ? `done ${ago(a.lastSeenAt, now)}` : a.state === "quiet" ? `quiet ${ago(a.lastSeenAt, now)}` : `running ${ago(a.startedAt, now).replace(/ ago$/, "")}`;
     return `<li class="cc-agent is-${a.state}"><span class="cc-dot" aria-hidden="true"></span><span class="cc-agent-type">${e(a.type ?? "subagent")}</span> ${e(what)} <span class="cc-agent-when">${e(when)}</span></li>`;
   }).join("");
-  const more = done.length > AGENT_DONE_SHOWN ? `<li class="cc-agent is-done">and ${done.length - AGENT_DONE_SHOWN} more finished</li>` : "";
+  const more = done.length > AGENT_DONE_SHOWN ? `<li class="cc-agent is-done">${open.length ? "and " : ""}${done.length - AGENT_DONE_SHOWN} subagent(s) finished</li>` : "";
   return `<li class="cc-agents-wrap"><ul class="cc-agents" aria-label="Subagents">${rows}${more}</ul></li>`;
 }
 
@@ -90,7 +92,7 @@ function decisionCard(w: WaitingRow): string {
   const d = w.decision!;
   const opts = d.options.map((o, i) => `<label class="cc-opt"><input type="radio" name="opt-${e(w.id)}" value="${e(o)}"${i === 0 && !d.recommendation ? "" : ""}> <span>${e(o)}${d.recommendation && o.trim() === d.recommendation.trim() ? ` <em class="cc-rec">recommended</em>` : ""}</span></label>`).join("");
   return `<article class="cc-card cc-decision" tabindex="0" data-preview="${e(previewHref("decision", w.id))}" data-decision="${e(JSON.stringify({ id: w.id, title: w.title, file: d.file, options: d.options, recommendation: d.recommendation, unblocks: d.unblocks }))}">
-  <header><h3>${e(w.title)}</h3><span class="cc-tag is-warn">decide</span></header>
+  <header><h3>${e(w.title)}</h3><span class="cc-tag is-verb">Answer</span></header>
   <p class="cc-meta">${e(w.detail)}</p>
   ${d.recommendation && !d.options.some((o) => o.trim() === d.recommendation!.trim()) ? `<p class="cc-meta">Recommended: ${e(d.recommendation)}</p>` : ""}
   ${opts ? `<fieldset class="cc-opts"><legend class="cc-sr">Options</legend>${opts}</fieldset>` : ""}
@@ -127,7 +129,7 @@ function answeredCard(a: BriefPayload["answered"][number], now: string): string 
 
 function plainCard(w: WaitingRow): string {
   const prev = w.kind !== "decision" ? ` data-preview="${e(previewHref("plan", w.id))}"` : "";
-  return `<article class="cc-card" tabindex="0"${prev}><header><h3>${e(w.title)}</h3><span class="cc-tag">${w.kind === "human-plan" ? "yours" : "blocked"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
+  return `<article class="cc-card" tabindex="0"${prev}><header><h3>${e(w.title)}</h3><span class="cc-tag is-verb">${w.kind === "human-plan" ? "Do" : "Unblock"}</span></header><p class="cc-meta">${e(w.detail)}</p>${actions(w.actions)}</article>`;
 }
 
 /** The four filtered views a tile opens. Each tile has its own, so no two share a target. */

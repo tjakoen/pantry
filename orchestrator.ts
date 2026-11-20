@@ -73,6 +73,8 @@ export interface PlanLike {
   file?: string;
   /** ISO date from the plan's `resume:` frontmatter. Before it, the plan is snoozed. */
   resume?: string;
+  /** what a blocked plan waits on, from the plan's waits: frontmatter, so the owner sees a reason */
+  waits?: string;
   /** the card the last session left, from the plan's Resume card section */
   card?: ResumeCard | null;
   /** what the closing session wrote for the owner, from the plan's What we learned section */
@@ -144,6 +146,13 @@ export function touchesOverlap(a: string, b: string): boolean {
 export function resumeOf(raw: string): string | undefined {
   const fm = /^---\n([\s\S]*?)\n---/.exec(raw)?.[1] ?? "";
   return /^resume:\s*["']?(\d{4}-\d{2}-\d{2})/m.exec(fm)?.[1];
+}
+
+/** The reason a blocked plan gives in its waits: line, or undefined when it gives none. */
+export function waitsOf(raw: string): string | undefined {
+  const fm = /^---\n([\s\S]*?)\n---/.exec(raw)?.[1] ?? "";
+  const v = /^waits:\s*(.+)$/m.exec(fm)?.[1]?.trim().replace(/^["']|["']$/g, "");
+  return v || undefined;
 }
 
 export function readyPlans(plans: PlanLike[], decisions: DecisionLike[], claims: Map<string, ClaimView>, now: number = Date.now()): { ready: Offer[]; skipped: Skip[] } {
@@ -314,6 +323,7 @@ export async function loadProjectWork(projectPath: string): Promise<{ plans: Pla
     ownerError: lp.errors.some((e) => e.field === "owner"),
     file: join(config.plansDir, `${lp.plan.id}.md`),
     resume: resumeOf(lp.raw),
+    waits: waitsOf(lp.raw),
     card: cardOf(lp.raw),
     explainer: explainerOf(lp.raw),
   }));

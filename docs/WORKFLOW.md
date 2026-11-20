@@ -51,6 +51,10 @@ under it. A plan with a *resume* date in its frontmatter, written as *resume: 20
 until that day and then comes back on its own. Both work only as well as the plans declare them: a
 plan with an empty *touches* list overlaps nothing.
 
+A plan marked blocked says why with a *waits* line in its frontmatter, written as *waits: the
+owner's call on the archive layout*. Needs you shows that reason on the card; a blocked plan without
+one asks for it there instead.
+
 Doctor also counts a few hygiene signals as part of the loop: a front door file for agents
 (CLAUDE.md, with AGENTS.md as a link to it), uncommitted or unpushed work that has sat for days, and
 answers you gave that no session has acted on yet.

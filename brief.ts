@@ -247,7 +247,7 @@ export function assembleBrief(input: BriefInputs): BriefPayload {
   }
   for (const p of input.plans) {
     if (p.status === "blocked") {
-      waiting.push({ kind: "blocked-plan", id: p.id, title: p.title, detail: "Marked blocked with no reason recorded. Say what it waits on, or unblock it.", actions: [{ label: "Open plan", kind: "link", value: `/plan/${encodeURIComponent(p.id)}` }] });
+      waiting.push({ kind: "blocked-plan", id: p.id, title: p.title, detail: p.waits ? `Waits on ${p.waits}.` : "Marked blocked with no reason recorded. Add a waits: line to the plan, or unblock it.", actions: [{ label: "Open plan", kind: "link", value: `/plan/${encodeURIComponent(p.id)}` }] });
     }
   }
   for (const h of input.plans) {

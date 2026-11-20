@@ -23,7 +23,7 @@ describe("report", () => {
     ];
     const r = buildReport(inputs, "2026-11-12", NOW);
     expect(r.down).toEqual(["gone"]);
-    expect(r.decide).toMatchObject([{ project: "pantry", kind: "blocked-plan", title: "A", detail: "Marked blocked with no reason recorded. Say what it waits on, or unblock it.", href: "http://localhost:4402/plan/a" }]);
+    expect(r.decide).toMatchObject([{ project: "pantry", kind: "blocked-plan", title: "A", detail: "Marked blocked with no reason recorded. Add a waits: line to the plan, or unblock it.", href: "http://localhost:4402/plan/a" }]);
     expect(r.findings.map((f) => f.title)).toEqual(["1 gate(s) failed in the last recorded run", "1 plan(s) marked doing with no session holding them", "No run recorded for this period's commits"]);
     const quiet = buildReport([{ ...inputs[0], log: [] }], "2026-11-12", NOW);
     expect(quiet.findings.some((f) => f.title.includes("gate(s) failed"))).toBe(false);

@@ -1089,3 +1089,5 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 /* DASHBOARD section 2: housekeeping links sit quietly after the line the reader reads first. */
 .cc-house { margin: var(--space-1) 0 0; font-size: var(--text-xs); color: var(--ink-faint); }
 .cc-house a { color: var(--ink-muted); }
+/* DASHBOARD section 4: the verb chip that opens a Needs you card carries the theme's accent. */
+.cc-tag.is-verb, #cc-inbox .cc-tag.is-verb { font-family: inherit; background: var(--color-accent); border-color: var(--color-accent); color: var(--color-accent-ink, var(--paper)); font-weight: 600; }

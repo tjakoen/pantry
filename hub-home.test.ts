@@ -35,7 +35,7 @@ describe("hub home", () => {
     const b = assembleBrief({ now: NOW, project: "x", repoRoot: "/repo", plans: [{ id: "a", title: "A", status: "blocked", owner: "ai", depends: [], touches: [] }],
       decisions: [], claims: new Map(), checks: [], sessions: [] });
     const s = summarize(b);
-    expect(s.items).toEqual([{ kind: "blocked-plan", title: "A", detail: "Marked blocked with no reason recorded. Say what it waits on, or unblock it.", label: "Open plan", path: "/plan/a" }]);
+    expect(s.items).toEqual([{ kind: "blocked-plan", title: "A", detail: "Marked blocked with no reason recorded. Add a waits: line to the plan, or unblock it.", label: "Open plan", path: "/plan/a" }]);
   });
 
   test("the waiting band lists every project's items, each linking into its project", () => {
