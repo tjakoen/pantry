@@ -1155,9 +1155,9 @@ button.hub-item__act { font: inherit; background: none; cursor: pointer; }
 
 
 /* Audit 2026-11-21, against the Dashboard Design and Design review skills.
-   Muted text: GRAIN's --ink-muted measured 3.47:1 on the sidebar, under the 4.5:1 that 13 and 14px
-   text needs. Inside PANTRY's chrome it is mixed toward --ink instead, which holds in every theme. */
-.pantry-side, .cc-house, .cc-notes, .dash__period { --ink-muted: color-mix(in srgb, var(--ink) 78%, var(--paper)); }
+   Muted text measured under 4.5:1 on the sidebar. The fix lives in GRAIN 0.1.38, whose
+   --ink-muted now clears 4.7:1 on paper, panel and a sidebar a shade darker, so PANTRY no
+   longer overrides the token here. */
 .cc-notes { color: var(--ink-muted); }
 /* Opacity lowered contrast on shelved and down items; a muted colour says the same and still reads. */
 .hub-shelf .hub-row, .pantry-side__shelf > a, .pantry-side .pantry-side__item.is-down { opacity: 1; color: var(--ink-muted); }
