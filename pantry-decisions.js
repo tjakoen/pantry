@@ -10,6 +10,37 @@
 // PANTRY still runs no model, still parses no decision, and still writes nothing but that one log.
 // Vanilla, no build, no framework; if anything is missing the page is simply inert.
 (() => {
+  document.querySelectorAll(".decision-inbox__card").forEach((card) => {
+    const buttons = [...card.querySelectorAll("button[data-choice]")];
+    const status = card.querySelector('[role="status"]');
+    let pending = false;
+    buttons.forEach((button) => button.addEventListener("click", async () => {
+      if (pending) return;
+      pending = true;
+      buttons.forEach((item) => { item.disabled = true; });
+      card.dataset.commit = "pending";
+      status.textContent = "Recording answer…";
+      const base = document.querySelector('meta[name="pantry-base"]')?.content || "";
+      try {
+        const response = await fetch(`${base}/answers`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ via: "pantry-decisions", choice: button.dataset.choice,
+            request: JSON.parse(card.dataset.request) }),
+        });
+        const body = await response.json();
+        if (!response.ok || !body.id) throw new Error(body.error || "PANTRY could not confirm the saved answer.");
+        status.textContent = `Recorded: ${button.dataset.choice}`;
+        card.querySelector("h3 a").focus();
+      } catch (error) {
+        status.textContent = `${error instanceof Error ? error.message : String(error)} You can retry or open the decision.`;
+        buttons.forEach((item) => { item.disabled = false; });
+      } finally {
+        pending = false;
+        delete card.dataset.commit;
+      }
+    }));
+  });
+
   const root = document.querySelector(".pantry-decision");
   if (!root) return;
 

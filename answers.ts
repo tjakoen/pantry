@@ -349,7 +349,7 @@ export async function readAnswerLog(logPath: string): Promise<AnswerLog> {
   const seen = new Set(repo.entries.map((e) => e.id));
   const merged = [...repo.entries, ...extra.entries.filter((e) => !seen.has(e.id))]
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  return { ...repo, entries: merged, malformed: repo.malformed + extra.malformed, inbox: box };
+  return { ...repo, entries: merged, malformed: repo.malformed + extra.malformed, readError: repo.readError || extra.readError, inbox: box };
 }
 
 async function readLogFile(logPath: string): Promise<AnswerLog> {

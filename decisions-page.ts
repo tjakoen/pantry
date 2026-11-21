@@ -7,19 +7,32 @@ import { answers, appendAnswer, AnswerRejected, isLoopbackRequest, normalizeAnsw
 // /decisions (piece 11d) — the decision inbox. The INDEX: open decisions first (what the human owes an
 // answer), then the resolved ledger tail. Model-free, read-only; the payload is the machine twin at
 // /decisions.json. An absent dir degrades to guidance (how to write a decision-request), never a crash.
-export function decisionCard(d: DecisionRequest): string {
-  const badge = `<span class="pantry-decision-badge" data-status="${d.status}">${d.status}</span>`;
-  const rec = d.recommendation
-    ? `<p class="pantry-member__role">Recommends: ${escapeHtml(d.recommendation)}</p>`
-    : "";
-  return `<a class="card pantry-member pantry-decision-card" data-pad="sm" href="/decisions/${encodeURIComponent(d.id)}">
-    <h3 class="card__title">${escapeHtml(d.title)} ${badge}</h3>
-    <p class="pantry-member__role">${d.options.length} option${d.options.length === 1 ? "" : "s"}</p>
-    ${rec}
-  </a>`;
+export function decisionCard(d: DecisionRequest, saved?: AnswerEntry, unavailable = false): string {
+  const request = { source: "decision" as const, ref: d.id, file: d.file, question: d.title,
+    options: d.options, recommendation: d.recommendation, unblocks: d.unblocks };
+  let valid = d.options.length <= 20;
+  try { normalizeAnswer({ request, choice: d.options[0] || "", notes: "Validate request" }); } catch { valid = false; }
+  const choices = valid && d.status === "open" && d.options.length && !unavailable
+    ? `<div class="decision-inbox__options">${d.options.map((option) =>
+      `<button type="button" data-choice="${escapeHtml(option)}"${saved ? " disabled" : ""}${option === d.recommendation ? ' data-recommended="true"' : ""}>${escapeHtml(option)}${option === d.recommendation ? " (recommended)" : ""}</button>`).join("")}</div>` : "";
+  const message = saved ? `Recorded: ${saved.choice || saved.notes || "Answer saved"}`
+    : unavailable || !valid ? "Quick answers are unavailable. Open the decision for details." : "";
+  return `<article class="decision-inbox__card" data-surface="decision-${escapeHtml(d.id)}" data-request="${escapeHtml(JSON.stringify(request))}">
+    <h3 class="decision-inbox__title"><a href="/decisions/${encodeURIComponent(d.id)}">${escapeHtml(d.title)}</a></h3>
+    ${d.status === "resolved" ? "<p>Resolved</p>" : choices}
+    <p class="decision-inbox__status" role="status">${escapeHtml(message)}</p>
+  </article>`;
 }
 
-export function decisionsIndexBody(payload: DecisionsPayload): string {
+function savedDecision(d: DecisionRequest, entries: AnswerEntry[]): AnswerEntry | undefined {
+  return entries.find(({ request }) => request.source === "decision" && request.ref === d.id.trim()
+    && request.file === d.file.trim() && request.question === d.title.trim()
+    && JSON.stringify(request.options || []) === JSON.stringify(d.options.map((o) => o.trim()).filter(Boolean).slice(0, 20))
+    && (request.recommendation || "") === (d.recommendation || "").trim()
+    && (request.unblocks || "") === (d.unblocks || "").trim());
+}
+
+export function decisionsIndexBody(payload: DecisionsPayload, log?: AnswerLog): string {
   const header = `<header>
   <h1 class="proof-masthead">Decisions</h1>
   <p class="proof-lede">Open decisions the AI has routed to you for ${escapeHtml(payload.project)} — the question, its options, and the evidence, side by side. Answering one records it to the <a href="/answers">answer log</a>, which the next session reads on wake, or generates a prompt to paste straight back into chat. PANTRY still runs no model, and the log is the one thing it writes. Machine twin at <a href="/decisions.json">/decisions.json</a>.</p>
@@ -33,12 +46,14 @@ export function decisionsIndexBody(payload: DecisionsPayload): string {
   <p class="pantry-member__role">Each file carries a title, status (open/resolved), an options list, an optional recommendation, and evidence links in its frontmatter, with the context in the body.</p>
 </div>`;
   }
+  const entries = log ? answers(log) : [];
+  const unavailable = !!(log?.readError || log?.malformed);
   const open = payload.decisions.filter((d) => d.status === "open");
   const resolved = payload.decisions.filter((d) => d.status === "resolved");
   const openSection = open.length
     ? `<section class="pantry-decisions-open">
   <h2 class="pantry-section-title">Open — ${open.length}</h2>
-  <div class="card-grid pantry-members">${open.map(decisionCard).join("\n")}</div>
+  <div class="decision-inbox">${open.map((d) => decisionCard(d, savedDecision(d, entries), unavailable)).join("\n")}</div>
 </section>`
     : `<section class="pantry-decisions-open">
   <div class="card pantry-map-empty" data-pad="md"><h2 class="card__title">Nothing open</h2>
@@ -48,10 +63,10 @@ export function decisionsIndexBody(payload: DecisionsPayload): string {
     ? `<section class="pantry-decisions-resolved">
   <h2 class="pantry-section-title">Resolved — ${resolved.length}</h2>
   <p class="pantry-member__role">The ledger tail: decisions already made. Each file records the choice and the reasoning.</p>
-  <div class="card-grid pantry-members">${resolved.map(decisionCard).join("\n")}</div>
+  <div class="decision-inbox">${resolved.map((d) => decisionCard(d)).join("\n")}</div>
 </section>`
     : "";
-  return `${header}\n${openSection}\n${resolvedSection}`;
+  return `${header}\n${openSection}\n${resolvedSection}<script src="/pantry-decisions.js" defer></script>`;
 }
 
 // Render an agent-written markdown body (a decision request, a run report) to a clean HTML fragment

@@ -720,7 +720,7 @@ export function createPantryHandler(opts: PantryOptions) {
     if (surfaces.decisions && path === "/decisions.json")
       return Response.json(await buildDecisionsPayload(config, new Date().toISOString()));
     if (surfaces.decisions && path === "/decisions")
-      return html(page("Decisions", decisionsIndexBody(await buildDecisionsPayload(config, new Date().toISOString()))));
+      return html(page("Decisions", decisionsIndexBody(await buildDecisionsPayload(config, new Date().toISOString()), await readAnswerLog(config.answersLog))));
     if (surfaces.decisions && path.startsWith("/decisions/")) {
       const id = decodeURIComponent(path.slice("/decisions/".length));
       const payload = await buildDecisionsPayload(config, new Date().toISOString());
