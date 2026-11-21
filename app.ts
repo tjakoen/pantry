@@ -646,7 +646,7 @@ export function createPantryHandler(opts: PantryOptions) {
     // --- the Design surface: a project's design/ folder (DESIGN-STANDARD), display-only. The pages,
     // /design.json and the doctor's alignment rows all read design.ts, so they cannot disagree.
     if (path === "/design.json" || path === "/design" || path.startsWith("/design/")) {
-      const designOpts = { project: config.projectName, plansDir: config.plansDir };
+      const designOpts = { project: config.projectName, plansDir: config.plansDir, checks: config.design };
       if (path === "/design.json") return Response.json(await buildDesignPayload(config.cwd, designOpts, new Date().toISOString()));
       const dm = await loadDesign(config.cwd, designOpts);
       if (!dm.available) return html(page("Design", designPage.designUnavailable(dm)));

@@ -36,7 +36,7 @@ describe("tier ceilings", () => {
     // has a design/ folder and so only fail a project that adopted DESIGN-STANDARD.
     const tier1 = Object.entries(CHECK_TIERS).filter(([, t]) => t === 1).map(([id]) => id);
     expect(tier1.filter((id) => !id.startsWith("design-")).length).toBe(3);
-    expect(tier1.filter((id) => id.startsWith("design-")).sort()).toEqual(["design-done-tests", "design-erd-fresh", "design-parse", "design-refs", "design-schema-plans", "design-superseded"]);
+    expect(tier1.filter((id) => id.startsWith("design-")).sort()).toEqual(["design-done-tests", "design-erd-fresh", "design-mockups", "design-parse", "design-refs", "design-schema-plans", "design-screens", "design-superseded", "design-ui-plans"]);
   });
 });
 

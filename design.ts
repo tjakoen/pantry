@@ -9,7 +9,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, relative } from "node:path";
 import { parseFrontmatter } from "@tjakoen/mill/core/frontmatter.ts";
 
 // ── The artifact shapes (as read; every field optional, because the files are hand-edited) ───────
@@ -92,7 +92,15 @@ async function listFiles(dir: string, ext: string): Promise<string[]> {
 
 // ── the loader ──────────────────────────────────────────────────────────────────────────────────
 
-export interface LoadDesignOptions { project?: string; designDir?: string; plansDir?: string }
+export interface LoadDesignOptions { project?: string; designDir?: string; plansDir?: string; checks?: DesignChecks }
+
+/** Per-project inputs to the screen rules, from pantry.config.json's `design` key. */
+export interface DesignChecks {
+  /** paths whose plans add or change screens, e.g. ["src/portal/", "src/site/pages/"]; none → the rule is skipped */
+  uiPaths?: string[];
+  /** visual mockups (repo-relative) and the ADR that describes each, e.g. { file: "avero/desk-notebook.html", decision: "008-desk-layout" } */
+  mockups?: { file: string; decision: string }[];
+}
 
 /** Read a project's design/ folder. `cwd` is the project root; test references resolve from it. */
 export async function loadDesign(cwd: string, opts: LoadDesignOptions = {}): Promise<DesignModel> {
@@ -367,7 +375,28 @@ export async function schemaHash(dir: string): Promise<string> {
 
 const some = (xs: string[], n = 4) => xs.slice(0, n).join("; ") + (xs.length > n ? `; and ${xs.length - n} more` : "");
 
-export async function checkAlignment(cwd: string, m: DesignModel): Promise<AlignmentRule[]> {
+const trimPath = (p: string) => p.replace(/^\.\//, "").replace(/\/+$/, "");
+/** A touch and a UI path overlap when either contains the other: `src/` covers `src/portal/`, and so does `src/portal/desk.tsx`. */
+const overlaps = (touch: string, ui: string) => {
+  const t = trimPath(touch), u = trimPath(ui);
+  return t === u || t.startsWith(`${u}/`) || u.startsWith(`${t}/`) || t === "" || t === ".";
+};
+
+/** When a file last changed: its last commit when clean, its file time when dirty or untracked. */
+async function lastChanged(cwd: string, rel: string): Promise<number | null> {
+  const abs = join(cwd, rel);
+  if (!existsSync(abs)) return null;
+  const git = async (...args: string[]) => {
+    const p = Bun.spawnSync(["git", "-C", cwd, ...args], { stdout: "pipe", stderr: "ignore" });
+    return p.exitCode === 0 ? p.stdout.toString().trim() : null;
+  };
+  const dirty = await git("status", "--porcelain", "--", rel);
+  const committed = await git("log", "-1", "--format=%ct", "--", rel);
+  if (dirty === "" && committed) return Number(committed) * 1000;
+  return (await stat(abs)).mtimeMs;
+}
+
+export async function checkAlignment(cwd: string, m: DesignModel, checks: DesignChecks = {}): Promise<AlignmentRule[]> {
   const rules: AlignmentRule[] = [];
   const rule = (id: string, label: string, problems: string[], okDetail: string) =>
     rules.push({ id, label, ok: problems.length === 0, problems, detail: problems.length ? some(problems) : okDetail });
@@ -431,6 +460,43 @@ export async function checkAlignment(cwd: string, m: DesignModel): Promise<Align
     })),
     `${m.decisions.length} decision${m.decisions.length === 1 ? "" : "s"}, no plan cites a superseded one`);
 
+  // 6. A plan that adds or changes a screen owes the wireframe and the flow that reaches it
+  // (DESIGN-STANDARD section 4). Which paths hold screens is the project's to say.
+  const uiPaths = checks.uiPaths ?? [];
+  if (uiPaths.length) {
+    const uiPlans = m.plans.filter((p) => p.touches.some((t) => uiPaths.some((u) => overlaps(t, u))));
+    rule("design-ui-plans", "design: UI plans cite a wireframe or flow",
+      uiPlans.filter((p) => !p.design.some((d) => /^(wireframes|flows)\//.test(parseRef(d).file))).map((p) => `${p.id} touches ${p.touches.filter((t) => uiPaths.some((u) => overlaps(t, u))).join(", ")} with no wireframes/ or flows/ reference`),
+      `${uiPlans.length} plan${uiPlans.length === 1 ? "" : "s"} touch UI paths (${uiPaths.join(", ")}), each cites a wireframe or flow`);
+  }
+
+  // 7. Wireframes and flows agree: every wireframe is a screen some flow step reaches, and every
+  // step's screen has a wireframe. A screen no flow reaches is one nobody can say how to get to.
+  const named = new Set(m.flows.flatMap((f) => f.steps.map((s) => s.screen).filter((x): x is string => !!x)));
+  const have = new Set(m.wireframes);
+  rule("design-screens", "design: wireframes and flows agree", [
+    ...m.wireframes.filter((w) => !named.has(w)).map((w) => `wireframes/${w}.html is not the screen of any flow step`),
+    ...m.flows.flatMap((f) => f.steps.filter((s) => s.screen && !have.has(s.screen)).map((s) => `flows/${f.id}#${s.id} names screen ${s.screen}, which has no wireframe`)),
+  ], `${m.wireframes.length} wireframe${m.wireframes.length === 1 ? "" : "s"}, each reached by a flow step, and every step's screen exists`);
+
+  // 8. A visual mockup is described by an ADR. When the mockup moves on and the ADR does not, the
+  // ADR is describing a layout that is no longer the one on screen.
+  const mockups = checks.mockups ?? [];
+  if (mockups.length) {
+    const problems: string[] = [];
+    for (const mk of mockups) {
+      const want = mk.decision.replace(/^decisions\//, "").replace(/\.md$/, "");
+      const dec = m.decisions.find((d) => d.file === want || d.id === want);
+      if (!dec) { problems.push(`${mk.file} names decision ${mk.decision}, which does not exist`); continue; }
+      const mockAt = await lastChanged(cwd, mk.file);
+      if (mockAt === null) { problems.push(`${mk.file} does not exist`); continue; }
+      const decAt = await lastChanged(cwd, relative(cwd, join(m.dir, "decisions", `${dec.file}.md`)));
+      if (decAt !== null && mockAt > decAt) problems.push(`${mk.file} changed after decisions/${dec.file}.md last did; update the ADR or confirm it still holds`);
+    }
+    rule("design-mockups", "design: mockups match their decisions", problems,
+      `${mockups.length} mockup${mockups.length === 1 ? "" : "s"}, none changed since its ADR`);
+  }
+
   return rules;
 }
 
@@ -438,5 +504,5 @@ export interface DesignPayload extends DesignModel { generatedAt: string; alignm
 
 export async function buildDesignPayload(cwd: string, opts: LoadDesignOptions, generatedAt: string): Promise<DesignPayload> {
   const m = await loadDesign(cwd, opts);
-  return { ...m, generatedAt, alignment: m.available ? await checkAlignment(cwd, m) : [] };
+  return { ...m, generatedAt, alignment: m.available ? await checkAlignment(cwd, m, opts.checks) : [] };
 }

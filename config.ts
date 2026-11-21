@@ -12,6 +12,7 @@ import { resolvePreviewTarget } from "./preview.ts";
 import { DEFAULT_HYGIENE, type HygieneThresholds } from "./hygiene.ts";
 import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 import { resolveSessionsLog } from "./sessions.ts";
+import type { DesignChecks } from "./design.ts";
 
 export interface PantrySurfaces {
   plans: boolean;
@@ -150,6 +151,10 @@ export interface PantryConfig {
   standardsSource?: "canon";
   /** opt in to doctor's tier 3 checks, the owner's own layer (docs/WORKFLOW.md). Default false. */
   ownerLayer?: boolean;
+  /** inputs to doctor's design screen rules (design.ts DesignChecks): `uiPaths` are the paths whose
+   *  plans add or change screens, and `mockups` pairs each visual mockup with the ADR describing it.
+   *  Omitted → those two rules are skipped; the wireframe and flow agreement rule always runs. */
+  design?: DesignChecks;
 }
 
 /** A PantryConfig with every field filled and every path made absolute. */
@@ -204,6 +209,8 @@ export interface ResolvedPantryConfig {
   standardsSource?: "canon";
   /** true only when the host opted in to doctor's tier 3 checks */
   ownerLayer?: boolean;
+  /** the design screen-rule inputs, with malformed entries dropped */
+  design?: DesignChecks;
 }
 
 // Named for what it is rather than for what it used to be: every surface that renders the repo is
@@ -294,6 +301,12 @@ export async function loadPantryConfig(cwd: string = process.cwd()): Promise<Res
         : Infinity,
     standardsSource: raw.standardsSource,
     ownerLayer: raw.ownerLayer === true,
+    design: {
+      uiPaths: Array.isArray(raw.design?.uiPaths) ? raw.design.uiPaths.filter((x): x is string => typeof x === "string" && !!x) : [],
+      mockups: Array.isArray(raw.design?.mockups)
+        ? raw.design.mockups.filter((x): x is { file: string; decision: string } => !!x && typeof x.file === "string" && typeof x.decision === "string")
+        : [],
+    },
   };
 }
 

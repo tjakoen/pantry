@@ -4,7 +4,7 @@
 import { test, expect, describe, beforeEach } from "bun:test";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { mkdtemp, cp, utimes, writeFile, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, cp, utimes, writeFile, readFile, rm } from "node:fs/promises";
 import {
   loadDesign, checkAlignment, schemaHash, refIndex, resolves, refHref, plansForTable, flowsForTable, crossesRegion, tableFor, buildDesignPayload,
 } from "./design.ts";
@@ -12,6 +12,7 @@ import { annotateDesign, annotatePlanPage, wireframeRaw, WIREFRAME_SHIM } from "
 import { createPantryHandler } from "./app.ts";
 import { runDoctor } from "./doctor.ts";
 import type { ResolvedPantryConfig } from "./config.ts";
+import type { DesignChecks } from "./design.ts";
 import { DEFAULT_HYGIENE } from "./hygiene.ts";
 import { DEFAULT_CONTEXT_BUDGET } from "./context.ts";
 
@@ -27,7 +28,7 @@ async function host(): Promise<string> {
   await utimes(join(dir, "design", "erd.yaml"), later, later);
   return dir;
 }
-const rules = async (dir: string) => Object.fromEntries((await checkAlignment(dir, await loadDesign(dir))).map((r) => [r.id, r]));
+const rules = async (dir: string, checks: DesignChecks = {}) => Object.fromEntries((await checkAlignment(dir, await loadDesign(dir), checks)).map((r) => [r.id, r]));
 const edit = async (file: string, from: string, to: string) => {
   const s = await readFile(file, "utf8");
   if (!s.includes(from)) throw new Error(`fixture edit: "${from}" not in ${file}`);
@@ -113,7 +114,7 @@ describe("the alignment rules", () => {
 
   test("the sample folder is aligned", async () => {
     const r = await rules(dir);
-    expect(Object.keys(r).sort()).toEqual(["design-done-tests", "design-erd-fresh", "design-refs", "design-schema-plans", "design-superseded"]);
+    expect(Object.keys(r).sort()).toEqual(["design-done-tests", "design-erd-fresh", "design-refs", "design-schema-plans", "design-screens", "design-superseded"]);
     for (const x of Object.values(r)) expect([x.id, x.ok, x.detail]).toEqual([x.id, true, x.detail]);
   });
 
@@ -180,8 +181,72 @@ describe("the alignment rules", () => {
     const report = await runDoctor({ cwd: dir, runDrift: false, runDeps: false, runSkills: false, runSymbols: false, runContext: false, home: dir, registryFile: join(dir, "none.json") });
     const row = report.checks.find((c) => c.id === "design-refs")!;
     expect(row).toMatchObject({ ok: false, severity: "error", tier: 1 });
-    expect(report.checks.filter((c) => c.id.startsWith("design-")).length).toBe(5);
+    expect(report.checks.filter((c) => c.id.startsWith("design-")).length).toBe(6);
     expect(report.ok).toBe(false);
+  });
+});
+
+describe("the screen rules", () => {
+  let dir: string;
+  beforeEach(async () => { dir = await host(); });
+  const uiPlan = (touches: string, design: string) =>
+    writeFile(join(dir, "plans", "portal.md"), `---\nstatus: todo\nowner: ai\ntouches: [${touches}]\ndesign: [${design}]\n---\n# Portal\n`);
+
+  test("ui-plans is skipped until the project names its UI paths", async () => {
+    await uiPlan("src/portal/", "erd#shares");
+    expect((await rules(dir))["design-ui-plans"]).toBeUndefined();
+  });
+
+  test("ui-plans flags a plan touching a UI path with no wireframe or flow", async () => {
+    await uiPlan("src/portal/desk.tsx", "erd#shares");
+    const r = (await rules(dir, { uiPaths: ["src/portal/"] }))["design-ui-plans"]!;
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("portal touches src/portal/desk.tsx");
+  });
+
+  test("ui-plans counts a broader touch as covering the UI path, and passes on a wireframe or flow ref", async () => {
+    await uiPlan("src/", "erd#shares");
+    expect((await rules(dir, { uiPaths: ["./src/portal"] }))["design-ui-plans"]!.ok).toBe(false);
+    await uiPlan("src/", "wireframes/share-open");
+    expect((await rules(dir, { uiPaths: ["src/portal/"] }))["design-ui-plans"]!.ok).toBe(true);
+    await uiPlan("src/", "flows/share-link#open");
+    expect((await rules(dir, { uiPaths: ["src/portal/"] }))["design-ui-plans"]!.ok).toBe(true);
+    await uiPlan("src/site/", "erd#shares");
+    expect((await rules(dir, { uiPaths: ["src/portal/"] }))["design-ui-plans"]!.ok).toBe(true);
+  });
+
+  test("screens flags a wireframe no flow step reaches", async () => {
+    await writeFile(join(dir, "design", "wireframes", "orphan.html"), "<p>orphan</p>");
+    const r = (await rules(dir))["design-screens"]!;
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("wireframes/orphan.html is not the screen of any flow step");
+  });
+
+  test("screens flags a flow step whose screen has no wireframe", async () => {
+    await edit(join(dir, "design", "flows", "share-link.yaml"), "screen: share-expired", "screen: share-gone");
+    const r = (await rules(dir))["design-screens"]!;
+    expect(r.problems).toContain("flows/share-link#expired names screen share-gone, which has no wireframe");
+    expect(r.problems).toContain("wireframes/share-expired.html is not the screen of any flow step");
+  });
+
+  test("mockups flags a mockup changed after its ADR, and passes once the ADR catches up", async () => {
+    const mock = join(dir, "mockups", "desk.html");
+    await mkdir(join(dir, "mockups"));
+    await writeFile(mock, "<p>desk</p>");
+    const adr = join(dir, "design", "decisions", "001-share-tokens.md");
+    const early = new Date("2026-03-01T00:00:00Z"), late = new Date("2026-04-01T00:00:00Z");
+    const checks = { mockups: [{ file: "mockups/desk.html", decision: "001-share-tokens" }] };
+    await utimes(adr, early, early); await utimes(mock, late, late);
+    const r = (await rules(dir, checks))["design-mockups"]!;
+    expect(r.ok).toBe(false);
+    expect(r.detail).toContain("mockups/desk.html changed after decisions/001-share-tokens.md");
+    await utimes(adr, late, late); await utimes(mock, early, early);
+    expect((await rules(dir, checks))["design-mockups"]!.ok).toBe(true);
+  });
+
+  test("mockups flags a missing mockup or an unknown decision", async () => {
+    const r = (await rules(dir, { mockups: [{ file: "nope.html", decision: "001-share-tokens" }, { file: "plans/analytics.md", decision: "decisions/999-gone.md" }] }))["design-mockups"]!;
+    expect(r.problems).toEqual(["nope.html does not exist", "plans/analytics.md names decision decisions/999-gone.md, which does not exist"]);
   });
 });
 

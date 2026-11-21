@@ -1237,7 +1237,7 @@ export async function runDoctor(opts: DoctorOptions = {}): Promise<DoctorReport>
   if (existsSync(join(cwd, "design"))) {
     try {
       const dm = await loadDesign(cwd, { project: config.projectName, plansDir: config.plansDir });
-      for (const r of await checkAlignment(cwd, dm)) checks.push({ id: r.id, severity: "error", ok: r.ok, label: r.label, detail: r.detail });
+      for (const r of await checkAlignment(cwd, dm, config.design)) checks.push({ id: r.id, severity: "error", ok: r.ok, label: r.label, detail: r.detail });
       if (dm.errors.length) checks.push({ id: "design-parse", severity: "error", ok: false, label: "design: files parse", detail: dm.errors.map((x) => `${x.file}: ${x.message}`).join("; ") });
     } catch (err) {
       checks.push({ id: "design-parse", severity: "error", ok: false, label: "design: files parse", detail: err instanceof Error ? err.message : String(err) });

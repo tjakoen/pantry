@@ -485,3 +485,12 @@ describe("loadPantryConfig — the hygiene lines", () => {
     expect((await loadPantryConfig(root)).hygiene).toEqual(DEFAULT_HYGIENE);
   });
 });
+
+describe("design screen-rule inputs", () => {
+  test("uiPaths and mockups pass through, malformed entries are dropped, absence is empty", async () => {
+    const root = await host({ "pantry.config.json": JSON.stringify({ design: { uiPaths: ["src/portal/", 3, ""], mockups: [{ file: "a.html", decision: "008-desk" }, { file: "b.html" }] } }) });
+    const config = await loadPantryConfig(root);
+    expect(config.design).toEqual({ uiPaths: ["src/portal/"], mockups: [{ file: "a.html", decision: "008-desk" }] });
+    expect((await loadPantryConfig(await host())).design).toEqual({ uiPaths: [], mockups: [] });
+  });
+});
