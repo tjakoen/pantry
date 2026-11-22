@@ -47,6 +47,13 @@ export interface UsageTurn {
   /** top-level areas this turn's tool calls touched, already relative to the project root */
   areas: string[];
   subagent: boolean;
+  /** OpenCode identifies the billed route by provider, not merely by model name. */
+  provider?: string;
+  funding?: "free" | "paid" | "unknown";
+  costClass?: "free" | "plan" | "metered";
+  privateRoute?: boolean;
+  reportedCost?: number | null;
+  agentSessionId?: string;
 }
 
 export interface UsageRow extends TokenCounts {
@@ -68,6 +75,14 @@ export interface UsagePayload {
   byPlan: UsageRow[];
   byArea: UsageRow[];
   byPlanModel: UsageRow[];
+  byAreaModel: UsageRow[];
+  byRoute: UsageRow[];
+  bySession: UsageRow[];
+  byFunding: UsageRow[];
+  reportedCost: number;
+  /** A zero cost on a paid route is not proof of a free model. */
+  unpricedTurns: number;
+  sourceError?: string;
 }
 
 const zero = (): TokenCounts => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 });
@@ -202,6 +217,12 @@ export function aggregateUsage(project: string, source: string, turns: UsageTurn
   const byPlan = new Map<string, UsageRow>();
   const byArea = new Map<string, UsageRow>();
   const byPlanModel = new Map<string, UsageRow>();
+  const byAreaModel = new Map<string, UsageRow>();
+  const byRoute = new Map<string, UsageRow>();
+  const bySession = new Map<string, UsageRow>();
+  const byFunding = new Map<string, UsageRow>();
+  let reportedCost = 0;
+  let unpricedTurns = 0;
   const sessions = new Set<string>();
   for (const t of turns) {
     sessions.add(t.sessionId);
@@ -213,8 +234,16 @@ export function aggregateUsage(project: string, source: string, turns: UsageTurn
     add(byModel, t.model, t.tokens);
     add(byPlan, plan, t.tokens);
     add(byPlanModel, `${plan} · ${t.model}`, t.tokens);
+    add(byRoute, `${t.funding ?? "unknown"} · ${t.model}`, t.tokens);
+    add(bySession, `${t.agentSessionId ?? t.sessionId}${t.subagent ? " (subagent)" : ""} · ${t.model}${t.costClass ? ` · ${t.costClass} · ${t.privateRoute ? "private" : "non-private"}` : ""}`, t.tokens);
+    add(byFunding, t.funding ?? "unknown", t.tokens);
+    if (t.reportedCost == null) unpricedTurns++;
+    else reportedCost += t.reportedCost;
     const areas = t.areas.length ? t.areas : ["(no files)"];
-    for (const a of areas) add(byArea, a, t.tokens, 1 / areas.length);
+    for (const a of areas) {
+      add(byArea, a, t.tokens, 1 / areas.length);
+      add(byAreaModel, `${a} · ${t.model}`, t.tokens, 1 / areas.length);
+    }
   }
   return {
     project,
@@ -228,6 +257,12 @@ export function aggregateUsage(project: string, source: string, turns: UsageTurn
     byPlan: ranked(byPlan),
     byArea: ranked(byArea),
     byPlanModel: ranked(byPlanModel),
+    byAreaModel: ranked(byAreaModel),
+    byRoute: ranked(byRoute),
+    bySession: ranked(bySession),
+    byFunding: ranked(byFunding),
+    reportedCost,
+    unpricedTurns,
   };
 }
 
@@ -284,6 +319,9 @@ export function formatUsage(p: UsagePayload): string {
     `  from ${p.source}`,
     `  totals: input ${n(p.totals.input)}, output ${n(p.totals.output)}, cache write ${n(p.totals.cacheWrite)}, cache read ${n(p.totals.cacheRead)}`,
     table("By model", p.byModel),
+    table("By funding and route", p.byRoute ?? []),
+    table("By session and subagent", p.bySession ?? []),
+    table("By project area and model", p.byAreaModel),
     table("By plan", p.byPlan),
     table("By area (heuristic: top-level directory of the files each turn named)", p.byArea),
   ].join("\n");
@@ -305,5 +343,24 @@ export async function buildUsageForConfig(
     try { project = projectFor(readRegistry(registryPath(env)), config.cwd)?.name; } catch { /* no registry */ }
   }
   const claims = project ? await readClaims(claimsFile(home, project)) : [];
-  return buildUsagePayload({ project: project ?? config.projectName, root: config.cwd, configDir: harnessConfigDir(), claims, nowIso });
+  const payload = await buildUsagePayload({ project: project ?? config.projectName, root: config.cwd, configDir: harnessConfigDir(), claims, nowIso });
+  const { openCodeConnection, readOpenCodeUsage } = await import("./opencode-usage.ts");
+  const connection = await openCodeConnection(env);
+  if (!connection) {
+    if (env.OPENCODE || env.PANTRY_OPENCODE_URL) payload.sourceError = "OpenCode service not found; only Claude transcripts were counted.";
+    return payload;
+  }
+  try {
+    const openCodeTurns = await readOpenCodeUsage(config.cwd, connection);
+    const claudeTurns: UsageTurn[] = [];
+    for (const { file, subagent } of await listTranscripts(payload.source)) {
+      claudeTurns.push(...parseTranscript(await readFile(file, "utf8"), config.cwd, subagent).turns);
+    }
+    const seen = new Set<string>();
+    const merged = [...claudeTurns, ...openCodeTurns].filter((turn) => !seen.has(turn.messageId) && !!seen.add(turn.messageId));
+    return aggregateUsage(payload.project, `${payload.source} + ${connection.url}/api/session`, merged, claimWindows(claims, Date.parse(nowIso)), payload.skipped, nowIso);
+  } catch (error) {
+    payload.sourceError = `OpenCode usage unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    return payload;
+  }
 }

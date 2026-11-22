@@ -10,7 +10,7 @@ export function usageBody(p: UsagePayload): string {
   const fresh = (r: { input: number; output: number; cacheWrite: number }) => r.input + r.output + r.cacheWrite;
   const header = `<header>
   <h1 class="proof-masthead">Usage</h1>
-  <p class="proof-lede">Where the tokens went in ${escapeHtml(p.project)}: per model, per claimed plan, and per area of the project. Read from the harness transcripts, so it covers Claude Code sessions and their subagents. Machine twin at <a href="/usage.json">/usage.json</a>.</p>
+  <p class="proof-lede">Where the tokens went in ${escapeHtml(p.project)}: per provider and model, session, claimed plan, and area. Read from Claude transcripts and the local OpenCode API. A zero reported charge on a paid route does not make it free. Machine twin at <a href="/usage.json">/usage.json</a>.</p>
 </header>`;
   if (!p.turns) {
     return `${header}
@@ -42,7 +42,13 @@ export function usageBody(p: UsagePayload): string {
   return `${header}
 <div class="pantry-usage__stats">${stats}</div>
 ${p.skipped ? `<p class="pantry-run-summary" data-tone="due">${p.skipped} transcript line${p.skipped === 1 ? " was" : "s were"} unreadable and left out.</p>` : ""}
+${p.sourceError ? `<p class="pantry-run-summary" data-tone="due">${escapeHtml(p.sourceError)}</p>` : ""}
+<p class="pantry-member__role">Reported charge: $${(p.reportedCost ?? 0).toFixed(4)}. ${p.unpricedTurns ?? 0} turn(s) have no reported charge; this is not a provider invoice.</p>
+${table("By funding", "Free means the OpenCode free route; paid names a paid route even when its reported charge is zero.", p.byFunding ?? [])}
+${table("By route", "The provider, model and variant identify the route.", p.byRoute ?? [])}
+ ${table("By session", "Subagents are marked separately and rolled into their parent claim. Routed children show their recorded cost class and privacy flag.", p.bySession ?? [])}
 ${table("By model", "", p.byModel)}
 ${table("By plan", "A turn counts toward a plan while its session holds the claim. Work asked for directly in chat is unclaimed.", p.byPlan)}
-${table("By area", "A heuristic: the top-level folder of the files each turn named. A turn that read through the shell names none.", p.byArea)}`;
+${table("By area", "A heuristic: the top-level folder of the files each turn named. A turn that read through the shell names none.", p.byArea)}
+${table("By area and model", "Shows which model worked on each project area; fileless turns remain unattributed.", p.byAreaModel)}`;
 }
