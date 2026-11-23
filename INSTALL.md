@@ -432,3 +432,23 @@ Doctor labels its context measurement as Claude Code context. Context and sessio
 override that directory. The reading identifies the selected directory and harness; it counts
 CLAUDE.md imports and the Claude memory index. It does not measure Codex instructions, skills, tool
 schemas or the complete prompt of either harness.
+# Usage on OpenCode V2
+
+`pantry usage --json` and `/usage.json` include the local OpenCode V2 session API
+alongside Claude Code transcripts. On macOS, PANTRY discovers the running OpenCode
+service's loopback listener; elsewhere set `PANTRY_OPENCODE_URL` to its loopback
+HTTP URL. The OpenCode service password stays in `~/.config/opencode/service.json`
+and is never written to PANTRY's output. Run `bun cli.ts usage --json` in a project
+and check `sourceError` before trusting the totals. The view distinguishes free
+OpenCode routes from paid API routes even when the API reports zero charge.
+
+The shared OpenCode configuration lives in `agent-config/shared/opencode/opencode.jsonc`.
+Run `bash agent-config/shared/tools/install-opencode.sh` on each personal Mac to link
+that file and the shared instructions into `~/.config/opencode/`. Bounded `explore`,
+`general`, `research`, `locator`, and `implementer` subagents use the actual
+`opencode/deepseek-v4.1-flash-free` route; main and independent review remain on
+paid Sol. When OpenCode's free allowance returns a rate-limit error, rerun the
+bounded task with an explicitly selected paid model, or wait for the allowance
+to reset. OpenCode V2 does not automatically fall back from a pinned agent model.
+Verify the active agent assignments through `/api/agent`, and test the free
+route with a small request before relying on it for a long run.

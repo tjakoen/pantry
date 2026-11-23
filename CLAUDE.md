@@ -32,7 +32,7 @@ bun cli.ts check   # lint the docs for dead references (CI-able; exits nonzero o
 bun cli.ts hub ensure  # start the hub detached if /health does not answer; writes ~/.pantry/hub.json
 bun cli.ts open [project]  # bring the desktop app forward (pantry://), or the hub in a browser
 bun cli.ts init    # scaffold plans/ + pantry.config.json (host-side)
-bun cli.ts usage   # token usage by model, claimed plan and area, from the harness transcripts (--json for the payload)
+bun cli.ts usage   # Claude transcripts and local OpenCode V2 usage by route, model, session, plan and area (--json)
 ```
 
 ## Non-negotiables (the host contract — INSTALL.md restates these to hosts)

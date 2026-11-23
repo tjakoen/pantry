@@ -39,6 +39,7 @@
     "map-page.ts",
     "runs-page.ts",
     "usage-page.ts",
+    "opencode-usage.ts",
     "timeline-page.ts",
     "artifacts.ts",
     "brief.ts",

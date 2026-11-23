@@ -11,6 +11,17 @@
 > features. See §The reshape.**
 > Canonical plan: this file. Cross-layer sequencing is Track F in [ROADMAP.md](https://github.com/tjakoen/bread/blob/main/ROADMAP.md).
 
+## Model usage attribution
+
+The Usage view combines Claude transcript turns with OpenCode V2's local API. OpenCode
+messages retain the provider, model, variant, session and subagent ID, reported charge,
+and token counts. A subagent's turns count toward its parent's PANTRY claim but remain
+separately identifiable. The top-level directory named in tool arguments is only a
+heuristic for project area. A free classification requires an actual OpenCode free route;
+a zero reported charge from an API or subscription route is not evidence of free use.
+Missing pricing remains unknown rather than being counted as free. The reported charge
+is not a provider invoice.
+
 ## The command center (2026-11-04, later the same day)
 
 The home page is now a command center, drawn from the same brief: three columns on one screen.
