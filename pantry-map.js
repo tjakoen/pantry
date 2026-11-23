@@ -226,7 +226,10 @@
     } else tip.hidden = true;
   });
   canvas.addEventListener("mouseleave", () => { tip.hidden = true; state.hover = null; draw(); });
+  // A plain wheel scrolls the page; Ctrl (or Cmd) and the wheel zoom, and a trackpad pinch, which arrives
+  // with ctrlKey set, still zooms. The same rule as GRAIN's diagrams.
   canvas.addEventListener("wheel", (e) => {
+    if (!e.ctrlKey && !e.metaKey) return;
     e.preventDefault();
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
