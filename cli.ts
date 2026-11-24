@@ -287,17 +287,20 @@ async function main() {
   }
 
   if (cmd === "skills") {
+    // parseArgs collects `--out <dir>` into flags, so the positionals are only the subcommand and dir.
+    const outDir = flags.out && flags.out !== "true" ? flags.out : undefined;
+    if (flags.out === "true") { console.error("pantry skills: --out needs a directory"); process.exit(2); }
     const [sub = "list", subDir] = rest;
     const cwd = abs(subDir ?? ".");
     if (sub === "sync") {
-      console.log(formatSkillsSync(await syncSkills({ cwd })));
+      console.log(formatSkillsSync(await syncSkills({ cwd, outDir })));
       return; // a materializer, not a gate — a missing canon package is a skip, not a failure
     }
     if (sub === "list") {
-      console.log(formatSkillsList(await listSkills({ cwd })));
+      console.log(formatSkillsList(await listSkills({ cwd, outDir })));
       return;
     }
-    console.error(`pantry skills: unknown subcommand "${sub}"\nusage: pantry skills <sync|list> [dir]`);
+    console.error(`pantry skills: unknown subcommand "${sub}"\nusage: pantry skills <sync|list> [dir] [--out <dir>]`);
     process.exit(1);
   }
 

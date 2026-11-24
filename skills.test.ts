@@ -98,6 +98,17 @@ describe("pantry skills sync — the generated view", () => {
     expect(second.mounted.every((m) => m.action === "unchanged")).toBe(true);
   });
 
+  test("--out publishes the same tree elsewhere, with no ignore file and no host mount", async () => {
+    const out = join(host, "publish", "skills");
+    const report = await syncSkills({ cwd: host, canonDir: canon, config: cfg(), outDir: out });
+    expect(report.skillsDir).toBe(out);
+    expect(report.published).toBe(true);
+    expect(existsSync(join(out, "voice", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(out, "graph", "SKILL.md"))).toBe(true);
+    expect(existsSync(join(out, ".gitignore"))).toBe(false);   // a published tree is committed, not ignored
+    expect(existsSync(SKILL("voice"))).toBe(false);            // and the host mount is untouched
+  });
+
   test("a canon edit is picked up on the next sync", async () => {
     await sync();
     await writeFile(join(canon, "VOICE.md"), standard("VOICE", "Read this BEFORE any prose at all.", "No em-dashes."), "utf8");
