@@ -1024,7 +1024,10 @@ function sessionClientJs(): Promise<string> {
 }
 
 export function servePantry(opts: PantryOptions & { port?: number }) {
-  return Bun.serve({ port: opts.port ?? 4400, fetch: createPantryHandler(opts) });
+  // Loopback by default. The cockpit is a local window, and every surface here reads the owner's
+  // plans, run ledger and claims: binding every interface made them LAN-readable (audit 2026-11-25).
+  // PANTRY_HOST is the deliberate escape hatch for a machine the owner actually wants to reach it.
+  return Bun.serve({ port: opts.port ?? 4400, hostname: Bun.env.PANTRY_HOST ?? "127.0.0.1", fetch: createPantryHandler(opts) });
 }
 
 /** Boot from a host cwd: load the pantry.config there, then serve. The CLI's entry point. The

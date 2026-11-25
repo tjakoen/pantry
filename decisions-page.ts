@@ -228,6 +228,18 @@ export async function recordAnswerRequest(req: Request, clientAddress: string | 
   if (!isLoopbackRequest(clientAddress)) {
     return Response.json({ error: "The answer log accepts writes from this machine only." }, { status: 403 });
   }
+  // The socket check stops another MACHINE; it does not stop another ORIGIN on this one. A page the
+  // owner visits can POST here with mode "no-cors" and a text/plain body, which is a simple request
+  // and skips preflight. Requiring application/json turns every cross-origin attempt into a
+  // preflighted one, and this server answers no preflight, so the browser refuses it. That is the
+  // browser's rule doing the work, not a claim from the request.
+  const type = req.headers.get("content-type") ?? "";
+  if (!/^application\/json\b/i.test(type)) {
+    return Response.json(
+      { error: "Answers are accepted as application/json only, so a page on another origin cannot post one." },
+      { status: 415 },
+    );
+  }
   const raw = await readBodyUpTo(req, MAX_ANSWER_BODY_BYTES);
   if (raw === null) {
     return Response.json({ error: `Over the ${MAX_ANSWER_BODY_BYTES} byte cap.` }, { status: 413 });

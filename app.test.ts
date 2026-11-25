@@ -804,7 +804,7 @@ describe("the answer channel — the one route in PANTRY that writes", () => {
       },
     });
     const res = await handler(
-      new Request("http://localhost/answers", { method: "POST", body, duplex: "half" } as RequestInit),
+      new Request("http://localhost/answers", { method: "POST", body, duplex: "half", headers: { "content-type": "application/json" } } as RequestInit),
       from("127.0.0.1"),
     );
     expect(res.status).toBe(413);

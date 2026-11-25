@@ -169,6 +169,9 @@ export async function runHub(opts: { file?: string; cli?: string } = {}) {
 
   const server = Bun.serve({
     port: reg.hubPort,
+    // Same reasoning as the project server: a hub that answers every interface publishes every
+    // project's brief and claim log to the LAN. PANTRY_HOST opts in when that is wanted.
+    hostname: Bun.env.PANTRY_HOST ?? "127.0.0.1",
     async fetch(req) {
       const url = new URL(req.url);
       if (url.pathname === "/mcp") {

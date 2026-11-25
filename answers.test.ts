@@ -14,6 +14,7 @@ import {
   inboxPath, isLoopbackRequest, makeEntryId, matchesWaitTarget, normalizeAnswer, readAnswerLog, unacked,
   waitForAnswer, waitForAnswers, MAX_FIELD_CHARS, type AnswerInput,
 } from "./answers.ts";
+import { recordAnswerRequest } from "./decisions-page.ts";
 
 const NOW = new Date("2026-08-10T12:00:00.000Z");
 const tmp = () => mkdtemp(join(tmpdir(), "pantry-answers-"));
@@ -463,5 +464,57 @@ describe("the machine inbox (answers recorded where the repo is read-only)", () 
       expect(unacked(read)).toEqual([]);
       expect(read.entries.filter((e) => e.kind === "answer")).toHaveLength(1);
     } finally { await chmod(dir, 0o755); restore(); }
+  });
+});
+
+describe("the answer write route", () => {
+  // The socket check stops another machine; it does not stop another origin on this one. A page the
+  // owner visits can POST here with mode "no-cors" and a text/plain body, which is a simple request
+  // and skips preflight. Requiring application/json is what makes the browser itself refuse it, and
+  // this asserts the guard rather than the browser.
+  test("refuses a text/plain post, the shape a cross-origin page can send without preflight", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    const res = await recordAnswerRequest(
+      new Request("http://127.0.0.1:4400/answers", {
+        method: "POST",
+        headers: { "content-type": "text/plain;charset=UTF-8" },
+        body: JSON.stringify(goodInput()),
+      }),
+      "127.0.0.1",
+      log,
+    );
+    expect(res.status).toBe(415);
+    expect(existsSync(log)).toBe(false);
+  });
+
+  test("still refuses a post from another machine", async () => {
+    const dir = await tmp();
+    const res = await recordAnswerRequest(
+      new Request("http://127.0.0.1:4400/answers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(goodInput()),
+      }),
+      "192.168.1.40",
+      join(dir, "answers.jsonl"),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  test("accepts application/json from loopback", async () => {
+    const dir = await tmp();
+    const log = join(dir, "answers.jsonl");
+    const res = await recordAnswerRequest(
+      new Request("http://127.0.0.1:4400/answers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(goodInput()),
+      }),
+      "127.0.0.1",
+      log,
+    );
+    expect(res.status).toBe(201);
+    expect(existsSync(log)).toBe(true);
   });
 });
